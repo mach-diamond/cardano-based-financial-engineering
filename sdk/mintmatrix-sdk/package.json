@@ -1,0 +1,70 @@
+{
+  "name": "@mintmatrix/sdk",
+  "version": "0.1.0",
+  "description": "MintMatrix Financial Instruments SDK - Cardano Smart Contract Integration",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./cdo": {
+      "import": "./dist/cdo/index.mjs",
+      "require": "./dist/cdo/index.js",
+      "types": "./dist/cdo/index.d.ts"
+    },
+    "./loan": {
+      "import": "./dist/loan/index.mjs",
+      "require": "./dist/loan/index.js",
+      "types": "./dist/loan/index.d.ts"
+    },
+    "./plutus": {
+      "import": "./plutus/index.mjs",
+      "require": "./plutus/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "plutus",
+    "README.md"
+  ],
+  "keywords": [
+    "cardano",
+    "smart-contracts",
+    "defi",
+    "cdo",
+    "lending",
+    "lucid-evolution",
+    "aiken"
+  ],
+  "author": "MintMatrix",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MintMatrix/mintmatrix-contracts.git",
+    "directory": "sdk/mintmatrix-sdk"
+  },
+  "scripts": {
+    "build": "tsup",
+    "build:watch": "tsup --watch",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@lucid-evolution/lucid": "^0.3.47"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.3.0"
+  },
+  "peerDependencies": {
+    "@lucid-evolution/lucid": ">=0.3.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

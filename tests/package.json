@@ -1,0 +1,23 @@
+{
+  "name": "@mintmatrix/tests",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MintMatrix Integration Tests",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:emulator": "NETWORK=emulator vitest run",
+    "test:testnet": "NETWORK=preview vitest run"
+  },
+  "devDependencies": {
+    "@lucid-evolution/lucid": "^0.4.0",
+    "vitest": "^2.0.0",
+    "dotenv": "^16.4.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "@mintmatrix/sdk": "workspace:*"
+  }
+}

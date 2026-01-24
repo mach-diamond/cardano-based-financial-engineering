@@ -1,0 +1,39 @@
+{
+  "name": "mintmatrix-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MintMatrix Financial Instruments - Smart Contracts Monorepo",
+  "keywords": ["cardano", "smart-contracts", "defi", "cdo", "lending", "aiken"],
+  "author": "MintMatrix",
+  "license": "UNLICENSED",
+  "workspaces": [
+    "packages/*",
+    "sdk/*",
+    "apps/*",
+    "docs",
+    "tests"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "build:sdk": "turbo run build --filter=@mintmatrix/sdk",
+    "build:docs": "turbo run build --filter=docs",
+    "test": "turbo run test",
+    "test:unit": "turbo run test:unit",
+    "test:integration": "turbo run test:integration",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "dev": "turbo run dev",
+    "docs:dev": "pnpm --filter docs dev",
+    "docs:build": "pnpm --filter docs build",
+    "sdk:build": "pnpm --filter @mintmatrix/sdk build",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\""
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0",
+    "prettier": "^3.2.0",
+    "typescript": "^5.3.0"
+  }
+}

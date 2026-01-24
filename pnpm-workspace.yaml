@@ -1,0 +1,24 @@
+packages:
+  # Core shared utilities (future)
+  - "packages/core"
+
+  # Smart contract packages (as submodules)
+  - "packages/cdo-bond"
+  - "packages/loan-contract"
+
+  # Future contract packages
+  - "packages/digital-gold"
+  - "packages/options"
+  - "packages/auction"
+
+  # SDK for external consumers
+  - "sdk/mintmatrix-sdk"
+
+  # Documentation site
+  - "docs"
+
+  # Integration tests
+  - "tests"
+
+  # Web applications
+  - "apps/web"

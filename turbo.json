@@ -1,0 +1,41 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": ["**/.env.*local"],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "build/**", "plutus.json"],
+      "cache": true
+    },
+    "build:aiken": {
+      "outputs": ["plutus.json", "build/**"],
+      "cache": true
+    },
+    "test": {
+      "dependsOn": ["build"],
+      "outputs": [],
+      "cache": false
+    },
+    "test:unit": {
+      "dependsOn": ["build:aiken"],
+      "outputs": [],
+      "cache": false
+    },
+    "test:integration": {
+      "dependsOn": ["build"],
+      "outputs": ["tests/reports/**"],
+      "cache": false
+    },
+    "lint": {
+      "outputs": [],
+      "cache": true
+    },
+    "clean": {
+      "cache": false
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    }
+  }
+}

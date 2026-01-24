@@ -1,0 +1,6 @@
+[submodule "packages/cdo-bond"]
+	path = packages/cdo-bond
+	url = git@github.com:MintMatrix/cdo-bonding.git
+[submodule "packages/loan-contract"]
+	path = packages/loan-contract
+	url = git@github.com:MintMatrix/asset-transfer.git
