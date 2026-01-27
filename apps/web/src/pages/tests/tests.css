@@ -35,10 +35,14 @@
 
 .identities-card {
     background: transparent !important;
-    border: none !important;
     margin-left: 0;
     margin-right: 0;
     box-shadow: none !important;
+}
+
+.identities-card--bordered {
+    border: 1px solid rgba(139, 92, 246, 0.3) !important;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), transparent) !important;
 }
 
 .identities-card > .card-header {
@@ -62,7 +66,6 @@
 /* Contracts Section Styles */
 .contracts-card {
     background: transparent !important;
-    border: none !important;
     box-shadow: none !important;
 }
 
@@ -74,6 +77,95 @@
 .contracts-card > .card-body {
     background: transparent !important;
     padding: 0.5rem 0 !important;
+}
+
+/* Loan Contracts - Blue border */
+.contracts-card--loan {
+    border: 1px solid rgba(59, 130, 246, 0.3) !important;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.05), transparent) !important;
+}
+
+/* CLO Contracts - Cyan border */
+.contracts-card--clo {
+    border: 1px solid rgba(23, 162, 184, 0.3) !important;
+    background: linear-gradient(135deg, rgba(23, 162, 184, 0.05), transparent) !important;
+}
+
+/* Contract Card Icon Visibility */
+.contract-icon i,
+.contract-type-icon i {
+    color: inherit !important;
+}
+
+.contract-icon--loan i,
+.contracts-card--loan .contract-type-icon i {
+    color: #60a5fa !important;
+}
+
+.contract-icon--clo i,
+.contracts-card--clo .contract-type-icon i {
+    color: #22d3ee !important;
+}
+
+/* Contract Row Layout */
+.contract-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem 0.5rem;
+    position: relative;
+}
+
+.contract-type-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    flex-shrink: 0;
+}
+
+.contracts-card--loan .contract-type-icon {
+    background: rgba(59, 130, 246, 0.15);
+}
+
+.contracts-card--clo .contract-type-icon {
+    background: rgba(23, 162, 184, 0.15);
+}
+
+.contract-info-section {
+    width: 240px;
+    min-width: 240px;
+    flex-shrink: 0;
+}
+
+.contract-asset-section {
+    width: 280px;
+    min-width: 280px;
+    flex-shrink: 0;
+}
+
+.contract-status-section {
+    font-size: 1.5rem;
+    width: 40px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.contract-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-left: auto;
+}
+
+.contract-actions .btn-outline-success i {
+    color: #10b981 !important;
+}
+
+.contract-actions .btn-outline-success:hover i {
+    color: #fff !important;
 }
 
 .column-section {

@@ -1,6 +1,6 @@
 <template>
-  <div class="card mb-4 contracts-card">
-    <div class="card-header section-header section-header--bordered" @click="expanded = !expanded">
+  <div class="card mb-4 contracts-card contracts-card--clo">
+    <div class="card-header section-header" @click="expanded = !expanded">
       <div class="d-flex align-items-center">
         <div class="contract-icon contract-icon--clo mr-3">
           <i class="fas fa-layer-group"></i>
@@ -138,11 +138,7 @@ function formatAda(lovelace?: number): string {
 </script>
 
 <style scoped>
-.section-header--bordered {
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-}
-
+/* Header icon in section header */
 .contract-icon {
   width: 40px;
   height: 40px;
@@ -151,17 +147,10 @@ function formatAda(lovelace?: number): string {
   align-items: center;
   justify-content: center;
   font-size: 1rem;
-}
-
-.contract-icon--clo {
   background: rgba(23, 162, 184, 0.15);
-  color: #17a2b8;
 }
 
-.contract-icon--clo i {
-  color: #17a2b8;
-}
-
+/* Empty state */
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -186,17 +175,10 @@ function formatAda(lovelace?: number): string {
   color: rgba(255, 255, 255, 0.3);
 }
 
+/* Contracts list */
 .contracts-list {
   display: flex;
   flex-direction: column;
-}
-
-.contract-row {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.75rem 0.5rem;
-  position: relative;
 }
 
 .contract-divider {
@@ -212,28 +194,7 @@ function formatAda(lovelace?: number): string {
   display: none;
 }
 
-.contract-type-icon {
-  width: 50px;
-  height: 50px;
-  border-radius: 8px;
-  background: rgba(23, 162, 184, 0.15);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.25rem;
-  flex-shrink: 0;
-}
-
-.contract-type-icon i {
-  color: #22d3ee;
-}
-
-.contract-info-section {
-  width: 280px;
-  min-width: 280px;
-  flex-shrink: 0;
-}
-
+/* Typography */
 .contract-info-section h5 {
   font-size: 0.9rem;
 }
@@ -243,12 +204,7 @@ function formatAda(lovelace?: number): string {
   color: #6c757d;
 }
 
-.contract-asset-section {
-  width: 320px;
-  min-width: 320px;
-  flex-shrink: 0;
-}
-
+/* Asset display */
 .asset-line, .terms-line {
   display: flex;
   align-items: center;
@@ -263,6 +219,7 @@ function formatAda(lovelace?: number): string {
   text-align: center;
 }
 
+/* Tranche badges */
 .tranche-labels {
   display: flex;
   gap: 0.25rem;
@@ -292,17 +249,7 @@ function formatAda(lovelace?: number): string {
   color: #ef4444;
 }
 
-.contract-status-section {
-  font-size: 1.5rem;
-  width: 40px;
-  text-align: center;
-}
-
-.contract-actions {
-  display: flex;
-  gap: 0.5rem;
-}
-
+/* Action buttons */
 .contract-actions .btn {
   height: 32px;
   display: flex;
@@ -313,13 +260,5 @@ function formatAda(lovelace?: number): string {
 .contract-actions .btn-outline-success {
   width: 32px;
   padding: 0;
-}
-
-.contract-actions .btn-outline-success i {
-  color: #10b981;
-}
-
-.contract-actions .btn-outline-success:hover i {
-  color: #fff;
 }
 </style>

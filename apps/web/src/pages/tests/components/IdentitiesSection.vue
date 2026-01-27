@@ -1,5 +1,5 @@
 <template>
-  <div class="card mb-4 identities-card">
+  <div class="card mb-4 identities-card identities-card--bordered">
     <div class="card-header section-header" @click="sections.main = !sections.main">
       <div class="d-flex align-items-center">
         <h5 class="text-white mb-0 mr-3">Identities & Wallets</h5>
