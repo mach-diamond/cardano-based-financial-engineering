@@ -44,24 +44,70 @@ import type {
   TransactionResult,
 } from "../types";
 
-// Import contract actions from the loan-contract package (asset-transfer submodule)
-// These will be available when running in Node.js environment
-let contractActions: typeof import("../../../packages/loan-contract/src/actions") | null = null;
-let contractLib: typeof import("../../../packages/loan-contract/src/lib") | null = null;
-let contractTypes: typeof import("../../../packages/loan-contract/src/types") | null = null;
+// Internal interfaces for contract interactions (standalone - no external imports)
+interface ContractActionResult {
+  tx_id: string;
+  address?: string;
+  policy_id?: string;
+}
 
-// Lazy load contract modules (only available in Node.js)
-async function loadContractModules() {
-  if (contractActions === null) {
+interface ContractState {
+  buyer: string | null;
+  base_asset: {
+    policy: string;
+    asset_name: string;
+    quantity: number | bigint;
+  };
+  terms: {
+    principal: number | bigint;
+    apr: number;
+    frequency: number;
+    installments: number;
+    time: number | null;
+    fees: {
+      late_fee: number;
+      transfer_fee_seller: number;
+      transfer_fee_buyer: number;
+      referral_fee: number;
+      referral_fee_addr: string | null;
+    };
+  };
+  balance: number | bigint;
+  last_payment: { amount: number; time: number } | null;
+}
+
+interface LoadedContract {
+  state: ContractState;
+  script: { hash: string };
+}
+
+// Module cache for lazy loading
+let contractModulesLoaded = false;
+let contractActions: Record<string, (...args: unknown[]) => Promise<ContractActionResult>> | null = null;
+let contractLib: {
+  loadContract: (address: string) => Promise<LoadedContract>;
+  calculateTermPayment: (state: ContractState) => { totalDue: number };
+  isPaymentDefaulted: (state: ContractState, timestamp: number) => boolean;
+} | null = null;
+
+// Lazy load contract modules (only available in Node.js with contract packages)
+async function loadContractModules(): Promise<{
+  actions: typeof contractActions;
+  lib: typeof contractLib;
+}> {
+  if (!contractModulesLoaded) {
     try {
-      contractActions = await import("../../../packages/loan-contract/src/actions");
-      contractLib = await import("../../../packages/loan-contract/src/lib");
-      contractTypes = await import("../../../packages/loan-contract/src/types");
-    } catch (e) {
-      console.warn("Contract actions not available. Some features may be limited.", e);
+      // Dynamic imports resolved at runtime
+      const actionsPath = "../../../packages/loan-contract/src/actions/index.js";
+      const libPath = "../../../packages/loan-contract/src/lib/index.js";
+      contractActions = (await import(/* @vite-ignore */ actionsPath)) as typeof contractActions;
+      contractLib = (await import(/* @vite-ignore */ libPath)) as typeof contractLib;
+      contractModulesLoaded = true;
+    } catch {
+      console.warn("Contract actions not available. Some features may be limited.");
     }
   }
-  return { actions: contractActions, lib: contractLib, types: contractTypes };
+  return { actions: contractActions, lib: contractLib };
 }
 
 /**
@@ -217,8 +263,8 @@ export class LoanClient {
     return {
       txHash: result.tx_id,
       success: true,
-      loanAddress: result.address,
-      policyId: result.policy_id,
+      loanAddress: result.address ?? "",
+      policyId: result.policy_id ?? "",
     };
   }
 
@@ -502,15 +548,15 @@ export class LoanClient {
 
     return {
       config: {
-        principal: state.terms.principal,
+        principal: BigInt(state.terms.principal),
         interestRate: Number(state.terms.apr),
         termMonths: Number(state.terms.installments),
         collateralPolicyId: state.base_asset.policy,
         collateralAssetName: state.base_asset.asset_name,
       },
-      balance: state.balance,
+      balance: BigInt(state.balance),
       paymentsMade: Number(state.terms.installments) - paymentsRemaining,
-      lastPayment: state.last_payment?.time ?? null,
+      lastPayment: state.last_payment?.time != null ? BigInt(state.last_payment.time) : null,
       isDefaulted: false, // Would need to check timing
       createdAt: 0n, // Not stored in datum
       isActive,

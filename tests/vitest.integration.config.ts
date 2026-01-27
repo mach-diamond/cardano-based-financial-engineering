@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config';
+import path from 'path';
 
 export default defineConfig({
   test: {
@@ -15,6 +16,24 @@ export default defineConfig({
       forks: {
         singleFork: true, // Run sequentially to avoid UTxO conflicts
       },
+    },
+    server: {
+      deps: {
+        inline: [
+          'libsodium-wrappers-sumo',
+          'libsodium-sumo',
+          '@lucid-evolution/lucid',
+        ],
+      },
+    },
+  },
+  resolve: {
+    alias: {
+      // Force CJS version for libsodium
+      'libsodium-wrappers-sumo': path.resolve(
+        __dirname,
+        '../node_modules/libsodium-wrappers-sumo/dist/modules-sumo/libsodium-wrappers.js'
+      ),
     },
   },
 });

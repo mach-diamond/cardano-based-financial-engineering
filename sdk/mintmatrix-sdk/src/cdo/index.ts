@@ -58,24 +58,63 @@ import type {
   TrancheType,
 } from "../types";
 
-// Import CDO contract actions from the cdo-bond package (CDO submodule)
-// These will be available when running in Node.js environment
-let cdoActions: typeof import("../../../packages/cdo-bond/src/actions") | null = null;
-let cdoLib: typeof import("../../../packages/cdo-bond/src/lib") | null = null;
-let cdoTypes: typeof import("../../../packages/cdo-bond/src/types") | null = null;
+// Internal interfaces for contract interactions (standalone - no external imports)
+interface CDOContractResult {
+  txHash: string;
+  bondAddress?: string;
+  bondToken?: { policyId: string };
+}
 
-// Lazy load contract modules (only available in Node.js)
-async function loadCDOModules() {
-  if (cdoActions === null) {
+interface CDOCollateralState {
+  principal: bigint;
+  isDefaulted?: boolean;
+}
+
+interface CDOTrancheConfigState {
+  allocation: number;
+  yield_modifier: number;
+}
+
+interface CDOBondContract {
+  state: {
+    collateral: CDOCollateralState[];
+    trancheConfig: {
+      senior: CDOTrancheConfigState;
+      mezzanine: CDOTrancheConfigState;
+      junior: CDOTrancheConfigState;
+    };
+    bond: { redemption_fee: number; termYears: number };
+    creation_time?: bigint | null;
+    creationTime?: bigint | null;
+    maturity?: unknown;
+    liquidation?: unknown;
+  };
+  script: { scriptHash: string };
+}
+
+// Module cache for lazy loading
+let cdoModulesLoaded = false;
+let cdoActions: Record<string, (...args: unknown[]) => Promise<CDOContractResult>> | null = null;
+let cdoLib: { loadBond: (address: string) => Promise<CDOBondContract> } | null = null;
+
+// Lazy load contract modules (only available in Node.js with contract packages)
+async function loadCDOModules(): Promise<{
+  actions: typeof cdoActions;
+  lib: typeof cdoLib;
+}> {
+  if (!cdoModulesLoaded) {
     try {
-      cdoActions = await import("../../../packages/cdo-bond/src/actions");
-      cdoLib = await import("../../../packages/cdo-bond/src/lib");
-      cdoTypes = await import("../../../packages/cdo-bond/src/types");
-    } catch (e) {
-      console.warn("CDO contract actions not available. Some features may be limited.", e);
+      // Dynamic imports resolved at runtime - will fail gracefully if packages not available
+      const actionsPath = "../../../packages/cdo-bond/src/actions/index.js";
+      const libPath = "../../../packages/cdo-bond/src/lib/index.js";
+      cdoActions = (await import(/* @vite-ignore */ actionsPath)) as typeof cdoActions;
+      cdoLib = (await import(/* @vite-ignore */ libPath)) as typeof cdoLib;
+      cdoModulesLoaded = true;
+    } catch {
+      console.warn("CDO contract actions not available. Some features may be limited.");
     }
   }
-  return { actions: cdoActions, lib: cdoLib, types: cdoTypes };
+  return { actions: cdoActions, lib: cdoLib };
 }
 
 /**
@@ -207,8 +246,8 @@ export class CDOClient {
     return {
       txHash: result.txHash,
       success: true,
-      bondAddress: result.bondAddress,
-      policyId: result.bondToken.policyId,
+      bondAddress: result.bondAddress ?? "",
+      policyId: result.bondToken?.policyId ?? "",
       tokens: {
         bond: bondConfig.totalTokens,
         senior: Math.floor(bondConfig.totalTokens * trancheConfig.senior.allocation / 100),
@@ -458,16 +497,45 @@ export class CDOClient {
       ? Number((defaultedPrincipal * 100n) / totalPrincipal)
       : 0;
 
+    // Map internal state to BondStateExtended
     return {
-      ...state,
+      // Required BondState properties
+      collateral: state.collateral.map(c => ({
+        policyId: "",
+        assetName: "",
+        principal: c.principal,
+        apr: 0,
+        lastPayment: null,
+        isDefaulted: c.isDefaulted ?? false,
+        paymentsMade: 0,
+        totalPayments: 0,
+      })),
+      bond: {
+        totalTokens: 0,
+        termYears: state.bond?.termYears ?? 1,
+        paymentFrequency: "monthly" as const,
+        managementFee: 0,
+        redemptionFee: state.bond?.redemption_fee ?? 0,
+        isMultiTranche: true,
+      },
+      trancheConfig: {
+        senior: { allocation: state.trancheConfig.senior.allocation, yieldModifier: state.trancheConfig.senior.yield_modifier },
+        mezzanine: { allocation: state.trancheConfig.mezzanine.allocation, yieldModifier: state.trancheConfig.mezzanine.yield_modifier },
+        junior: { allocation: state.trancheConfig.junior.allocation, yieldModifier: state.trancheConfig.junior.yield_modifier },
+      },
+      lastDistribution: null,
+      creationTime: state.creation_time ?? state.creationTime ?? null,
+      liquidation: state.liquidation ? BigInt(Date.now()) : null,
+      maturity: state.maturity ? BigInt(Date.now()) : null,
+      // Extended properties
       bondAddress,
       policyId: bond.script.scriptHash,
-      isActive: state.creation_time !== null && state.maturity === null && state.liquidation === null,
+      isActive: (state.creation_time ?? state.creationTime) !== null && state.maturity === null && state.liquidation === null,
       isLiquidated: state.liquidation !== null,
       isMatured: state.maturity !== null,
       defaultRate,
       totalPrincipal,
-      totalCollected: 0n, // Would need to track from distributions
+      totalCollected: 0n,
     };
   }
 

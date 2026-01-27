@@ -146,6 +146,34 @@ export interface TestSuite {
   totalFailed: number;
 }
 
+// Identity and Simulation types
+export type IdentityRole = 'Originator' | 'Borrower' | 'Analyst' | 'Investor';
+
+export interface Identity {
+  id: string;
+  name: string;
+  role: IdentityRole;
+  address: string;
+  wallets: SimulatedWallet[];
+}
+
+export interface SimulatedWallet {
+  id: string;
+  name: string;
+  address: string;
+  balance: bigint;
+  assets: Asset[];
+}
+
+export interface SimulationState {
+  identities: Identity[];
+  currentPhase: number;
+  totalSteps: number;
+  currentStep: number;
+  isRunning: boolean;
+  logs: string[];
+}
+
 // Form types
 export interface LoanFormData {
   alias: string;
