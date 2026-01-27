@@ -119,7 +119,7 @@ defineEmits<{
   executeStep: [phase: Phase, step: any]
 }>()
 
-const expanded = ref(true)
+const expanded = ref(false)
 
 function toggleSection() {
   expanded.value = !expanded.value

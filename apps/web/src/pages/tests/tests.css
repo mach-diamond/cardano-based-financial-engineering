@@ -33,28 +33,33 @@
     font-size: 0.75rem;
 }
 
-/* Identities Section - Normal width card, full-width border when expanded */
+/* Identities Section - Normal border when collapsed, full-width when expanded */
 .identities-card {
     box-shadow: none !important;
-    border: none !important;
     background: transparent !important;
     position: relative;
 }
 
+/* Collapsed state - normal border like other sections */
 .identities-card--bordered {
-    /* Border via pseudo-element that extends full viewport width */
+    border: 1px solid rgba(139, 92, 246, 0.3) !important;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), transparent) !important;
 }
 
-.identities-card--bordered::before {
+/* Expanded state - full-width border via pseudo-element */
+.identities-card--bordered.identities-card--expanded {
+    border: none !important;
+    background: transparent !important;
+}
+
+.identities-card--bordered.identities-card--expanded::before {
     content: '';
     position: absolute;
     top: 0;
     bottom: 0;
     left: 50%;
-    right: 50%;
-    margin-left: -50vw;
-    margin-right: -50vw;
     width: 100vw;
+    margin-left: -50vw;
     border-top: 1px solid rgba(139, 92, 246, 0.3);
     border-bottom: 1px solid rgba(139, 92, 246, 0.3);
     background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), transparent);
@@ -68,15 +73,18 @@
 }
 
 .identities-card > .card-body {
-    /* Body content breaks out to full width */
+    background: transparent !important;
+    border: none !important;
+}
+
+/* Only break out to full width when expanded */
+.identities-card--expanded > .card-body {
     width: 100vw;
     position: relative;
     left: 50%;
     margin-left: -50vw;
     overflow-x: auto;
     padding: 1rem 2rem 1.5rem 2rem !important;
-    background: transparent !important;
-    border: none !important;
 }
 
 /* Contracts Section Styles */

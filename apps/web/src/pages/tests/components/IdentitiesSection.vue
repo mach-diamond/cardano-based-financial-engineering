@@ -1,5 +1,5 @@
 <template>
-  <div class="card mb-4 identities-card identities-card--bordered">
+  <div class="card mb-4 identities-card identities-card--bordered" :class="{ 'identities-card--expanded': sections.main }">
     <div class="card-header section-header" @click="sections.main = !sections.main">
       <div class="d-flex align-items-center">
         <div class="section-icon section-icon--identity mr-3">
@@ -110,7 +110,7 @@ defineEmits<{
 const columnView = ref(true)
 
 const sections = ref({
-  main: true,
+  main: false,
   originators: true,
   borrowers: true,
   analysts: true,

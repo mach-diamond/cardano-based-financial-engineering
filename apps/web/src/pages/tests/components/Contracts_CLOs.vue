@@ -124,7 +124,7 @@ defineEmits<{
   runAll: []
 }>()
 
-const expanded = ref(true)
+const expanded = ref(false)
 
 const passedCount = computed(() => props.contracts.filter(c => c.status === 'passed').length)
 const allPassed = computed(() => props.contracts.length > 0 && props.contracts.every(c => c.status === 'passed'))
