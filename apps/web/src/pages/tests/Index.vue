@@ -452,12 +452,6 @@ import type { TestResult, Identity } from '@/types'
 import TestItem from '@/components/dashboard/TestItem.vue'
 import WalletCard from '@/components/tests/WalletCard.vue'
 
-// Local Components
-import StatsCards from './components/StatsCards.vue'
-import ConsoleOutput from './components/ConsoleOutput.vue'
-import LifecycleTest from './components/LifecycleTest.vue'
-import IdentitiesPanel from './components/IdentitiesPanel.vue'
-
 // Test Runner Utility
 import * as runner from './testRunner'
 import type { Phase } from './testRunner'
