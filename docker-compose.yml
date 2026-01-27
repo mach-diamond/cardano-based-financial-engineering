@@ -1,24 +1,26 @@
 version: '3.8'
 
+# Optional: Use this if you need a standalone postgres instance
+# Most users will connect to an existing postgres server instead
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: mintmatrix_postgres
+    container_name: fintech_test_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: mintmatrix
-      POSTGRES_USER: mintmatrix
-      POSTGRES_PASSWORD: mintmatrix_dev
+      POSTGRES_DB: fintech-test-suite
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
     ports:
-      - "5435:5432" # Mapped to 5435 to avoid conflict with machdiamond (5432)
+      - "5435:5432" # Mapped to 5435 to avoid conflict with existing postgres
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - fintech_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mintmatrix"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
 
 volumes:
-  postgres_data:
+  fintech_postgres_data:
     driver: local

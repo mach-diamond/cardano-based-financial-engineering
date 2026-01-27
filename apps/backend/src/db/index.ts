@@ -1,11 +1,11 @@
 import postgres from 'postgres'
 
 const sql = postgres({
-    host: 'localhost',
-    port: 5435,
-    database: 'mintmatrix',
-    username: 'mintmatrix',
-    password: 'mintmatrix_dev',
+    host: process.env.DB_HOST || 'localhost',
+    port: Number(process.env.DB_PORT) || 5432,
+    database: process.env.DB_NAME || 'fintech-test-suite',
+    username: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD || 'postgres',
 })
 
 export default sql

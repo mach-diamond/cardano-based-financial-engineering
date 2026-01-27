@@ -1,35 +1,42 @@
 # MintMatrix Financial Instruments - Justfile
 # Task automation for development workflow
 
+# Database configuration (override with environment variables)
+DB_HOST := env_var_or_default("DB_HOST", "localhost")
+DB_PORT := env_var_or_default("DB_PORT", "5432")
+DB_NAME := env_var_or_default("DB_NAME", "fintech-test-suite")
+DB_USER := env_var_or_default("DB_USER", "postgres")
+
 # ============ Database ============
 
-# Start the PostgreSQL database container
-db:
-    @echo "Starting PostgreSQL database..."
-    @docker compose up -d postgres
-    @echo "Database running on port 5435"
-
-# Stop the database container
-db-stop:
-    @echo "Stopping PostgreSQL database..."
-    @docker compose stop postgres
+# Create the database (run once)
+db-create:
+    @echo "Creating database '{{DB_NAME}}'..."
+    @psql -h {{DB_HOST}} -p {{DB_PORT}} -U {{DB_USER}} -c "CREATE DATABASE \"{{DB_NAME}}\";" || echo "Database may already exist"
+    @echo "Database created!"
 
 # Run database migrations/schema setup
 db-migrate:
-    @echo "Running database migrations..."
-    @docker exec -i mintmatrix_postgres psql -U mintmatrix -d mintmatrix < apps/backend/src/db/schema.sql
+    @echo "Running migrations on '{{DB_NAME}}'..."
+    @psql -h {{DB_HOST}} -p {{DB_PORT}} -U {{DB_USER}} -d "{{DB_NAME}}" -f apps/backend/src/db/schema.sql
     @echo "Migrations complete!"
 
 # Reset database (drop and recreate tables)
 db-reset:
-    @echo "Resetting database..."
-    @docker exec mintmatrix_postgres psql -U mintmatrix -d mintmatrix -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+    @echo "Resetting database '{{DB_NAME}}'..."
+    @psql -h {{DB_HOST}} -p {{DB_PORT}} -U {{DB_USER}} -d "{{DB_NAME}}" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
     @just db-migrate
     @echo "Database reset complete!"
 
 # Connect to database CLI
 db-cli:
-    @docker exec -it mintmatrix_postgres psql -U mintmatrix -d mintmatrix
+    @psql -h {{DB_HOST}} -p {{DB_PORT}} -U {{DB_USER}} -d "{{DB_NAME}}"
+
+# Drop the database entirely
+db-drop:
+    @echo "Dropping database '{{DB_NAME}}'..."
+    @psql -h {{DB_HOST}} -p {{DB_PORT}} -U {{DB_USER}} -c "DROP DATABASE IF EXISTS \"{{DB_NAME}}\";"
+    @echo "Database dropped!"
 
 # ============ Servers ============
 
