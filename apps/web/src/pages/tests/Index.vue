@@ -39,13 +39,17 @@
 
     <!-- Individual Test Suites -->
     <Contracts_Loans
-      :loan-tests="loanTests"
-      @view-test="viewTestDetails"
+      :contracts="loanContracts"
+      @view-contract="viewLoanContract"
+      @execute-contract="executeLoanContract"
+      @run-all="runAllLoanContracts"
     />
 
     <Contracts_CLOs
-      :clo-tests="cloTests"
-      @view-test="viewTestDetails"
+      :contracts="cloContracts"
+      @view-contract="viewCLOContract"
+      @execute-contract="executeCLOContract"
+      @run-all="runAllCLOContracts"
     />
 
     <!-- Loan Portfolio Visualization -->
@@ -68,7 +72,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import type { TestResult } from '@/types'
 
 // Components
 import ProgressOverlay from './components/ProgressOverlay.vue'
@@ -82,6 +85,8 @@ import Contracts_CLOs from './components/Contracts_CLOs.vue'
 import Contracts_Loans from './components/Contracts_Loans.vue'
 import ConsoleOutput from './components/ConsoleOutput.vue'
 import type { ConsoleLine } from './components/ConsoleOutput.vue'
+import type { LoanContract } from './components/Contracts_Loans.vue'
+import type { CLOContract } from './components/Contracts_CLOs.vue'
 
 // Test Runner Utility
 import * as runner from './testRunner'
@@ -254,29 +259,23 @@ const lifecycleStatus = computed<'passed' | 'failed' | 'running' | 'pending'>(()
 const totalSteps = computed(() => lifecycleTests.value.length)
 const completedSteps = computed(() => lifecycleTests.value.filter(s => s.status === 'passed').length)
 
-// Mock test data
-const cloTests = ref<TestResult[]>([
-  { id: 'CDO-1', name: 'CDO Bundle Creation', description: 'Bundle loans into CDO', status: 'passed', duration: 45000, steps: [], startedAt: new Date() },
-  { id: 'CDO-2', name: 'Tranche Distribution', description: 'Waterfall yield check', status: 'passed', duration: 12000, steps: [], startedAt: new Date() },
-])
-
-const loanTests = ref<TestResult[]>([
-  { id: 'LOAN-1', name: 'Asset Transfer Loan', description: 'Initialize with NFT collateral', status: 'passed', duration: 12000, steps: [], startedAt: new Date() },
-])
+// Contract State - starts empty, populated during "Initialize Loan Contracts" phase
+const loanContracts = ref<LoanContract[]>([])
+const cloContracts = ref<CLOContract[]>([])
 
 const stats = computed(() => {
-  const all = [...cloTests.value, ...loanTests.value]
+  const allContracts = [...loanContracts.value, ...cloContracts.value]
   return {
-    passed: all.filter(t => t.status === 'passed').length,
-    failed: all.filter(t => t.status === 'failed').length,
-    running: all.filter(t => t.status === 'running').length,
-    pending: all.filter(t => t.status === 'pending').length,
+    passed: allContracts.filter(c => c.status === 'passed').length,
+    failed: allContracts.filter(c => c.status === 'failed').length,
+    running: allContracts.filter(c => c.status === 'running').length,
+    pending: allContracts.filter(c => c.status === 'pending').length,
   }
 })
 
 const statsWithTotal = computed(() => ({
   ...stats.value,
-  total: cloTests.value.length + loanTests.value.length + lifecycleTests.value.length
+  total: loanContracts.value.length + cloContracts.value.length + lifecycleTests.value.length
 }))
 
 function log(text: string, type: ConsoleLine['type'] = 'info') {
@@ -324,9 +323,38 @@ function clearConsole() {
   consoleLines.value = []
 }
 
-function viewTestDetails(test: TestResult) {
-  router.push(`/tests/${test.id}`)
+// Loan Contract handlers
+function viewLoanContract(contract: LoanContract) {
+  router.push(`/tests/loan/${contract.id}`)
 }
+
+function executeLoanContract(contract: LoanContract) {
+  log(`Executing loan contract: ${contract.alias || contract.id}`, 'info')
+  // TODO: Wire to actual contract execution
+}
+
+function runAllLoanContracts() {
+  log('Running all loan contracts...', 'info')
+  // TODO: Wire to batch execution
+}
+
+// CLO Contract handlers
+function viewCLOContract(contract: CLOContract) {
+  router.push(`/tests/clo/${contract.id}`)
+}
+
+function executeCLOContract(contract: CLOContract) {
+  log(`Executing CLO contract: ${contract.alias || contract.id}`, 'info')
+  // TODO: Wire to actual contract execution
+}
+
+function runAllCLOContracts() {
+  log('Running all CLO contracts...', 'info')
+  // TODO: Wire to batch execution
+}
+
+// Expose loanContracts and cloContracts for test runner to populate
+defineExpose({ loanContracts, cloContracts })
 </script>
 
 <style>

@@ -209,18 +209,9 @@ function getAssetEmoji(assetName: string): string {
 /* Assets Row */
 .assets-row {
   display: flex;
-  gap: 0.35rem;
-  overflow-x: auto;
-  padding-bottom: 2px;
-}
-
-.assets-row::-webkit-scrollbar {
-  height: 2px;
-}
-
-.assets-row::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 2px;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  width: 100%;
 }
 
 .asset-chip {
@@ -230,8 +221,9 @@ function getAssetEmoji(assetName: string): string {
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
-  padding: 0.2rem 0.4rem;
-  flex-shrink: 0;
+  padding: 0.2rem 0.5rem;
+  flex: 1;
+  min-width: 0;
 }
 
 .asset-icon {

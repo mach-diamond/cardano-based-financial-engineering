@@ -55,9 +55,25 @@
     margin-right: -50vw;
     overflow-x: auto;
     padding: 1.5rem 2rem !important;
-    background: rgba(255, 255, 255, 0.02);
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    background: transparent !important;
+    border: none !important;
+}
+
+/* Contracts Section Styles */
+.contracts-card {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+.contracts-card > .card-header {
+    background: transparent !important;
+    border: none !important;
+}
+
+.contracts-card > .card-body {
+    background: transparent !important;
+    padding: 0.5rem 0 !important;
 }
 
 .column-section {
