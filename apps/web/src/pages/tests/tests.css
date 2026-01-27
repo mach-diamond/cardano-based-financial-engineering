@@ -33,32 +33,36 @@
     font-size: 0.75rem;
 }
 
+/* Identities Section - Full width card with border */
 .identities-card {
-    background: transparent !important;
-    margin-left: 0;
-    margin-right: 0;
     box-shadow: none !important;
-}
-
-.identities-card--bordered {
-    border: 1px solid rgba(139, 92, 246, 0.3) !important;
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), transparent) !important;
-}
-
-.identities-card > .card-header {
-    background: transparent !important;
-    border: none !important;
-}
-
-.identities-card > .card-body {
+    /* Break out to full viewport width */
     width: 100vw;
     position: relative;
     left: 50%;
     right: 50%;
     margin-left: -50vw;
     margin-right: -50vw;
+    border-radius: 0 !important;
+}
+
+.identities-card--bordered {
+    border-top: 1px solid rgba(139, 92, 246, 0.3) !important;
+    border-bottom: 1px solid rgba(139, 92, 246, 0.3) !important;
+    border-left: none !important;
+    border-right: none !important;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), transparent) !important;
+}
+
+.identities-card > .card-header {
+    background: transparent !important;
+    border: none !important;
+    padding: 0.75rem 2rem !important;
+}
+
+.identities-card > .card-body {
     overflow-x: auto;
-    padding: 1.5rem 2rem !important;
+    padding: 1rem 2rem 1.5rem 2rem !important;
     background: transparent !important;
     border: none !important;
 }
@@ -91,20 +95,74 @@
     background: linear-gradient(135deg, rgba(23, 162, 184, 0.05), transparent) !important;
 }
 
-/* Contract Card Icon Visibility */
-.contract-icon i,
-.contract-type-icon i {
-    color: inherit !important;
+/* Contract Card Icon Visibility - EXPLICIT colors to override any inherited styles */
+.contract-icon,
+.contract-type-icon {
+    color: #60a5fa;
 }
 
-.contract-icon--loan i,
-.contracts-card--loan .contract-type-icon i {
+.contract-icon i,
+.contract-type-icon i,
+.contract-icon .fas,
+.contract-type-icon .fas,
+.contract-icon .far,
+.contract-type-icon .far,
+.contract-icon .fa,
+.contract-type-icon .fa {
+    color: currentColor !important;
+}
+
+/* Loan contract icons - blue */
+.contract-icon--loan,
+.contracts-card--loan .contract-icon,
+.contracts-card--loan .contract-type-icon {
     color: #60a5fa !important;
 }
 
-.contract-icon--clo i,
-.contracts-card--clo .contract-type-icon i {
+/* CLO contract icons - cyan */
+.contract-icon--clo,
+.contracts-card--clo .contract-icon,
+.contracts-card--clo .contract-type-icon {
     color: #22d3ee !important;
+}
+
+/* Section header icons */
+.section-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.section-icon i,
+.section-icon .fas,
+.section-icon .far,
+.section-icon .fa {
+    color: currentColor !important;
+}
+
+.section-icon--identity {
+    background: rgba(139, 92, 246, 0.15);
+    color: #a78bfa !important;
+}
+
+.section-icon--loan {
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa !important;
+}
+
+.section-icon--clo {
+    background: rgba(23, 162, 184, 0.15);
+    color: #22d3ee !important;
+}
+
+.section-icon--lifecycle {
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa !important;
 }
 
 /* Contract Row Layout */
@@ -289,22 +347,22 @@
     }
 }
 
-/* Lifecycle Card */
+/* Lifecycle Card - uses same pattern as contracts */
 .lifecycle-card {
-    border: 1px solid rgba(0, 123, 255, 0.3);
-    background: linear-gradient(135deg, rgba(0, 123, 255, 0.05), transparent);
+    border: 1px solid rgba(59, 130, 246, 0.3) !important;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.05), transparent) !important;
+    box-shadow: none !important;
 }
 
-.lifecycle-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
-    background: rgba(0, 123, 255, 0.15);
-    color: #007bff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.lifecycle-card > .card-header {
+    background: transparent !important;
+    border: none !important;
 }
+
+.lifecycle-card > .card-body {
+    background: transparent !important;
+}
+
 
 /* Phase Timeline */
 .phase-timeline {

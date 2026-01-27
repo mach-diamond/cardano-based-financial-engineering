@@ -2,7 +2,7 @@
   <div class="card mb-4 contracts-card contracts-card--loan">
     <div class="card-header section-header" @click="expanded = !expanded">
       <div class="d-flex align-items-center">
-        <div class="contract-icon contract-icon--loan mr-3">
+        <div class="section-icon section-icon--loan mr-3">
           <i class="fas fa-exchange-alt"></i>
         </div>
         <div>
@@ -143,18 +143,6 @@ function formatAda(lovelace?: number): string {
 </script>
 
 <style scoped>
-/* Header icon in section header */
-.contract-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1rem;
-  background: rgba(59, 130, 246, 0.15);
-}
-
 /* Empty state */
 .empty-state {
   display: flex;

@@ -2,10 +2,13 @@
   <div class="card mb-4 identities-card identities-card--bordered">
     <div class="card-header section-header" @click="sections.main = !sections.main">
       <div class="d-flex align-items-center">
-        <h5 class="text-white mb-0 mr-3">Identities & Wallets</h5>
-        <span class="badge badge-secondary mr-2">{{ identities.length }} wallets</span>
-        <span class="badge badge-info mr-2">{{ totalAssets }} assets</span>
-        <span class="badge badge-success">{{ totalAda }} ADA</span>
+        <div class="section-icon section-icon--identity mr-3">
+          <i class="fas fa-users"></i>
+        </div>
+        <div>
+          <h5 class="text-white mb-0">Identities & Wallets</h5>
+          <small class="text-muted">{{ identities.length }} wallets | {{ totalAssets }} assets | {{ totalAda }} ADA</small>
+        </div>
       </div>
       <div class="d-flex align-items-center">
         <div class="custom-control custom-switch mr-3" @click.stop>
