@@ -1,48 +1,41 @@
 <template>
   <div class="card wallet-card border-0" :class="gradientClass">
     <div class="card-body">
-      <div class="d-flex align-items-center">
-        <!-- DID-STYLE ICON SECTION -->
-        <div class="role-icon-container mr-3">
-          <div class="did-border" :class="`border-role-${identity.role.toLowerCase()}`">
-            <div class="did-avatar">
-              <span class="did-initials">{{ roleInitials }}</span>
-            </div>
-          </div>
+      <!-- Row 1: Role Badge + Name + Balance -->
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <div class="d-flex align-items-center">
+          <span class="role-badge" :class="`role-${identity.role.toLowerCase()}`">{{ roleInitials }}</span>
+          <span class="wallet-name">{{ identity.name }}</span>
+          <div class="status-dot ml-2" :class="{ 'active': isRunning }"></div>
         </div>
+        <span class="ada-balance">₳ {{ formattedBalance }}</span>
+      </div>
 
-        <!-- INFO SECTION -->
-        <div class="info-section flex-grow-1 min-width-0">
-          <div class="d-flex justify-content-between align-items-center mb-0">
-            <h6 class="text-white font-weight-bold mb-0 text-truncate">{{ identity.name }}</h6>
-            <div class="status-dot" :class="{ 'active': isRunning }"></div>
-          </div>
-          <div class="small text-white-50 mb-1 font-family-mono text-truncate">
-            {{ identity.address.slice(0, 16) }}...{{ identity.address.slice(-8) }}
-          </div>
-          
-          <div class="d-flex align-items-center gap-2 mt-auto">
-            <span class="ada-balance">₳ {{ formattedBalance }}</span>
-            <div class="asset-list-horizontal">
-              <div v-for="asset in wallet.assets" :key="asset.assetName" 
-                   class="asset-mini-card" :title="`${asset.assetName} (${asset.policyId.slice(0, 8)}...)`">
-                <i :class="getAssetIcon(asset.assetName)" class="asset-icon-fa"></i>
-                <div class="asset-info-mini">
-                  <span class="asset-name-mini">{{ asset.assetName }}</span>
-                  <span class="asset-policy-mini">{{ asset.policyId.slice(0, 8) }}...</span>
-                </div>
-                <span class="asset-qty-mini">x{{ asset.quantity }}</span>
-              </div>
-            </div>
-          </div>
+      <!-- Row 2: Address (clickable) -->
+      <div class="address-row" @click="toggleAddress" :title="addressExpanded ? 'Click to collapse' : 'Click to copy'">
+        <span class="address-text" :class="{ 'expanded': addressExpanded }">
+          {{ displayAddress }}
+        </span>
+        <i v-if="!addressExpanded" class="ni ni-single-copy-04 copy-icon"></i>
+        <i v-else class="ni ni-check-bold copy-icon text-success"></i>
+      </div>
+
+      <!-- Row 3: Assets -->
+      <div class="assets-row">
+        <div v-for="asset in wallet.assets" :key="asset.assetName" class="asset-chip" :title="asset.assetName">
+          <span class="asset-icon">{{ getAssetEmoji(asset.assetName) }}</span>
+          <span class="asset-name">{{ asset.assetName }}</span>
+          <span class="asset-policy">{{ formatPolicy(asset.policyId) }}</span>
+          <span class="asset-qty">×{{ asset.quantity }}</span>
         </div>
+        <div v-if="wallet.assets.length === 0" class="no-assets">No assets</div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import type { Identity, SimulatedWallet, IdentityRole } from '@/types'
 
 const props = defineProps<{
@@ -51,11 +44,36 @@ const props = defineProps<{
 }>()
 
 const wallet = computed<SimulatedWallet>(() => props.identity.wallets[0])
+const addressExpanded = ref(false)
 
 const formattedBalance = computed(() => {
-  return (Number(wallet.value.balance) / 1_000_000).toFixed(0)
+  return (Number(wallet.value.balance) / 1_000_000).toLocaleString()
 })
 
+const displayAddress = computed(() => {
+  const addr = props.identity.address
+  if (addressExpanded.value) {
+    return addr
+  }
+  return `addr...${addr.slice(-8)}`
+})
+
+function toggleAddress() {
+  if (!addressExpanded.value) {
+    navigator.clipboard.writeText(props.identity.address)
+  }
+  addressExpanded.value = !addressExpanded.value
+  if (addressExpanded.value) {
+    setTimeout(() => {
+      addressExpanded.value = false
+    }, 3000)
+  }
+}
+
+function formatPolicy(policyId: string): string {
+  if (policyId.length < 8) return policyId
+  return `${policyId.slice(0, 4)}...${policyId.slice(-4)}`
+}
 
 const gradientClass = computed(() => {
   const role = props.identity.role as IdentityRole
@@ -73,172 +91,198 @@ const roleInitials = computed(() => {
   switch (role) {
     case 'Originator': return 'OR'
     case 'Borrower': return 'BO'
-    case 'Analyst': return 'CIB'
-    case 'Investor': return 'IN'
+    case 'Analyst': return 'CLO'
+    case 'Investor': return 'INV'
     default: return 'ID'
   }
 })
 
-function getAssetIcon(assetName: string): string {
+function getAssetEmoji(assetName: string): string {
   const name = assetName.toLowerCase()
-  if (name.includes('airplane') || name.includes('aircraft')) return 'fas fa-plane'
-  if (name.includes('home') || name.includes('realestate') || name.includes('real estate')) return 'fas fa-building'
-  if (name.includes('boat') || name.includes('yacht')) return 'fas fa-ship'
-  if (name.includes('diamond') || name.includes('jewelry') || name.includes('jewel')) return 'fas fa-gem'
-  if (name.includes('collateral') || name.includes('coll')) return 'fas fa-file-contract'
-  if (name.includes('clo') || name.includes('tranche')) return 'fas fa-layer-group'
-  return 'fas fa-cube'
+  if (name.includes('airplane') || name.includes('aircraft')) return '✈️'
+  if (name.includes('home')) return '🏠'
+  if (name.includes('realestate') || name.includes('real estate')) return '🏢'
+  if (name.includes('boat') || name.includes('yacht')) return '🚢'
+  if (name.includes('diamond') || name.includes('jewelry') || name.includes('jewel')) return '💎'
+  if (name.includes('collateral') || name.includes('coll')) return '📄'
+  if (name.includes('clo') || name.includes('tranche') || name.includes('manager')) return '📊'
+  if (name.includes('senior')) return '🥇'
+  if (name.includes('mezzanine') || name.includes('mezz')) return '🥈'
+  if (name.includes('junior')) return '🥉'
+  return '📦'
 }
 </script>
 
 <style scoped>
 .wallet-card {
-  height: 105px !important;
-  min-height: 105px !important;
-  max-height: 105px !important;
-  border-radius: 15px !important;
-  transition: all 0.3s ease;
+  height: 100px;
+  min-height: 100px;
+  max-height: 100px;
+  border-radius: 12px !important;
+  transition: all 0.2s ease;
   color: #fff;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  overflow: hidden !important;
-  position: relative;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
 }
 
 .wallet-card .card-body {
   height: 100%;
   padding: 0.5rem 0.75rem !important;
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
 .wallet-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
 
-.bg-gradient-primary-dark { background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%); }
-.bg-gradient-info-dark { background: linear-gradient(135deg, #0f172a 0%, #0e7490 100%); }
-.bg-gradient-warning-dark { background: linear-gradient(135deg, #0f172a 0%, #92400e 100%); }
-.bg-gradient-success-dark { background: linear-gradient(135deg, #0f172a 0%, #059669 100%); }
-.bg-gradient-secondary-dark { background: linear-gradient(135deg, #0f172a 0%, #374151 100%); }
+.bg-gradient-primary-dark { background: linear-gradient(135deg, #1a1f35 0%, #1e3a8a 100%); }
+.bg-gradient-info-dark { background: linear-gradient(135deg, #1a1f35 0%, #0e7490 100%); }
+.bg-gradient-warning-dark { background: linear-gradient(135deg, #1a1f35 0%, #92400e 100%); }
+.bg-gradient-success-dark { background: linear-gradient(135deg, #1a1f35 0%, #059669 100%); }
+.bg-gradient-secondary-dark { background: linear-gradient(135deg, #1a1f35 0%, #374151 100%); }
 
-.role-icon-container {
-  width: 60px;
-  flex-shrink: 0;
+/* Role Badge */
+.role-badge {
+  font-size: 0.6rem;
+  font-weight: 700;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  margin-right: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.did-border {
-  width: 60px;
-  height: 60px;
-  padding: 3px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
+.role-originator { background: rgba(59, 130, 246, 0.3); color: #93c5fd; }
+.role-borrower { background: rgba(6, 182, 212, 0.3); color: #67e8f9; }
+.role-analyst { background: rgba(245, 158, 11, 0.3); color: #fcd34d; }
+.role-investor { background: rgba(16, 185, 129, 0.3); color: #6ee7b7; }
 
-.border-role-originator { background: linear-gradient(135deg, #3b82f6, #1d4ed8); }
-.border-role-borrower { background: linear-gradient(135deg, #06b6d4, #0891b2); }
-.border-role-analyst { background: linear-gradient(135deg, #f59e0b, #d97706); }
-.border-role-investor { background: linear-gradient(135deg, #10b981, #059669); }
-
-.did-avatar {
-  width: 100%;
-  height: 100%;
-  background: #111;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.did-initials {
-  font-size: 1rem;
-  font-weight: 800;
-  color: #fff;
-  letter-spacing: 1px;
+.wallet-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
 }
 
 .ada-balance {
-  font-weight: 800;
-  font-size: 0.95rem;
+  font-size: 0.85rem;
+  font-weight: 700;
   color: #fbbf24;
   white-space: nowrap;
 }
 
-.asset-list-horizontal {
+/* Address Row */
+.address-row {
   display: flex;
-  gap: 6px;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  padding: 0.15rem 0;
+}
+
+.address-row:hover .address-text {
+  color: #fff;
+}
+
+.address-text {
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.6);
+  transition: color 0.2s;
+}
+
+.address-text.expanded {
+  font-size: 0.55rem;
+  word-break: break-all;
+}
+
+.copy-icon {
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* Assets Row */
+.assets-row {
+  display: flex;
+  gap: 0.35rem;
   overflow-x: auto;
   padding-bottom: 2px;
 }
 
-.asset-list-horizontal::-webkit-scrollbar {
-  height: 3px;
+.assets-row::-webkit-scrollbar {
+  height: 2px;
 }
 
-.asset-list-horizontal::-webkit-scrollbar-thumb {
+.assets-row::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.2);
-  border-radius: 3px;
+  border-radius: 2px;
 }
 
-.asset-mini-card {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  padding: 4px 8px;
+.asset-chip {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0.25rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 0.2rem 0.4rem;
   flex-shrink: 0;
 }
 
-.asset-icon-fa {
-  font-size: 0.9rem;
-  color: #fbbf24;
-  width: 20px;
-  text-align: center;
-}
-
-.asset-info-mini {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.1;
-}
-
-.asset-name-mini {
+.asset-icon {
   font-size: 0.7rem;
-  font-weight: 700;
-  color: #fff;
 }
 
-.asset-policy-mini {
-  font-size: 0.55rem;
-  color: rgba(255, 255, 255, 0.5);
+.asset-name {
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: #fff;
+  max-width: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-policy {
+  font-size: 0.5rem;
+  color: rgba(255, 255, 255, 0.4);
   font-family: monospace;
 }
 
-.asset-qty-mini {
-  font-size: 0.75rem;
-  font-weight: 800;
+.asset-qty {
+  font-size: 0.6rem;
+  font-weight: 700;
   color: #10b981;
-  margin-left: 2px;
 }
 
+.no-assets {
+  font-size: 0.6rem;
+  color: rgba(255, 255, 255, 0.3);
+  font-style: italic;
+}
+
+/* Status Dot */
 .status-dot {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background-color: rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
 }
 
 .status-dot.active {
   background-color: #fbbf24;
-  box-shadow: 0 0 8px #fbbf24;
+  box-shadow: 0 0 6px #fbbf24;
   animation: pulse 1.5s ease-in-out infinite;
 }
 
 @keyframes pulse {
   0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.2); opacity: 0.7; }
+  50% { transform: scale(1.3); opacity: 0.7; }
 }
 </style>

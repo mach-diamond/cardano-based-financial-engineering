@@ -37,6 +37,17 @@
       @generate-test-users="generateTestUsers"
     />
 
+    <!-- Individual Test Suites -->
+    <Contracts_Loans
+      :loan-tests="loanTests"
+      @view-test="viewTestDetails"
+    />
+
+    <Contracts_CLOs
+      :clo-tests="cloTests"
+      @view-test="viewTestDetails"
+    />
+
     <!-- Loan Portfolio Visualization -->
     <div class="row mb-4">
       <div class="col-lg-8 mb-4 mb-lg-0">
@@ -48,13 +59,6 @@
         <TrancheStructure :total-value="totalLoanValue" />
       </div>
     </div>
-
-    <!-- Individual Test Suites -->
-    <TestSuites
-      :loan-tests="loanTests"
-      :cdo-tests="cdoTests"
-      @view-test="viewTestDetails"
-    />
 
     <!-- Console Output -->
     <ConsoleOutput :console-lines="consoleLines" @clear="clearConsole" />
@@ -74,7 +78,8 @@ import LifecycleSection from './components/LifecycleSection.vue'
 import IdentitiesSection from './components/IdentitiesSection.vue'
 import LoanPortfolio from './components/LoanPortfolio.vue'
 import TrancheStructure from './components/TrancheStructure.vue'
-import TestSuites from './components/TestSuites.vue'
+import Contracts_CLOs from './components/Contracts_CLOs.vue'
+import Contracts_Loans from './components/Contracts_Loans.vue'
 import ConsoleOutput from './components/ConsoleOutput.vue'
 import type { ConsoleLine } from './components/ConsoleOutput.vue'
 
@@ -250,7 +255,7 @@ const totalSteps = computed(() => lifecycleTests.value.length)
 const completedSteps = computed(() => lifecycleTests.value.filter(s => s.status === 'passed').length)
 
 // Mock test data
-const cdoTests = ref<TestResult[]>([
+const cloTests = ref<TestResult[]>([
   { id: 'CDO-1', name: 'CDO Bundle Creation', description: 'Bundle loans into CDO', status: 'passed', duration: 45000, steps: [], startedAt: new Date() },
   { id: 'CDO-2', name: 'Tranche Distribution', description: 'Waterfall yield check', status: 'passed', duration: 12000, steps: [], startedAt: new Date() },
 ])
@@ -260,7 +265,7 @@ const loanTests = ref<TestResult[]>([
 ])
 
 const stats = computed(() => {
-  const all = [...cdoTests.value, ...loanTests.value]
+  const all = [...cloTests.value, ...loanTests.value]
   return {
     passed: all.filter(t => t.status === 'passed').length,
     failed: all.filter(t => t.status === 'failed').length,
@@ -271,7 +276,7 @@ const stats = computed(() => {
 
 const statsWithTotal = computed(() => ({
   ...stats.value,
-  total: cdoTests.value.length + loanTests.value.length + lifecycleTests.value.length
+  total: cloTests.value.length + loanTests.value.length + lifecycleTests.value.length
 }))
 
 function log(text: string, type: ConsoleLine['type'] = 'info') {

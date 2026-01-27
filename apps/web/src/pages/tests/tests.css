@@ -38,6 +38,12 @@
     border: none !important;
     margin-left: 0;
     margin-right: 0;
+    box-shadow: none !important;
+}
+
+.identities-card > .card-header {
+    background: transparent !important;
+    border: none !important;
 }
 
 .identities-card > .card-body {
@@ -243,6 +249,7 @@
     font-weight: 600;
     font-size: 0.875rem;
     flex-shrink: 0;
+    margin-right: 0.75rem;
 }
 
 .phase-complete .phase-number {
