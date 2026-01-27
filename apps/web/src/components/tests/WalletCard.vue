@@ -1,7 +1,7 @@
 <template>
-  <div class="card wallet-card h-100 border-0" :class="gradientClass">
-    <div class="card-body p-3 overflow-hidden">
-      <div class="d-flex align-items-center h-100">
+  <div class="card wallet-card border-0" :class="gradientClass">
+    <div class="card-body">
+      <div class="d-flex align-items-center">
         <!-- DID-STYLE ICON SECTION -->
         <div class="role-icon-container mr-3">
           <div class="did-border" :class="`border-role-${identity.role.toLowerCase()}`">
@@ -94,10 +94,20 @@ function getAssetIcon(assetName: string): string {
 <style scoped>
 .wallet-card {
   height: 105px !important;
+  min-height: 105px !important;
+  max-height: 105px !important;
   border-radius: 15px !important;
   transition: all 0.3s ease;
   color: #fff;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  overflow: hidden !important;
+  position: relative;
+}
+
+.wallet-card .card-body {
+  height: 100%;
+  padding: 0.5rem 0.75rem !important;
+  overflow: hidden;
 }
 
 .wallet-card:hover {
@@ -112,15 +122,15 @@ function getAssetIcon(assetName: string): string {
 .bg-gradient-secondary-dark { background: linear-gradient(135deg, #0f172a 0%, #374151 100%); }
 
 .role-icon-container {
-  width: 75px;
+  width: 60px;
   flex-shrink: 0;
 }
 
 .did-border {
-  width: 75px;
-  height: 75px;
+  width: 60px;
+  height: 60px;
   padding: 3px;
-  border-radius: 12px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -135,14 +145,14 @@ function getAssetIcon(assetName: string): string {
   width: 100%;
   height: 100%;
   background: #111;
-  border-radius: 10px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .did-initials {
-  font-size: 1.25rem;
+  font-size: 1rem;
   font-weight: 800;
   color: #fff;
   letter-spacing: 1px;
