@@ -33,34 +33,46 @@
     font-size: 0.75rem;
 }
 
-/* Identities Section - Full width card with border */
+/* Identities Section - Normal width card, full-width border when expanded */
 .identities-card {
     box-shadow: none !important;
-    /* Break out to full viewport width */
-    width: 100vw;
+    border: none !important;
+    background: transparent !important;
     position: relative;
+}
+
+.identities-card--bordered {
+    /* Border via pseudo-element that extends full viewport width */
+}
+
+.identities-card--bordered::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
     left: 50%;
     right: 50%;
     margin-left: -50vw;
     margin-right: -50vw;
-    border-radius: 0 !important;
-}
-
-.identities-card--bordered {
-    border-top: 1px solid rgba(139, 92, 246, 0.3) !important;
-    border-bottom: 1px solid rgba(139, 92, 246, 0.3) !important;
-    border-left: none !important;
-    border-right: none !important;
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), transparent) !important;
+    width: 100vw;
+    border-top: 1px solid rgba(139, 92, 246, 0.3);
+    border-bottom: 1px solid rgba(139, 92, 246, 0.3);
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), transparent);
+    pointer-events: none;
+    z-index: -1;
 }
 
 .identities-card > .card-header {
     background: transparent !important;
     border: none !important;
-    padding: 0.75rem 2rem !important;
 }
 
 .identities-card > .card-body {
+    /* Body content breaks out to full width */
+    width: 100vw;
+    position: relative;
+    left: 50%;
+    margin-left: -50vw;
     overflow-x: auto;
     padding: 1rem 2rem 1.5rem 2rem !important;
     background: transparent !important;
