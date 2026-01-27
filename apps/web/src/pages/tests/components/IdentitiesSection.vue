@@ -8,14 +8,14 @@
         <span class="badge badge-success">{{ totalAda }} ADA</span>
       </div>
       <div class="d-flex align-items-center">
-        <button @click.stop="$emit('generateTestUsers')" class="btn btn-sm btn-outline-primary mr-3" :disabled="isGenerating">
-          <span v-if="isGenerating" class="spinner-border spinner-border-sm mr-1"></span>
-          {{ isGenerating ? 'Generating...' : 'Generate Test Users' }}
-        </button>
         <div class="custom-control custom-switch mr-3" @click.stop>
           <input type="checkbox" class="custom-control-input" id="columnViewSwitch" v-model="columnView">
           <label class="custom-control-label text-muted small" for="columnViewSwitch">Column View</label>
         </div>
+        <button @click.stop="$emit('generateTestUsers')" class="btn btn-sm btn-outline-primary mr-3" :disabled="isGenerating">
+          <span v-if="isGenerating" class="spinner-border spinner-border-sm mr-1"></span>
+          {{ isGenerating ? 'Generating...' : 'Generate Test Users' }}
+        </button>
         <span class="collapse-icon">{{ sections.main ? '▲' : '▼' }}</span>
       </div>
     </div>

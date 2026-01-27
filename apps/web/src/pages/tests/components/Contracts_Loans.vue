@@ -1,6 +1,6 @@
 <template>
   <div class="card mb-4 contracts-card">
-    <div class="card-header section-header" @click="expanded = !expanded">
+    <div class="card-header section-header section-header--bordered" @click="expanded = !expanded">
       <div class="d-flex align-items-center">
         <div class="contract-icon contract-icon--loan mr-3">
           <i class="fas fa-exchange-alt"></i>
@@ -143,6 +143,11 @@ function formatAda(lovelace?: number): string {
 </script>
 
 <style scoped>
+.section-header--bordered {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
 .contract-icon {
   width: 40px;
   height: 40px;
@@ -155,6 +160,10 @@ function formatAda(lovelace?: number): string {
 
 .contract-icon--loan {
   background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+}
+
+.contract-icon--loan i {
   color: #3b82f6;
 }
 
@@ -212,8 +221,7 @@ function formatAda(lovelace?: number): string {
   width: 50px;
   height: 50px;
   border-radius: 8px;
-  background: rgba(59, 130, 246, 0.1);
-  color: #60a5fa;
+  background: rgba(59, 130, 246, 0.15);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -221,8 +229,14 @@ function formatAda(lovelace?: number): string {
   flex-shrink: 0;
 }
 
+.contract-type-icon i {
+  color: #60a5fa;
+}
+
 .contract-info-section {
-  min-width: 180px;
+  width: 280px;
+  min-width: 280px;
+  flex-shrink: 0;
 }
 
 .contract-info-section h5 {
@@ -235,8 +249,9 @@ function formatAda(lovelace?: number): string {
 }
 
 .contract-asset-section {
-  flex: 1;
-  min-width: 200px;
+  width: 320px;
+  min-width: 320px;
+  flex-shrink: 0;
 }
 
 .asset-line, .terms-line {
@@ -279,5 +294,13 @@ function formatAda(lovelace?: number): string {
 .contract-actions .btn-outline-success {
   width: 32px;
   padding: 0;
+}
+
+.contract-actions .btn-outline-success i {
+  color: #10b981;
+}
+
+.contract-actions .btn-outline-success:hover i {
+  color: #fff;
 }
 </style>
