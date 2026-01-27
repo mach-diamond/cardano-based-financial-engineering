@@ -11,102 +11,12 @@
             </div>
             <div class="d-flex align-items-center">
               <span class="badge badge-warning mr-2">Phase {{ currentPhase }}</span>
-              <small class="text-muted">{{ currentStep }}/{{ totalSteps }}</small>
+              <small class="text-muted">{{ completedSteps }}/{{ totalSteps }} steps</small>
             </div>
           </div>
           <div class="progress" style="height: 4px;">
             <div class="progress-bar bg-warning progress-bar-striped progress-bar-animated"
-                 :style="{ width: `${(currentStep / totalSteps) * 100}%` }"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Identities & Wallets (Main Collapsible) -->
-    <div class="card mb-4 identities-card">
-      <div class="card-header section-header" @click="sections.main = !sections.main">
-        <div class="d-flex align-items-center">
-          <h5 class="text-white mb-0 mr-3">Identities & Wallets</h5>
-          <span class="badge badge-secondary mr-2">{{ identities.length }} wallets</span>
-          <span class="badge badge-info mr-2">{{ totalAssets }} assets</span>
-          <span class="badge badge-success">{{ totalAda }} ADA</span>
-        </div>
-        <div class="d-flex align-items-center">
-          <button @click.stop="generateTestUsers" class="btn btn-sm btn-outline-primary mr-3" :disabled="isGenerating">
-            <span v-if="isGenerating" class="spinner-border spinner-border-sm mr-1"></span>
-            {{ isGenerating ? 'Generating...' : 'Generate Test Users' }}
-          </button>
-          <div class="custom-control custom-switch mr-3" @click.stop>
-            <input type="checkbox" class="custom-control-input" id="columnViewSwitch" v-model="columnView">
-            <label class="custom-control-label text-muted small" for="columnViewSwitch">Column View</label>
-          </div>
-          <span class="collapse-icon">{{ sections.main ? '▲' : '▼' }}</span>
-        </div>
-      </div>
-      <div v-show="sections.main" class="card-body p-3">
-        <div :class="columnView ? 'd-flex flex-row gap-3' : ''">
-          <!-- Originators -->
-          <div :class="columnView ? 'flex-fill' : ''">
-            <div class="section-header" @click="sections.originators = !sections.originators">
-              <div class="d-flex align-items-center">
-                <h6 class="text-muted text-uppercase small mb-0 mr-2">Originators</h6>
-                <span class="badge badge-sm badge-secondary">{{ originators.length }} | {{ originatorStats.assets }} assets | {{ originatorStats.ada }} ADA</span>
-              </div>
-              <span class="collapse-icon">{{ sections.originators ? '▲' : '▼' }}</span>
-            </div>
-            <div v-show="sections.originators" :class="columnView ? '' : 'row'" class="mt-2 mb-3">
-              <div v-for="identity in originators" :key="identity.id" :class="columnView ? 'mb-2' : 'col-md-6 col-lg-3 mb-3'">
-                <WalletCard :identity="identity" :is-running="isRunning" />
-              </div>
-            </div>
-          </div>
-
-          <!-- Borrowers -->
-          <div :class="columnView ? 'flex-fill' : ''">
-            <div class="section-header" @click="sections.borrowers = !sections.borrowers">
-              <div class="d-flex align-items-center">
-                <h6 class="text-muted text-uppercase small mb-0 mr-2">Borrowers</h6>
-                <span class="badge badge-sm badge-secondary">{{ borrowers.length }} | {{ borrowerStats.assets }} assets | {{ borrowerStats.ada }} ADA</span>
-              </div>
-              <span class="collapse-icon">{{ sections.borrowers ? '▲' : '▼' }}</span>
-            </div>
-            <div v-show="sections.borrowers" :class="columnView ? '' : 'row'" class="mt-2 mb-3">
-              <div v-for="identity in borrowers" :key="identity.id" :class="columnView ? 'mb-2' : 'col-md-6 col-lg-4 mb-3'">
-                <WalletCard :identity="identity" :is-running="isRunning" />
-              </div>
-            </div>
-          </div>
-
-          <!-- CLO Manager -->
-          <div :class="columnView ? 'flex-fill' : ''">
-            <div class="section-header" @click="sections.analysts = !sections.analysts">
-              <div class="d-flex align-items-center">
-                <h6 class="text-muted text-uppercase small mb-0 mr-2">CLO Manager</h6>
-                <span class="badge badge-sm badge-secondary">{{ analysts.length }} | {{ analystStats.assets }} assets | {{ analystStats.ada }} ADA</span>
-              </div>
-              <span class="collapse-icon">{{ sections.analysts ? '▲' : '▼' }}</span>
-            </div>
-            <div v-show="sections.analysts" :class="columnView ? '' : 'row'" class="mt-2 mb-3">
-              <div v-for="identity in analysts" :key="identity.id" :class="columnView ? 'mb-2' : 'col-md-6 col-lg-3 mb-3'">
-                <WalletCard :identity="identity" :is-running="isRunning" />
-              </div>
-            </div>
-          </div>
-
-          <!-- Investors -->
-          <div :class="columnView ? 'flex-fill' : ''">
-            <div class="section-header" @click="sections.investors = !sections.investors">
-              <div class="d-flex align-items-center">
-                <h6 class="text-muted text-uppercase small mb-0 mr-2">Investors</h6>
-                <span class="badge badge-sm badge-secondary">{{ investors.length }} | {{ investorStats.assets }} assets | {{ investorStats.ada }} ADA</span>
-              </div>
-              <span class="collapse-icon">{{ sections.investors ? '▲' : '▼' }}</span>
-            </div>
-            <div v-show="sections.investors" :class="columnView ? '' : 'row'" class="mt-2 mb-3">
-              <div v-for="identity in investors" :key="identity.id" :class="columnView ? 'mb-2' : 'col-md-6 col-lg-3 mb-3'">
-                <WalletCard :identity="identity" :is-running="isRunning" />
-              </div>
-            </div>
+                 :style="{ width: `${(completedSteps / totalSteps) * 100}%` }"></div>
           </div>
         </div>
       </div>
@@ -200,7 +110,7 @@
 
     <!-- Full Lifecycle Test (Main Feature) -->
     <div class="card mb-4 lifecycle-card">
-      <div class="card-header d-flex justify-content-between align-items-center">
+      <div class="card-header section-header d-flex justify-content-between align-items-center" @click="sections.lifecycle = !sections.lifecycle">
         <div class="d-flex align-items-center">
           <div class="lifecycle-icon mr-3">
             <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -209,18 +119,23 @@
           </div>
           <div>
             <h5 class="mb-0 text-white">Full Lifecycle Test</h5>
-            <small class="text-muted">10 Loans → CDO Bundle → Payments → Default → Maturity</small>
+            <small class="text-muted">{{ completedSteps }}/{{ totalSteps }} steps completed</small>
           </div>
         </div>
         <div class="d-flex align-items-center">
-          <span class="badge badge-pill badge-primary mr-2">{{ lifecycleTests.length }} tests</span>
-          <span v-if="lifecycleStatus === 'passed'" class="badge badge-success">All Passed</span>
-          <span v-else-if="lifecycleStatus === 'failed'" class="badge badge-danger">Failed</span>
-          <span v-else-if="lifecycleStatus === 'running'" class="badge badge-warning">Running</span>
-          <span v-else class="badge badge-secondary">Pending</span>
+          <div class="custom-control custom-switch mr-3" @click.stop>
+            <input type="checkbox" class="custom-control-input" id="manualModeSwitch" v-model="manualMode">
+            <label class="custom-control-label text-muted small" for="manualModeSwitch">{{ manualMode ? 'Manual' : 'Auto' }}</label>
+          </div>
+          <span class="badge badge-pill badge-primary mr-2">{{ lifecycleTests.length }} steps</span>
+          <span v-if="lifecycleStatus === 'passed'" class="badge badge-success mr-2">All Passed</span>
+          <span v-else-if="lifecycleStatus === 'failed'" class="badge badge-danger mr-2">Failed</span>
+          <span v-else-if="lifecycleStatus === 'running'" class="badge badge-warning mr-2">Running</span>
+          <span v-else class="badge badge-secondary mr-2">Pending</span>
+          <span class="collapse-icon">{{ sections.lifecycle ? '▲' : '▼' }}</span>
         </div>
       </div>
-      <div class="card-body p-0">
+      <div v-show="sections.lifecycle" class="card-body p-0">
         <!-- Phase Timeline -->
         <div class="phase-timeline">
           <div v-for="(phase, index) in phases" :key="phase.id"
@@ -230,31 +145,153 @@
                  'phase-complete': phase.status === 'passed',
                  'phase-failed': phase.status === 'failed'
                }">
-            <div class="phase-header">
-              <div class="phase-number">{{ index + 1 }}</div>
-              <div class="phase-info">
-                <div class="phase-title">{{ phase.name }}</div>
-                <div class="phase-description">{{ phase.description }}</div>
+            <div class="phase-header d-flex align-items-center justify-content-between" @click="phase.expanded = !phase.expanded" style="cursor: pointer;">
+              <div class="d-flex align-items-center">
+                <div class="phase-number">{{ index + 1 }}</div>
+                <div class="phase-info">
+                  <div class="phase-title">
+                    {{ phase.name }}
+                    <i :class="phase.expanded ? 'fas fa-chevron-down' : 'fas fa-chevron-right'" class="ml-2 text-muted small"></i>
+                  </div>
+                  <div class="phase-description">{{ phase.description }}</div>
+                </div>
               </div>
-              <div class="phase-status">
-                <svg v-if="phase.status === 'passed'" width="20" height="20" viewBox="0 0 20 20" fill="currentColor" class="text-success">
-                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-                </svg>
-                <svg v-else-if="phase.status === 'running'" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" class="text-warning spin">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                <svg v-else-if="phase.status === 'failed'" width="20" height="20" viewBox="0 0 20 20" fill="currentColor" class="text-danger">
-                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-                </svg>
-                <div v-else class="phase-pending-dot"></div>
+              <div class="d-flex align-items-center gap-2">
+                <button v-if="manualMode && phase.status !== 'passed'" 
+                        @click="executePhase(phase)" 
+                        class="btn btn-sm btn-primary"
+                        :disabled="isRunning">
+                  <i class="fas fa-play mr-1"></i> Run Phase
+                </button>
+                <div class="phase-status">
+                  <svg v-if="phase.status === 'passed'" width="20" height="20" viewBox="0 0 20 20" fill="currentColor" class="text-success">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                  </svg>
+                  <svg v-else-if="phase.status === 'running'" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" class="text-warning spin">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <svg v-else-if="phase.status === 'failed'" width="20" height="20" viewBox="0 0 20 20" fill="currentColor" class="text-danger">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                  </svg>
+                  <div v-else class="phase-pending-dot"></div>
+                </div>
               </div>
             </div>
 
-            <!-- Phase Details -->
-            <div v-if="phase.expanded" class="phase-tests">
-              <div v-for="test in phase.tests" :key="test.id" class="phase-test-item">
-                <div class="test-status-dot" :class="'dot-' + test.status"></div>
-                <span class="test-name">{{ test.name }}</span>
+            <!-- Phase Steps (collapsible) -->
+            <div v-show="phase.expanded" class="phase-steps">
+              <div v-for="step in phase.steps" :key="step.id" class="phase-step-item">
+                <div class="d-flex align-items-center">
+                  <div class="step-status-icon">
+                    <i v-if="step.status === 'passed'" class="fas fa-check-circle text-success"></i>
+                    <i v-else-if="step.status === 'running'" class="fas fa-spinner fa-spin text-warning"></i>
+                    <i v-else-if="step.status === 'failed'" class="fas fa-times-circle text-danger"></i>
+                    <i v-else class="far fa-circle text-muted"></i>
+                  </div>
+                  <span class="step-action-bubble" :class="'action-' + getStepActionClass(phase.id)">{{ getStepAction(phase.id) }}</span>
+                  <span class="step-entity-text">{{ getStepEntity(step) }}</span>
+                  <span v-if="step.txHash" class="step-tx-hash" :title="step.txHash">
+                    <i class="fas fa-link"></i> {{ step.txHash.slice(0, 8) }}...
+                  </span>
+                </div>
+                <div class="step-actions">
+                  <button v-if="manualMode && step.status === 'pending'" 
+                          @click="executeStep(phase, step)" 
+                          class="btn-execute"
+                          :disabled="isRunning">
+                    <i class="fas fa-play"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Identities & Wallets (Main Collapsible) -->
+    <div class="card mb-4 identities-card">
+      <div class="card-header section-header" @click="sections.main = !sections.main">
+        <div class="d-flex align-items-center">
+          <h5 class="text-white mb-0 mr-3">Identities & Wallets</h5>
+          <span class="badge badge-secondary mr-2">{{ identities.length }} wallets</span>
+          <span class="badge badge-info mr-2">{{ totalAssets }} assets</span>
+          <span class="badge badge-success">{{ totalAda }} ADA</span>
+        </div>
+        <div class="d-flex align-items-center">
+          <button @click.stop="generateTestUsers" class="btn btn-sm btn-outline-primary mr-3" :disabled="isGenerating">
+            <span v-if="isGenerating" class="spinner-border spinner-border-sm mr-1"></span>
+            {{ isGenerating ? 'Generating...' : 'Generate Test Users' }}
+          </button>
+          <div class="custom-control custom-switch mr-3" @click.stop>
+            <input type="checkbox" class="custom-control-input" id="columnViewSwitch" v-model="columnView">
+            <label class="custom-control-label text-muted small" for="columnViewSwitch">Column View</label>
+          </div>
+          <span class="collapse-icon">{{ sections.main ? '▲' : '▼' }}</span>
+        </div>
+      </div>
+      <div v-show="sections.main" class="card-body p-3">
+        <div :class="columnView ? 'd-flex flex-row gap-3' : ''">
+          <!-- Originators -->
+          <div :class="columnView ? 'column-section' : ''">
+            <div class="section-header" @click="sections.originators = !sections.originators">
+              <div class="d-flex align-items-center">
+                <h6 class="text-muted text-uppercase small mb-0 mr-2">Originators</h6>
+                <span class="badge badge-sm badge-secondary">{{ originators.length }} | {{ originatorStats.assets }} assets | {{ originatorStats.ada }} ADA</span>
+              </div>
+              <span class="collapse-icon">{{ sections.originators ? '▲' : '▼' }}</span>
+            </div>
+            <div v-show="sections.originators" :class="columnView ? '' : 'row'" class="mt-2 mb-3">
+              <div v-for="identity in originators" :key="identity.id" :class="columnView ? 'mb-2' : 'col-md-6 col-lg-3 mb-3'">
+                <WalletCard :identity="identity" :is-running="isRunning" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Borrowers -->
+          <div :class="columnView ? 'column-section' : ''">
+            <div class="section-header" @click="sections.borrowers = !sections.borrowers">
+              <div class="d-flex align-items-center">
+                <h6 class="text-muted text-uppercase small mb-0 mr-2">Borrowers</h6>
+                <span class="badge badge-sm badge-secondary">{{ borrowers.length }} | {{ borrowerStats.assets }} assets | {{ borrowerStats.ada }} ADA</span>
+              </div>
+              <span class="collapse-icon">{{ sections.borrowers ? '▲' : '▼' }}</span>
+            </div>
+            <div v-show="sections.borrowers" :class="columnView ? '' : 'row'" class="mt-2 mb-3">
+              <div v-for="identity in borrowers" :key="identity.id" :class="columnView ? 'mb-2' : 'col-md-6 col-lg-4 mb-3'">
+                <WalletCard :identity="identity" :is-running="isRunning" />
+              </div>
+            </div>
+          </div>
+
+          <!-- CLO Manager -->
+          <div :class="columnView ? 'column-section' : ''">
+            <div class="section-header" @click="sections.analysts = !sections.analysts">
+              <div class="d-flex align-items-center">
+                <h6 class="text-muted text-uppercase small mb-0 mr-2">CLO Manager</h6>
+                <span class="badge badge-sm badge-secondary">{{ analysts.length }} | {{ analystStats.assets }} assets | {{ analystStats.ada }} ADA</span>
+              </div>
+              <span class="collapse-icon">{{ sections.analysts ? '▲' : '▼' }}</span>
+            </div>
+            <div v-show="sections.analysts" :class="columnView ? '' : 'row'" class="mt-2 mb-3">
+              <div v-for="identity in analysts" :key="identity.id" :class="columnView ? 'mb-2' : 'col-md-6 col-lg-3 mb-3'">
+                <WalletCard :identity="identity" :is-running="isRunning" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Investors -->
+          <div :class="columnView ? 'column-section' : ''">
+            <div class="section-header" @click="sections.investors = !sections.investors">
+              <div class="d-flex align-items-center">
+                <h6 class="text-muted text-uppercase small mb-0 mr-2">Investors</h6>
+                <span class="badge badge-sm badge-secondary">{{ investors.length }} | {{ investorStats.assets }} assets | {{ investorStats.ada }} ADA</span>
+              </div>
+              <span class="collapse-icon">{{ sections.investors ? '▲' : '▼' }}</span>
+            </div>
+            <div v-show="sections.investors" :class="columnView ? '' : 'row'" class="mt-2 mb-3">
+              <div v-for="identity in investors" :key="identity.id" :class="columnView ? 'mb-2' : 'col-md-6 col-lg-3 mb-3'">
+                <WalletCard :identity="identity" :is-running="isRunning" />
               </div>
             </div>
           </div>
@@ -411,23 +448,32 @@
 <script setup lang="ts">
 import { ref, computed, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import type { TestResult, Identity, IdentityRole } from '@/types'
+import type { TestResult, Identity } from '@/types'
 import TestItem from '@/components/dashboard/TestItem.vue'
 import WalletCard from '@/components/tests/WalletCard.vue'
+
+// Local Components
+import StatsCards from './components/StatsCards.vue'
+import ConsoleOutput from './components/ConsoleOutput.vue'
+import LifecycleTest from './components/LifecycleTest.vue'
+import IdentitiesPanel from './components/IdentitiesPanel.vue'
+
+// Test Runner Utility
+import * as runner from './testRunner'
+import type { Phase } from './testRunner'
 
 const router = useRouter()
 const consoleRef = ref<HTMLElement>()
 
 // State
 const isRunning = ref(false)
-const currentStep = ref(0)
-const totalSteps = ref(40)
 const currentPhase = ref(1)
 const currentStepName = ref('Initializing...')
 
 // Collapsible section states
 const sections = ref({
   main: true,
+  lifecycle: true,
   originators: true,
   borrowers: true,
   analysts: true,
@@ -435,7 +481,7 @@ const sections = ref({
 })
 
 // View toggle
-const columnView = ref(false)
+const columnView = ref(true)
 const isGenerating = ref(false)
 
 // Console output
@@ -449,6 +495,7 @@ const consoleLines = ref<ConsoleLine[]>([])
 // Identity State - All Participants
 const identities = ref<Identity[]>([
   // Originators
+  { id: 'orig-jewelry', name: 'MachDiamond Jewelry', role: 'Originator', address: 'addr_test1qr_machdiamond', wallets: [{ id: 'w0', name: 'Main', address: 'addr_test1qr_machdiamond', balance: 0n, assets: [] }] },
   { id: 'orig-airplane', name: 'Airplane Manufacturing LLC', role: 'Originator', address: 'addr_test1qr_airplane', wallets: [{ id: 'w1', name: 'Main', address: 'addr_test1qr_airplane', balance: 0n, assets: [] }] },
   { id: 'orig-home', name: 'Bob Smith', role: 'Originator', address: 'addr_test1qr_bob', wallets: [{ id: 'w2', name: 'Main', address: 'addr_test1qr_bob', balance: 0n, assets: [] }] },
   { id: 'orig-realestate', name: 'Premier Asset Holdings', role: 'Originator', address: 'addr_test1qr_premier', wallets: [{ id: 'w3', name: 'Main', address: 'addr_test1qr_premier', balance: 0n, assets: [] }] },
@@ -520,56 +567,95 @@ const loanPortfolio = ref([
   { id: 6, principal: 8000, apr: 7, payments: 0, totalPayments: 36, active: false, defaulted: false, asset: 'Boat', borrower: 'Boat Operator LLC' },
 ])
 
-// Extended Phases mapping to the required workflow
+// Manual vs Auto mode
+const manualMode = ref(true)
+
+// Extended Phases with individual executable steps
 const phases = ref([
   {
     id: 1,
     name: 'Setup & Identities',
-    description: 'Create and fund wallets for all roles on Cardano',
+    description: 'Fund wallets for all 16 participants',
     status: 'pending',
     expanded: true,
-    tests: [
-      { id: 'S1', name: 'Initialize Wallets', status: 'pending' },
-      { id: 'S2', name: 'Fund Preview Testnet ADA', status: 'pending' }
+    steps: [
+      { id: 'S1', name: 'Fund MachDiamond Jewelry', status: 'pending', targetId: 'orig-jewelry' },
+      { id: 'S2', name: 'Fund Airplane Manufacturing LLC', status: 'pending', targetId: 'orig-airplane' },
+      { id: 'S3', name: 'Fund Bob Smith', status: 'pending', targetId: 'orig-home' },
+      { id: 'S4', name: 'Fund Premier Asset Holdings', status: 'pending', targetId: 'orig-realestate' },
+      { id: 'S5', name: 'Fund Yacht Makers Corp', status: 'pending', targetId: 'orig-yacht' },
+      { id: 'S6', name: 'Fund Cardano Airlines LLC', status: 'pending', targetId: 'bor-cardanoair' },
+      { id: 'S7', name: 'Fund Superfast Cargo Air', status: 'pending', targetId: 'bor-superfastcargo' },
+      { id: 'S8', name: 'Fund Alice Doe', status: 'pending', targetId: 'bor-alice' },
+      { id: 'S9', name: 'Fund Office Operator LLC', status: 'pending', targetId: 'bor-officeop' },
+      { id: 'S10', name: 'Fund Luxury Apartments LLC', status: 'pending', targetId: 'bor-luxuryapt' },
+      { id: 'S11', name: 'Fund Boat Operator LLC', status: 'pending', targetId: 'bor-boatop' },
+      { id: 'S12', name: 'Fund Cardano Investment Bank', status: 'pending', targetId: 'analyst' },
+      { id: 'S13', name: 'Fund Senior Tranche Investor', status: 'pending', targetId: 'inv-1' },
+      { id: 'S14', name: 'Fund Mezzanine Tranche Investor', status: 'pending', targetId: 'inv-2' },
+      { id: 'S15', name: 'Fund Junior Tranche Investor', status: 'pending', targetId: 'inv-3' },
+      { id: 'S16', name: 'Fund Hedge Fund Alpha', status: 'pending', targetId: 'inv-4' },
     ]
   },
   {
     id: 2,
     name: 'Asset Tokenization',
-    description: 'Originator mints high-value tokenized real-world assets',
+    description: 'Originators mint tokenized real-world assets',
     status: 'pending',
     expanded: true,
-    tests: [
-      { id: 'A1', name: 'Mint Airplane NFT', status: 'pending' },
-      { id: 'A2', name: 'Mint Home NFT', status: 'pending' },
-      { id: 'A3', name: 'Mint Boat NFT', status: 'pending' }
+    steps: [
+      { id: 'A1', name: 'Mint Diamond tokens (MachDiamond)', status: 'pending', originatorId: 'orig-jewelry', asset: 'Diamond', qty: 2n },
+      { id: 'A2', name: 'Mint Airplane tokens', status: 'pending', originatorId: 'orig-airplane', asset: 'Airplane', qty: 10n },
+      { id: 'A3', name: 'Mint Home token (Bob Smith)', status: 'pending', originatorId: 'orig-home', asset: 'Home', qty: 1n },
+      { id: 'A4', name: 'Mint RealEstate tokens', status: 'pending', originatorId: 'orig-realestate', asset: 'RealEstate', qty: 10n },
+      { id: 'A5', name: 'Mint Boat tokens', status: 'pending', originatorId: 'orig-yacht', asset: 'Boat', qty: 3n },
     ]
   },
   {
     id: 3,
     name: 'Initialize Loan Contracts',
-    description: 'Use tokenized assets as collateral for amortized loans',
+    description: 'Create loans using tokenized assets as collateral',
     status: 'pending',
     expanded: true,
-    tests: [
-      { id: 'L1', name: 'Setup Loan: Boat Collateral', status: 'pending' },
-      { id: 'L2', name: 'Setup Loan: Home Collateral', status: 'pending' }
+    steps: [
+      { id: 'L1', name: 'Loan: Alice Doe ← Diamond', status: 'pending', borrowerId: 'bor-alice', originatorId: 'orig-jewelry', asset: 'Diamond', qty: 2, principal: 15000 },
+      { id: 'L2', name: 'Loan: Cardano Airlines ← Airplane', status: 'pending', borrowerId: 'bor-cardanoair', originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 50000 },
+      { id: 'L3', name: 'Loan: Superfast Cargo ← Airplane', status: 'pending', borrowerId: 'bor-superfastcargo', originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 50000 },
+      { id: 'L4', name: 'Loan: Office Operator ← RealEstate', status: 'pending', borrowerId: 'bor-officeop', originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 2500 },
+      { id: 'L5', name: 'Loan: Luxury Apartments ← RealEstate', status: 'pending', borrowerId: 'bor-luxuryapt', originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 2500 },
+      { id: 'L6', name: 'Loan: Boat Operator ← Boat', status: 'pending', borrowerId: 'bor-boatop', originatorId: 'orig-yacht', asset: 'Boat', qty: 3, principal: 8000 },
     ]
   },
   {
     id: 4,
-    name: 'Collateral Bundle & CDO',
-    description: 'Bundle Loan Collateral Tokens into Senior/Mezz/Junior CDO',
+    name: 'CLO Bundle & Distribution',
+    description: 'Bundle collateral into CLO with 3 tranches',
     status: 'pending',
-    expanded: true,
-    tests: [
-      { id: 'C1', name: 'Create CDO: Multi-Tranche', status: 'pending' },
-      { id: 'C2', name: 'Distribute Yield Waterfall', status: 'pending' }
+    expanded: false,
+    steps: [
+      { id: 'C1', name: 'Bundle 6 Collateral Tokens', status: 'pending' },
+      { id: 'C2', name: 'Deploy CLO Contract (3 Tranches)', status: 'pending' },
+      { id: 'C3', name: 'Distribute Tranche Tokens to Investors', status: 'pending' },
+    ]
+  },
+  {
+    id: 5,
+    name: 'Make Loan Payments',
+    description: 'Borrowers make scheduled payments on their loans',
+    status: 'pending',
+    expanded: false,
+    steps: [
+      { id: 'P1', name: 'Payment: Alice Doe → Diamond Loan', status: 'pending', borrowerId: 'bor-alice', amount: 1500 },
+      { id: 'P2', name: 'Payment: Cardano Airlines → Airplane Loan', status: 'pending', borrowerId: 'bor-cardanoair', amount: 5000 },
+      { id: 'P3', name: 'Payment: Superfast Cargo → Airplane Loan', status: 'pending', borrowerId: 'bor-superfastcargo', amount: 5000 },
+      { id: 'P4', name: 'Payment: Office Operator → RealEstate Loan', status: 'pending', borrowerId: 'bor-officeop', amount: 250 },
+      { id: 'P5', name: 'Payment: Luxury Apartments → RealEstate Loan', status: 'pending', borrowerId: 'bor-luxuryapt', amount: 250 },
+      { id: 'P6', name: 'Payment: Boat Operator → Boat Loan', status: 'pending', borrowerId: 'bor-boatop', amount: 800 },
     ]
   }
 ])
 
-const lifecycleTests = computed(() => phases.value.flatMap(p => p.tests))
+const lifecycleTests = computed(() => phases.value.flatMap(p => p.steps))
 const lifecycleStatus = computed(() => {
   const statuses = phases.value.map(p => p.status)
   if (statuses.some(s => s === 'failed')) return 'failed'
@@ -577,6 +663,10 @@ const lifecycleStatus = computed(() => {
   if (statuses.every(s => s === 'passed')) return 'passed'
   return 'pending'
 })
+
+// Progress bar computed values
+const totalSteps = computed(() => lifecycleTests.value.length)
+const completedSteps = computed(() => lifecycleTests.value.filter(s => s.status === 'passed').length)
 
 // Mock test data
 const cdoTests = ref<TestResult[]>([
@@ -612,7 +702,6 @@ function log(text: string, type: ConsoleLine['type'] = 'info') {
 
 async function runTests(mode: 'demo' | 'emulator' | 'preview') {
   isRunning.value = true
-  currentStep.value = 0
   currentPhase.value = 1
 
   // Reset states
@@ -622,7 +711,7 @@ async function runTests(mode: 'demo' | 'emulator' | 'preview') {
   })
   phases.value.forEach(p => {
     p.status = 'pending'
-    p.tests.forEach(t => t.status = 'pending')
+    p.steps.forEach((s: { status: string }) => s.status = 'pending')
   })
 
   log(`Starting ${mode.toUpperCase()} mode: Realistic Financial Lifecycle...`, 'phase')
@@ -636,17 +725,17 @@ async function runTests(mode: 'demo' | 'emulator' | 'preview') {
       await delay(200)
       identity.wallets[0].balance = 5000000000n // 5000 ADA
       log(`  Funded with 5000 testnet ADA`, 'success')
-      currentStep.value++
     }
   })
 
   // Phase 2: Tokenization (per Originator)
   await simulatePhase(1, 'Asset Tokenization', async () => {
     const mintConfig = [
-      { id: 'orig-airplane', asset: 'Airplane', qty: 10n },
-      { id: 'orig-home', asset: 'Home', qty: 1n },
-      { id: 'orig-realestate', asset: 'RealEstate', qty: 10n },
-      { id: 'orig-yacht', asset: 'Boat', qty: 3n },
+      { id: 'orig-jewelry', asset: 'Diamond', qty: 2n, type: 'jewelry' },
+      { id: 'orig-airplane', asset: 'Airplane', qty: 10n, type: 'airplane' },
+      { id: 'orig-home', asset: 'Home', qty: 1n, type: 'realestate' },
+      { id: 'orig-realestate', asset: 'RealEstate', qty: 10n, type: 'realestate' },
+      { id: 'orig-yacht', asset: 'Boat', qty: 3n, type: 'boat' },
     ]
     for (const config of mintConfig) {
       const orig = identities.value.find(i => i.id === config.id)!
@@ -659,16 +748,15 @@ async function runTests(mode: 'demo' | 'emulator' | 'preview') {
         quantity: config.qty
       })
       log(`  Confirmed ${config.qty} ${config.asset} in wallet`, 'success')
-      currentStep.value++
     }
   })
 
   // Phase 3: Create Loans
   await simulatePhase(2, 'Initialize Loan Contracts', async () => {
     const loanDefs = [
+      { borrowerId: 'bor-alice', originatorId: 'orig-jewelry', asset: 'Diamond', qty: 2, principal: 15000 },
       { borrowerId: 'bor-cardanoair', originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 50000 },
       { borrowerId: 'bor-superfastcargo', originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 50000 },
-      { borrowerId: 'bor-alice', originatorId: 'orig-home', asset: 'Home', qty: 1, principal: 350 },
       { borrowerId: 'bor-officeop', originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 2500 },
       { borrowerId: 'bor-luxuryapt', originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 2500 },
       { borrowerId: 'bor-boatop', originatorId: 'orig-yacht', asset: 'Boat', qty: 3, principal: 8000 },
@@ -688,7 +776,6 @@ async function runTests(mode: 'demo' | 'emulator' | 'preview') {
         }
       }
       log(`  Collateral Token issued, asset escrowed`, 'success')
-      currentStep.value++
     }
   })
 
@@ -707,7 +794,6 @@ async function runTests(mode: 'demo' | 'emulator' | 'preview') {
     currentStepName.value = 'Distributing Tranche Tokens to Investors'
     await delay(400)
     log(`  Senior, Mezzanine, Junior tokens distributed`, 'success')
-    currentStep.value++
   })
 
   log('═'.repeat(50))
@@ -734,440 +820,190 @@ function clearConsole() {
   consoleLines.value = []
 }
 
+// Execute a single step manually
+async function executeStep(phase: typeof phases.value[0], step: typeof phases.value[0]['steps'][0]) {
+  isRunning.value = true
+  step.status = 'running'
+  phase.status = 'running'
+  currentStepName.value = step.name
+  
+  try {
+    // Phase 1: Fund identity
+    if (phase.id === 1 && 'targetId' in step) {
+      const identity = identities.value.find(i => i.id === (step as { targetId: string }).targetId)
+      if (identity) {
+        log(`  Funding ${identity.name}...`, 'info')
+        await delay(300)
+        identity.wallets[0].balance = 5000000000n
+        log(`  ✓ Funded with 5000 testnet ADA`, 'success')
+      }
+    }
+    
+    // Phase 2: Mint assets
+    if (phase.id === 2 && 'originatorId' in step) {
+      const s = step as { originatorId: string; asset: string; qty: bigint }
+      const orig = identities.value.find(i => i.id === s.originatorId)
+      if (orig) {
+        log(`  ${orig.name}: Minting ${s.qty} ${s.asset} tokens...`, 'info')
+        await delay(400)
+        orig.wallets[0].assets.push({
+          policyId: 'policy_' + s.asset.toLowerCase(),
+          assetName: s.asset,
+          quantity: s.qty
+        })
+        log(`  ✓ Minted ${s.qty} ${s.asset} tokens`, 'success')
+      }
+    }
+    
+    // Phase 3: Create loans
+    if (phase.id === 3 && 'borrowerId' in step) {
+      const s = step as { borrowerId: string; originatorId: string; asset: string; qty: number; principal: number }
+      const borrower = identities.value.find(i => i.id === s.borrowerId)
+      const originator = identities.value.find(i => i.id === s.originatorId)
+      if (borrower && originator) {
+        log(`  Loan: ${borrower.name} ← ${s.qty} ${s.asset} from ${originator.name}`, 'info')
+        await delay(400)
+        // Transfer asset
+        const origAsset = originator.wallets[0].assets.find(a => a.assetName === s.asset)
+        if (origAsset) {
+          origAsset.quantity -= BigInt(s.qty)
+          if (origAsset.quantity <= 0n) {
+            originator.wallets[0].assets = originator.wallets[0].assets.filter(a => a.assetName !== s.asset)
+          }
+        }
+        // Add collateral token to borrower
+        borrower.wallets[0].assets.push({
+          policyId: 'policy_coll_' + s.asset.toLowerCase(),
+          assetName: 'Coll-' + s.asset,
+          quantity: BigInt(s.qty)
+        })
+        log(`  ✓ Collateral token issued, principal: ${s.principal} ADA`, 'success')
+      }
+    }
+    
+    // Phase 4: CLO steps
+    if (phase.id === 4) {
+      if (step.id === 'C1') {
+        log(`  Bundling 6 collateral tokens into CLO...`, 'info')
+        await delay(500)
+        log(`  ✓ Collateral bundle created`, 'success')
+      } else if (step.id === 'C2') {
+        log(`  Deploying CLO Contract with 3 tranches...`, 'info')
+        await delay(500)
+        const analyst = identities.value.find(i => i.role === 'Analyst')
+        if (analyst) {
+          analyst.wallets[0].assets.push({
+            policyId: 'policy_clo',
+            assetName: 'CLO-Manager-NFT',
+            quantity: 1n
+          })
+        }
+        log(`  ✓ CLO deployed: Senior/Mezzanine/Junior tranches`, 'success')
+      } else if (step.id === 'C3') {
+        log(`  Distributing tranche tokens to investors...`, 'info')
+        await delay(400)
+        const tranches = ['Senior', 'Mezzanine', 'Junior']
+        const investorIds = ['inv-1', 'inv-2', 'inv-3']
+        tranches.forEach((tranche, i) => {
+          const inv = identities.value.find(id => id.id === investorIds[i])
+          if (inv) {
+            inv.wallets[0].assets.push({
+              policyId: 'policy_tranche',
+              assetName: tranche + '-Tranche',
+              quantity: 100n
+            })
+          }
+        })
+        log(`  ✓ Tranche tokens distributed`, 'success')
+      }
+    }
+    
+    step.status = 'passed'
+    
+    // Check if all steps in phase are complete
+    const allStepsPassed = phase.steps.every((s: { status: string }) => s.status === 'passed')
+    if (allStepsPassed) {
+      phase.status = 'passed'
+    } else {
+      phase.status = 'pending'
+    }
+    
+  } catch (err) {
+    step.status = 'failed'
+    phase.status = 'failed'
+    log(`  ✗ Error: ${(err as Error).message}`, 'error')
+  } finally {
+    isRunning.value = false
+    currentStepName.value = ''
+  }
+}
+
+// Execute all steps in a phase
+async function executePhase(phase: typeof phases.value[0]) {
+  log(`Starting Phase: ${phase.name}`, 'phase')
+  for (const step of phase.steps) {
+    if (step.status === 'pending') {
+      await executeStep(phase, step)
+      await delay(100) // Small delay between steps for UI feedback
+    }
+  }
+  log(`Completed Phase: ${phase.name}`, 'success')
+}
+
+// Helper: Get action verb for a phase
+function getStepAction(phaseId: number): string {
+  switch (phaseId) {
+    case 1: return 'Fund'
+    case 2: return 'Mint'
+    case 3: return 'Initiate Loan'
+    case 4: return 'Execute CLO'
+    case 5: return 'Payment'
+    default: return 'Run'
+  }
+}
+
+// Helper: Get CSS class for action bubble color
+function getStepActionClass(phaseId: number): string {
+  switch (phaseId) {
+    case 1: return 'fund'
+    case 2: return 'mint'
+    case 3: return 'loan'
+    case 4: return 'clo'
+    case 5: return 'payment'
+    default: return 'default'
+  }
+}
+
+// Helper: Get entity name from step
+function getStepEntity(step: { name: string; targetId?: string; asset?: string; borrowerId?: string; amount?: number }): string {
+  // Phase 1: Extract identity name
+  if ('targetId' in step) {
+    const identity = identities.value.find(i => i.id === step.targetId)
+    return identity?.name || step.name
+  }
+  // Phase 2: Asset name
+  if ('asset' in step && !('borrowerId' in step)) {
+    return `${step.asset} tokens`
+  }
+  // Phase 3: Borrower + Asset (Loan)
+  if ('borrowerId' in step && 'asset' in step) {
+    const borrower = identities.value.find(i => i.id === step.borrowerId)
+    return `${borrower?.name || ''} ← ${step.asset}`
+  }
+  // Phase 5: Payment
+  if ('borrowerId' in step && 'amount' in step) {
+    const borrower = identities.value.find(i => i.id === step.borrowerId)
+    return `${borrower?.name || ''} (${step.amount} ADA)`
+  }
+  // Phase 4: Just the name
+  return step.name.replace('Bundle ', '').replace('Deploy ', '').replace('Distribute ', '')
+}
+
 function viewTestDetails(test: TestResult) {
   router.push(`/tests/${test.id}`)
 }
 </script>
 
 <style scoped>
-.fixed-progress-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 1050;
-  padding: 0.5rem 1rem;
-  background: rgba(26, 26, 26, 0.95);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid rgba(255, 193, 7, 0.3);
-}
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.5rem 0.75rem;
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 8px;
-  cursor: pointer;
-  margin-bottom: 0;
-  transition: background 0.2s ease;
-}
-.section-header:hover {
-  background: rgba(255, 255, 255, 0.06);
-}
-.collapse-icon {
-  color: #6c757d;
-  font-size: 0.75rem;
-}
-
-.stat-card {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 16px;
-  padding: 1.25rem;
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  transition: all 0.3s ease;
-}
-
-.stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
-}
-
-.stat-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.stat-card--success .stat-icon { background: rgba(40, 167, 69, 0.15); color: #28a745; }
-.stat-card--danger .stat-icon { background: rgba(220, 53, 69, 0.15); color: #dc3545; }
-.stat-card--warning .stat-icon { background: rgba(255, 193, 7, 0.15); color: #ffc107; }
-.stat-card--info .stat-icon { background: rgba(23, 162, 184, 0.15); color: #17a2b8; }
-
-.stat-value {
-  font-size: 1.75rem;
-  font-weight: 700;
-  line-height: 1;
-  color: #fff;
-}
-
-.stat-label {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: #6c757d;
-  margin-top: 0.25rem;
-}
-
-.glow-warning {
-  box-shadow: 0 0 20px rgba(255, 193, 7, 0.2);
-}
-
-.running-tests {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.running-test-item {
-  display: flex;
-  align-items: center;
-  background: rgba(255, 193, 7, 0.1);
-  padding: 0.375rem 0.75rem;
-  border-radius: 20px;
-  font-size: 0.8125rem;
-}
-
-.running-test-name {
-  color: #fff;
-  margin-right: 0.5rem;
-}
-
-.running-test-phase {
-  color: #ffc107;
-  font-size: 0.75rem;
-}
-
-.pulse-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #ffc107;
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(0.8); }
-}
-
-/* Lifecycle Card */
-.lifecycle-card {
-  border: 1px solid rgba(0, 123, 255, 0.3);
-  background: linear-gradient(135deg, rgba(0, 123, 255, 0.05), transparent);
-}
-
-.lifecycle-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  background: rgba(0, 123, 255, 0.15);
-  color: #007bff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* Phase Timeline */
-.phase-timeline {
-  display: flex;
-  flex-direction: column;
-}
-
-.phase-block {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  transition: all 0.3s ease;
-}
-
-.phase-block:last-child {
-  border-bottom: none;
-}
-
-.phase-block:hover {
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.phase-active {
-  background: rgba(255, 193, 7, 0.05) !important;
-  border-left: 3px solid #ffc107;
-}
-
-.phase-complete {
-  border-left: 3px solid #28a745;
-}
-
-.phase-failed {
-  border-left: 3px solid #dc3545;
-}
-
-.phase-header {
-  display: flex;
-  align-items: center;
-  padding: 1rem 1.25rem;
-  gap: 1rem;
-}
-
-.phase-number {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-  font-size: 0.875rem;
-  flex-shrink: 0;
-}
-
-.phase-complete .phase-number {
-  background: rgba(40, 167, 69, 0.2);
-  color: #28a745;
-}
-
-.phase-active .phase-number {
-  background: rgba(255, 193, 7, 0.2);
-  color: #ffc107;
-}
-
-.phase-info {
-  flex: 1;
-}
-
-.phase-title {
-  font-weight: 600;
-  color: #fff;
-}
-
-.phase-description {
-  font-size: 0.8125rem;
-  color: #6c757d;
-}
-
-.phase-pending-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: rgba(108, 117, 125, 0.3);
-  border: 2px solid #6c757d;
-}
-
-.spin {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-/* Loan Grid */
-.loan-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 0.75rem;
-}
-
-@media (max-width: 992px) {
-  .loan-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-
-@media (max-width: 576px) {
-  .loan-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-.loan-chip {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  padding: 0.75rem;
-  transition: all 0.2s ease;
-}
-
-.loan-chip:hover {
-  transform: translateY(-2px);
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-.loan-active {
-  border-color: rgba(40, 167, 69, 0.3);
-}
-
-.loan-defaulted {
-  border-color: rgba(220, 53, 69, 0.3);
-  background: rgba(220, 53, 69, 0.05);
-}
-
-.loan-chip-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem;
-}
-
-.loan-number {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #6c757d;
-}
-
-.loan-status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-
-.loan-amount {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #fff;
-}
-
-.loan-apr {
-  font-size: 0.75rem;
-  color: #17a2b8;
-}
-
-.loan-progress {
-  margin-top: 0.5rem;
-}
-
-/* Tranche Stack */
-.tranche-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.tranche {
-  padding: 1rem;
-  border-radius: 10px;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.tranche-senior {
-  background: linear-gradient(135deg, rgba(40, 167, 69, 0.15), rgba(40, 167, 69, 0.05));
-  border: 1px solid rgba(40, 167, 69, 0.3);
-}
-
-.tranche-mezzanine {
-  background: linear-gradient(135deg, rgba(255, 193, 7, 0.15), rgba(255, 193, 7, 0.05));
-  border: 1px solid rgba(255, 193, 7, 0.3);
-}
-
-.tranche-junior {
-  background: linear-gradient(135deg, rgba(220, 53, 69, 0.15), rgba(220, 53, 69, 0.05));
-  border: 1px solid rgba(220, 53, 69, 0.3);
-}
-
-.tranche-label {
-  font-weight: 600;
-  color: #fff;
-  width: 100%;
-}
-
-.tranche-allocation {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: #fff;
-}
-
-.tranche-value {
-  font-size: 0.875rem;
-  color: #6c757d;
-}
-
-.tranche-tokens {
-  font-size: 0.75rem;
-  color: #6c757d;
-  width: 100%;
-}
-
-/* Test List */
-.test-list {
-  padding: 0.5rem;
-}
-
-.test-list > * + * {
-  margin-top: 0.5rem;
-}
-
-.suite-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.suite-icon--primary {
-  background: rgba(0, 123, 255, 0.15);
-  color: #007bff;
-}
-
-.suite-icon--info {
-  background: rgba(23, 162, 184, 0.15);
-  color: #17a2b8;
-}
-
-/* Console */
-.console-output {
-  background: #0d1117;
-  font-family: 'SF Mono', 'Monaco', 'Menlo', 'Consolas', monospace;
-  font-size: 0.8125rem;
-  line-height: 1.6;
-  max-height: 300px;
-  overflow-y: auto;
-  padding: 1rem;
-}
-
-.console-line {
-  display: flex;
-  gap: 1rem;
-  padding: 0.125rem 0;
-}
-
-.console-time {
-  color: #6c757d;
-  flex-shrink: 0;
-}
-
-.console-text {
-  color: #c9d1d9;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.console-line.success .console-text {
-  color: #28a745;
-}
-
-.console-line.error .console-text {
-  color: #dc3545;
-}
-
-.console-line.phase .console-text {
-  color: #007bff;
-  font-weight: 600;
-}
-
-.gap-2 {
-  gap: 0.5rem;
-}
+@import './tests.css';
 </style>
