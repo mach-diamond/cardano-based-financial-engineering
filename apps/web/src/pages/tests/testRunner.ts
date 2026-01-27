@@ -1,4 +1,6 @@
 import { type Ref } from 'vue'
+import type { LoanContract } from './components/Contracts_Loans.vue'
+import type { CLOContract } from './components/Contracts_CLOs.vue'
 
 export interface Identity {
     id: string
@@ -58,7 +60,9 @@ export async function runTests(
     currentPhase: Ref<number>,
     currentStepName: Ref<string>,
     log: LogFunction,
-    stats: Ref<{ passed: number, failed: number }>
+    stats: Ref<{ passed: number, failed: number }>,
+    loanContracts?: Ref<LoanContract[]>,
+    cloContracts?: Ref<CLOContract[]>
 ) {
     isRunning.value = true
     currentPhase.value = 1
@@ -72,6 +76,9 @@ export async function runTests(
         p.status = 'pending'
         p.steps.forEach((s: { status: string }) => s.status = 'pending')
     })
+    // Clear contracts
+    if (loanContracts) loanContracts.value = []
+    if (cloContracts) cloContracts.value = []
 
     log(`Starting ${mode.toUpperCase()} mode: Realistic Financial Lifecycle...`, 'phase')
     log('═'.repeat(50))
@@ -118,12 +125,12 @@ export async function runTests(
     // Phase 3: Create Loans
     await simulatePhase(2, 'Initialize Loan Contracts', async () => {
         const loanDefs = [
-            { borrowerId: 'bor-alice', originatorId: 'orig-jewelry', asset: 'Diamond', qty: 2, principal: 15000 },
-            { borrowerId: 'bor-cardanoair', originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 50000 },
-            { borrowerId: 'bor-superfastcargo', originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 50000 },
-            { borrowerId: 'bor-officeop', originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 2500 },
-            { borrowerId: 'bor-luxuryapt', originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 2500 },
-            { borrowerId: 'bor-boatop', originatorId: 'orig-yacht', asset: 'Boat', qty: 3, principal: 8000 },
+            { borrowerId: 'bor-alice', originatorId: 'orig-jewelry', asset: 'Diamond', qty: 2, principal: 15000, apr: 6, termLength: '12 months' },
+            { borrowerId: 'bor-cardanoair', originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 50000, apr: 4, termLength: '60 months' },
+            { borrowerId: 'bor-superfastcargo', originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 50000, apr: 4, termLength: '60 months' },
+            { borrowerId: 'bor-officeop', originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 2500, apr: 5, termLength: '24 months' },
+            { borrowerId: 'bor-luxuryapt', originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 2500, apr: 5.5, termLength: '24 months' },
+            { borrowerId: 'bor-boatop', originatorId: 'orig-yacht', asset: 'Boat', qty: 3, principal: 8000, apr: 7, termLength: '36 months' },
         ]
         for (const loan of loanDefs) {
             const borrower = identities.value.find(i => i.id === loan.borrowerId)!
@@ -138,6 +145,25 @@ export async function runTests(
                 if (origAsset.quantity <= 0n) {
                     originator.wallets[0].assets = originator.wallets[0].assets.filter(a => a.assetName !== loan.asset)
                 }
+            }
+            // Add to loanContracts
+            if (loanContracts) {
+                loanContracts.value.push({
+                    id: `LOAN-${loan.borrowerId}-${loan.asset}`,
+                    alias: `${borrower.name} - ${loan.asset} Loan`,
+                    subtype: 'Asset-Backed',
+                    collateral: {
+                        quantity: loan.qty,
+                        assetName: loan.asset,
+                        policyId: 'policy_' + loan.asset.toLowerCase()
+                    },
+                    principal: loan.principal * 1_000_000, // Convert to lovelace
+                    apr: loan.apr,
+                    termLength: loan.termLength,
+                    status: 'passed',
+                    borrower: borrower.name,
+                    originator: originator.name
+                })
             }
             log(`  Collateral Token issued, asset escrowed`, 'success')
             const step = phases.value[2].steps.find((s: any) => s.borrowerId === loan.borrowerId)
@@ -160,6 +186,25 @@ export async function runTests(
         phases.value[3].steps[0].status = 'passed'
         phases.value[3].steps[1].status = 'passed'
 
+        // Add CLO contract
+        if (cloContracts) {
+            const totalValue = loanContracts ? loanContracts.value.reduce((sum, l) => sum + l.principal, 0) : 128000 * 1_000_000
+            cloContracts.value.push({
+                id: 'CLO-001',
+                alias: 'MintMatrix CLO Series 1',
+                subtype: 'Waterfall',
+                tranches: [
+                    { name: 'Senior', allocation: 60, yieldModifier: 0.8 },
+                    { name: 'Mezzanine', allocation: 25, yieldModifier: 1.0 },
+                    { name: 'Junior', allocation: 15, yieldModifier: 1.5 }
+                ],
+                totalValue,
+                collateralCount: loanContracts ? loanContracts.value.length : 6,
+                status: 'passed',
+                manager: 'Cardano Investment Bank'
+            })
+        }
+
         currentStepName.value = 'Distributing Tranche Tokens to Investors'
         await delay(400)
         log(`  Senior, Mezzanine, Junior tokens distributed`, 'success')
@@ -181,7 +226,9 @@ export async function executeStep(
     phases: Ref<Phase[]>,
     isRunning: Ref<boolean>,
     currentStepName: Ref<string>,
-    log: LogFunction
+    log: LogFunction,
+    loanContracts?: Ref<LoanContract[]>,
+    cloContracts?: Ref<CLOContract[]>
 ) {
     isRunning.value = true
     step.status = 'running'
@@ -238,6 +285,39 @@ export async function executeStep(
                     assetName: 'Coll-' + s.asset,
                     quantity: BigInt(s.qty)
                 })
+                // Add to loanContracts
+                if (loanContracts) {
+                    const termMap: Record<string, string> = {
+                        'Diamond': '12 months',
+                        'Airplane': '60 months',
+                        'RealEstate': '24 months',
+                        'Boat': '36 months',
+                        'Home': '12 months'
+                    }
+                    const aprMap: Record<string, number> = {
+                        'Diamond': 6,
+                        'Airplane': 4,
+                        'RealEstate': 5,
+                        'Boat': 7,
+                        'Home': 6
+                    }
+                    loanContracts.value.push({
+                        id: `LOAN-${s.borrowerId}-${s.asset}`,
+                        alias: `${borrower.name} - ${s.asset} Loan`,
+                        subtype: 'Asset-Backed',
+                        collateral: {
+                            quantity: s.qty,
+                            assetName: s.asset,
+                            policyId: 'policy_' + s.asset.toLowerCase()
+                        },
+                        principal: s.principal * 1_000_000,
+                        apr: aprMap[s.asset] || 5,
+                        termLength: termMap[s.asset] || '12 months',
+                        status: 'passed',
+                        borrower: borrower.name,
+                        originator: originator.name
+                    })
+                }
                 log(`  ✓ Collateral token issued, principal: ${s.principal} ADA`, 'success')
             }
         }
@@ -257,6 +337,24 @@ export async function executeStep(
                         policyId: 'policy_clo',
                         assetName: 'CLO-Manager-NFT',
                         quantity: 1n
+                    })
+                }
+                // Add CLO contract
+                if (cloContracts) {
+                    const totalValue = loanContracts ? loanContracts.value.reduce((sum, l) => sum + l.principal, 0) : 128000 * 1_000_000
+                    cloContracts.value.push({
+                        id: 'CLO-001',
+                        alias: 'MintMatrix CLO Series 1',
+                        subtype: 'Waterfall',
+                        tranches: [
+                            { name: 'Senior', allocation: 60, yieldModifier: 0.8 },
+                            { name: 'Mezzanine', allocation: 25, yieldModifier: 1.0 },
+                            { name: 'Junior', allocation: 15, yieldModifier: 1.5 }
+                        ],
+                        totalValue,
+                        collateralCount: loanContracts ? loanContracts.value.length : 6,
+                        status: 'passed',
+                        manager: 'Cardano Investment Bank'
                     })
                 }
                 log(`  ✓ CLO deployed: Senior/Mezzanine/Junior tranches`, 'success')
@@ -305,12 +403,14 @@ export async function executePhase(
     phases: Ref<Phase[]>,
     isRunning: Ref<boolean>,
     currentStepName: Ref<string>,
-    log: LogFunction
+    log: LogFunction,
+    loanContracts?: Ref<LoanContract[]>,
+    cloContracts?: Ref<CLOContract[]>
 ) {
     log(`Starting Phase: ${phase.name}`, 'phase')
     for (const step of phase.steps) {
         if (step.status === 'pending') {
-            await executeStep(phase, step, identities, phases, isRunning, currentStepName, log)
+            await executeStep(phase, step, identities, phases, isRunning, currentStepName, log, loanContracts, cloContracts)
             await delay(100) // Small delay between steps for UI feedback
         }
     }

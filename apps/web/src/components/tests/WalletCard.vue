@@ -1,10 +1,9 @@
 <template>
   <div class="card wallet-card border-0" :class="gradientClass">
     <div class="card-body">
-      <!-- Row 1: Role Badge + Name + Balance -->
+      <!-- Row 1: Name + Balance -->
       <div class="d-flex justify-content-between align-items-center mb-1">
         <div class="d-flex align-items-center">
-          <span class="role-badge" :class="`role-${identity.role.toLowerCase()}`">{{ roleInitials }}</span>
           <span class="wallet-name">{{ identity.name }}</span>
           <div class="status-dot ml-2" :class="{ 'active': isRunning }"></div>
         </div>
@@ -22,10 +21,18 @@
 
       <!-- Row 3: Assets -->
       <div class="assets-row">
-        <div v-for="asset in wallet.assets" :key="asset.assetName" class="asset-chip" :title="asset.assetName">
+        <div
+          v-for="asset in wallet.assets"
+          :key="asset.assetName"
+          class="asset-chip"
+          :title="asset.policyId"
+          @click="togglePolicy(asset.policyId)"
+        >
           <span class="asset-icon">{{ getAssetEmoji(asset.assetName) }}</span>
           <span class="asset-name">{{ asset.assetName }}</span>
-          <span class="asset-policy">{{ formatPolicy(asset.policyId) }}</span>
+          <span class="asset-policy" :class="{ 'expanded': expandedPolicies.has(asset.policyId) }">
+            {{ expandedPolicies.has(asset.policyId) ? asset.policyId : formatPolicy(asset.policyId) }}
+          </span>
           <span class="asset-qty">×{{ asset.quantity }}</span>
         </div>
         <div v-if="wallet.assets.length === 0" class="no-assets">No assets</div>
@@ -35,7 +42,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, reactive } from 'vue'
 import type { Identity, SimulatedWallet, IdentityRole } from '@/types'
 
 const props = defineProps<{
@@ -45,6 +52,7 @@ const props = defineProps<{
 
 const wallet = computed<SimulatedWallet>(() => props.identity.wallets[0])
 const addressExpanded = ref(false)
+const expandedPolicies = reactive(new Set<string>())
 
 const formattedBalance = computed(() => {
   return (Number(wallet.value.balance) / 1_000_000).toLocaleString()
@@ -70,6 +78,18 @@ function toggleAddress() {
   }
 }
 
+function togglePolicy(policyId: string) {
+  if (expandedPolicies.has(policyId)) {
+    expandedPolicies.delete(policyId)
+  } else {
+    navigator.clipboard.writeText(policyId)
+    expandedPolicies.add(policyId)
+    setTimeout(() => {
+      expandedPolicies.delete(policyId)
+    }, 3000)
+  }
+}
+
 function formatPolicy(policyId: string): string {
   if (policyId.length < 8) return policyId
   return `${policyId.slice(0, 4)}...${policyId.slice(-4)}`
@@ -83,17 +103,6 @@ const gradientClass = computed(() => {
     case 'Analyst': return 'bg-gradient-warning-dark'
     case 'Investor': return 'bg-gradient-success-dark'
     default: return 'bg-gradient-secondary-dark'
-  }
-})
-
-const roleInitials = computed(() => {
-  const role = props.identity.role as IdentityRole
-  switch (role) {
-    case 'Originator': return 'OR'
-    case 'Borrower': return 'BO'
-    case 'Analyst': return 'CLO'
-    case 'Investor': return 'INV'
-    default: return 'ID'
   }
 })
 
@@ -144,29 +153,10 @@ function getAssetEmoji(assetName: string): string {
 .bg-gradient-success-dark { background: linear-gradient(135deg, #1a1f35 0%, #059669 100%); }
 .bg-gradient-secondary-dark { background: linear-gradient(135deg, #1a1f35 0%, #374151 100%); }
 
-/* Role Badge */
-.role-badge {
-  font-size: 0.6rem;
-  font-weight: 700;
-  padding: 0.15rem 0.4rem;
-  border-radius: 4px;
-  margin-right: 0.5rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.role-originator { background: rgba(59, 130, 246, 0.3); color: #93c5fd; }
-.role-borrower { background: rgba(6, 182, 212, 0.3); color: #67e8f9; }
-.role-analyst { background: rgba(245, 158, 11, 0.3); color: #fcd34d; }
-.role-investor { background: rgba(16, 185, 129, 0.3); color: #6ee7b7; }
-
 .wallet-name {
   font-size: 0.8rem;
   font-weight: 600;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 140px;
 }
 
 .ada-balance {
@@ -224,32 +214,55 @@ function getAssetEmoji(assetName: string): string {
   padding: 0.2rem 0.5rem;
   flex: 1;
   min-width: 0;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.asset-chip:hover {
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .asset-icon {
   font-size: 0.7rem;
+  flex-shrink: 0;
 }
 
 .asset-name {
   font-size: 0.6rem;
   font-weight: 600;
   color: #fff;
-  max-width: 60px;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .asset-policy {
   font-size: 0.5rem;
   color: rgba(255, 255, 255, 0.4);
   font-family: monospace;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 0.2s;
+}
+
+.asset-policy.expanded {
+  font-size: 0.45rem;
+  color: rgba(255, 255, 255, 0.6);
+  word-break: break-all;
+  white-space: normal;
 }
 
 .asset-qty {
-  font-size: 0.6rem;
+  font-size: 0.7rem;
   font-weight: 700;
   color: #10b981;
+  margin-left: auto;
+  flex-shrink: 0;
+  background: rgba(16, 185, 129, 0.15);
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
 }
 
 .no-assets {

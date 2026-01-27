@@ -292,7 +292,9 @@ async function handleRunTests(mode: 'demo' | 'emulator' | 'preview') {
     currentPhase,
     currentStepName,
     log,
-    stats
+    stats,
+    loanContracts,
+    cloContracts
   )
 }
 
@@ -303,7 +305,9 @@ async function handleExecutePhase(phase: Phase) {
     phases,
     isRunning,
     currentStepName,
-    log
+    log,
+    loanContracts,
+    cloContracts
   )
 }
 
@@ -315,7 +319,9 @@ async function handleExecuteStep(phase: Phase, step: any) {
     phases,
     isRunning,
     currentStepName,
-    log
+    log,
+    loanContracts,
+    cloContracts
   )
 }
 
@@ -353,8 +359,6 @@ function runAllCLOContracts() {
   // TODO: Wire to batch execution
 }
 
-// Expose loanContracts and cloContracts for test runner to populate
-defineExpose({ loanContracts, cloContracts })
 </script>
 
 <style>
