@@ -1,11 +1,11 @@
 # MintMatrix Financial Instruments - Justfile
 # Task automation for development workflow
 
-# Database configuration (override with environment variables)
+# Database configuration (connects to machdiamond_postgres container)
 DB_HOST := env_var_or_default("DB_HOST", "localhost")
 DB_PORT := env_var_or_default("DB_PORT", "5432")
 DB_NAME := env_var_or_default("DB_NAME", "fintech-test-suite")
-DB_USER := env_var_or_default("DB_USER", "postgres")
+DB_USER := env_var_or_default("DB_USER", "machdiamond")
 
 # ============ Database ============
 
