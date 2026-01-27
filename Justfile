@@ -1,6 +1,11 @@
 # MintMatrix Financial Instruments - Justfile
 # Task automation for development workflow
 
+# Start the backend API server
+api:
+    @echo "Starting backend API server on port 3005..."
+    @bun run --filter @mintmatrix/backend dev
+
 # Start the frontend dev server
 www:
     @echo "Starting frontend dev server on port 3001..."
@@ -11,10 +16,10 @@ docs:
     @echo "Starting documentation dev server..."
     @bun run --filter docs dev
 
-# Start both frontend and documentation (in parallel)
+# Start all dev servers (in parallel)
 dev:
     @echo "Starting MintMatrix development servers..."
-    @just -j 2 www docs
+    @just -j 3 api www docs
 
 # Format all code
 fmt:
