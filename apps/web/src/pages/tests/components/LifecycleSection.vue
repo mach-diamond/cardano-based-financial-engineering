@@ -50,6 +50,14 @@
               </div>
             </div>
             <div class="d-flex align-items-center gap-2">
+              <!-- Breakpoint toggle -->
+              <button v-if="index < phases.length - 1"
+                      @click.stop="toggleBreakpoint(phase.id + 1)"
+                      class="btn btn-sm"
+                      :class="breakpointPhase === phase.id + 1 ? 'btn-warning' : 'btn-outline-secondary'"
+                      :title="breakpointPhase === phase.id + 1 ? 'Remove breakpoint' : 'Set breakpoint after this phase'">
+                <i class="fas fa-pause"></i>
+              </button>
               <button v-if="phase.status !== 'passed'"
                       @click.stop="$emit('executePhase', phase)"
                       class="btn btn-sm btn-outline-primary"
@@ -115,13 +123,23 @@ const props = defineProps<{
   completedSteps: number
   totalSteps: number
   lifecycleStatus: 'passed' | 'failed' | 'running' | 'pending'
+  breakpointPhase: number | null
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   runFullTest: []
   executePhase: [phase: Phase]
   executeStep: [phase: Phase, step: any]
+  setBreakpoint: [phaseId: number | null]
 }>()
+
+function toggleBreakpoint(phaseId: number) {
+  if (props.breakpointPhase === phaseId) {
+    emit('setBreakpoint', null)
+  } else {
+    emit('setBreakpoint', phaseId)
+  }
+}
 
 const expanded = ref(false)
 

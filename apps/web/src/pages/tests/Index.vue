@@ -36,9 +36,11 @@
       :completed-steps="completedSteps"
       :total-steps="totalSteps"
       :lifecycle-status="lifecycleStatus"
+      :breakpoint-phase="breakpointPhase"
       @run-full-test="handleRunTests(networkMode)"
       @execute-phase="handleExecutePhase"
       @execute-step="handleExecuteStep"
+      @set-breakpoint="(phaseId: number | null) => breakpointPhase = phaseId"
     />
 
     <!-- Identities & Wallets -->
@@ -95,8 +97,15 @@ import {
   generateMockPaymentKeyHash,
   generateMockPrivateKey,
   fullTestCleanup,
+  getLatestTestRun,
+  createTestRun,
+  updateTestRunState,
+  completeTestRun,
+  deleteAllTestRuns,
   type WalletFromDB,
-  type TestSetupConfig
+  type TestSetupConfig,
+  type TestRunState,
+  type TestRun
 } from '@/services/api'
 
 // Components
@@ -128,6 +137,13 @@ const currentPhase = ref(1)
 const currentStepName = ref('Initializing...')
 const networkMode = ref<'emulator' | 'preview'>('emulator')
 const isGenerating = ref(false)
+
+// Test run persistence
+const currentTestRunId = ref<number | null>(null)
+
+// Breakpoint control - set to phase ID to stop before that phase
+// null = no breakpoint, 2 = stop before tokenization, 4 = stop before CLO, etc.
+const breakpointPhase = ref<number | null>(4) // Default: stop before CLO
 
 // Console output
 const consoleLines = ref<ConsoleLine[]>([])
@@ -188,6 +204,101 @@ async function loadWalletsFromDB() {
   }
 }
 
+// Load test run state from database
+async function loadTestRunFromDB() {
+  try {
+    const latestRun = await getLatestTestRun()
+    if (latestRun && latestRun.state) {
+      currentTestRunId.value = latestRun.id
+
+      // Restore phases state
+      if (latestRun.state.phases && latestRun.state.phases.length > 0) {
+        for (let i = 0; i < latestRun.state.phases.length && i < phases.value.length; i++) {
+          phases.value[i].status = latestRun.state.phases[i].status || 'pending'
+          phases.value[i].expanded = latestRun.state.phases[i].expanded ?? phases.value[i].expanded
+          if (latestRun.state.phases[i].steps) {
+            for (let j = 0; j < latestRun.state.phases[i].steps.length && j < phases.value[i].steps.length; j++) {
+              phases.value[i].steps[j].status = latestRun.state.phases[i].steps[j].status || 'pending'
+            }
+          }
+        }
+      }
+
+      // Restore identities
+      if (latestRun.state.identities && latestRun.state.identities.length > 0) {
+        identities.value = latestRun.state.identities.map((id: any) => ({
+          ...id,
+          wallets: id.wallets?.map((w: any) => ({
+            ...w,
+            balance: BigInt(w.balance || '0'),
+            assets: w.assets?.map((a: any) => ({
+              ...a,
+              quantity: BigInt(a.quantity || '0')
+            })) || []
+          })) || []
+        }))
+      }
+
+      // Restore loan contracts
+      if (latestRun.state.loanContracts && latestRun.state.loanContracts.length > 0) {
+        loanContracts.value = latestRun.state.loanContracts
+      }
+
+      // Restore CLO contracts
+      if (latestRun.state.cloContracts && latestRun.state.cloContracts.length > 0) {
+        cloContracts.value = latestRun.state.cloContracts
+      }
+
+      currentPhase.value = latestRun.state.currentPhase || 1
+      log(`Restored test state from run #${latestRun.id} (${latestRun.status})`, 'success')
+    }
+  } catch (err) {
+    console.warn('Could not load test run:', err)
+  }
+}
+
+// Save current test state to database
+async function saveTestState() {
+  if (!currentTestRunId.value) return
+
+  const state: TestRunState = {
+    phases: phases.value.map(p => ({
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      status: p.status,
+      expanded: p.expanded,
+      steps: p.steps.map((s: any) => ({
+        id: s.id,
+        name: s.name,
+        status: s.status
+      }))
+    })),
+    identities: identities.value.map(id => ({
+      ...id,
+      wallets: id.wallets.map(w => ({
+        ...w,
+        balance: w.balance.toString(),
+        assets: w.assets.map(a => ({
+          ...a,
+          quantity: a.quantity.toString()
+        }))
+      }))
+    })),
+    loanContracts: loanContracts.value,
+    cloContracts: cloContracts.value,
+    currentPhase: currentPhase.value,
+    completedSteps: completedSteps.value,
+    totalSteps: totalSteps.value
+  }
+
+  try {
+    await updateTestRunState(currentTestRunId.value, state)
+  } catch (err) {
+    console.warn('Could not save test state:', err)
+  }
+}
+
 onMounted(async () => {
   // Load test config
   try {
@@ -195,8 +306,14 @@ onMounted(async () => {
   } catch (err) {
     console.warn('Could not load test config:', err)
   }
-  // Load wallets
-  loadWalletsFromDB()
+
+  // Load latest test run state (this will also restore identities if available)
+  await loadTestRunFromDB()
+
+  // If no identities from test run, try loading wallets directly
+  if (identities.value.length === 0) {
+    await loadWalletsFromDB()
+  }
 })
 
 // Handle importing a config file
@@ -257,14 +374,14 @@ async function generateTestUsers() {
   }
 }
 
-// Loan Portfolio
+// Loan Portfolio (principals scaled to match borrower wallet funding)
 const loanPortfolio = ref([
-  { id: 1, principal: 2500, apr: 5, payments: 0, totalPayments: 24, active: false, defaulted: false, asset: 'Home', borrower: 'Office Operator LLC' },
-  { id: 2, principal: 2500, apr: 5.5, payments: 0, totalPayments: 24, active: false, defaulted: false, asset: 'RealEstate', borrower: 'Luxury Apartments LLC' },
-  { id: 3, principal: 50000, apr: 4, payments: 0, totalPayments: 60, active: false, defaulted: false, asset: 'Airplane', borrower: 'Cardano Airlines LLC' },
-  { id: 4, principal: 50000, apr: 4, payments: 0, totalPayments: 60, active: false, defaulted: false, asset: 'Airplane', borrower: 'Superfast Cargo Air' },
-  { id: 5, principal: 350, apr: 6, payments: 0, totalPayments: 12, active: false, defaulted: false, asset: 'Home', borrower: 'Alice Doe' },
-  { id: 6, principal: 8000, apr: 7, payments: 0, totalPayments: 36, active: false, defaulted: false, asset: 'Boat', borrower: 'Boat Operator LLC' },
+  { id: 1, principal: 500, apr: 5, payments: 0, totalPayments: 24, active: false, defaulted: false, asset: 'RealEstate', borrower: 'Office Operator LLC' },
+  { id: 2, principal: 500, apr: 5.5, payments: 0, totalPayments: 24, active: false, defaulted: false, asset: 'RealEstate', borrower: 'Luxury Apartments LLC' },
+  { id: 3, principal: 2000, apr: 4, payments: 0, totalPayments: 60, active: false, defaulted: false, asset: 'Airplane', borrower: 'Cardano Airlines LLC' },
+  { id: 4, principal: 2000, apr: 4, payments: 0, totalPayments: 60, active: false, defaulted: false, asset: 'Airplane', borrower: 'Superfast Cargo Air' },
+  { id: 5, principal: 500, apr: 6, payments: 0, totalPayments: 12, active: false, defaulted: false, asset: 'Diamond', borrower: 'Alice Doe' },
+  { id: 6, principal: 800, apr: 7, payments: 0, totalPayments: 36, active: false, defaulted: false, asset: 'Boat', borrower: 'Boat Operator LLC' },
 ])
 
 const totalLoanValue = computed(() =>
@@ -351,12 +468,12 @@ const phases = ref<Phase[]>([
     status: 'pending',
     expanded: true,
     steps: [
-      { id: 'L1', name: 'Loan: Alice Doe ← Diamond', status: 'pending', borrowerId: 'bor-alice', originatorId: 'orig-jewelry', asset: 'Diamond', qty: 2, principal: 15000 },
-      { id: 'L2', name: 'Loan: Cardano Airlines ← Airplane', status: 'pending', borrowerId: 'bor-cardanoair', originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 50000 },
-      { id: 'L3', name: 'Loan: Superfast Cargo ← Airplane', status: 'pending', borrowerId: 'bor-superfastcargo', originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 50000 },
-      { id: 'L4', name: 'Loan: Office Operator ← RealEstate', status: 'pending', borrowerId: 'bor-officeop', originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 2500 },
-      { id: 'L5', name: 'Loan: Luxury Apartments ← RealEstate', status: 'pending', borrowerId: 'bor-luxuryapt', originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 2500 },
-      { id: 'L6', name: 'Loan: Boat Operator ← Boat', status: 'pending', borrowerId: 'bor-boatop', originatorId: 'orig-yacht', asset: 'Boat', qty: 3, principal: 8000 },
+      { id: 'L1', name: 'Loan: Alice Doe ← Diamond', status: 'pending', borrowerId: 'bor-alice', originatorId: 'orig-jewelry', asset: 'Diamond', qty: 2, principal: 500 },
+      { id: 'L2', name: 'Loan: Cardano Airlines ← Airplane', status: 'pending', borrowerId: 'bor-cardanoair', originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 2000 },
+      { id: 'L3', name: 'Loan: Superfast Cargo ← Airplane', status: 'pending', borrowerId: 'bor-superfastcargo', originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 2000 },
+      { id: 'L4', name: 'Loan: Office Operator ← RealEstate', status: 'pending', borrowerId: 'bor-officeop', originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 500 },
+      { id: 'L5', name: 'Loan: Luxury Apartments ← RealEstate', status: 'pending', borrowerId: 'bor-luxuryapt', originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 500 },
+      { id: 'L6', name: 'Loan: Boat Operator ← Boat', status: 'pending', borrowerId: 'bor-boatop', originatorId: 'orig-yacht', asset: 'Boat', qty: 3, principal: 800 },
     ]
   },
   {
@@ -378,12 +495,12 @@ const phases = ref<Phase[]>([
     status: 'pending',
     expanded: false,
     steps: [
-      { id: 'P1', name: 'Payment: Alice Doe → Diamond Loan', status: 'pending', borrowerId: 'bor-alice', amount: 1500 },
-      { id: 'P2', name: 'Payment: Cardano Airlines → Airplane Loan', status: 'pending', borrowerId: 'bor-cardanoair', amount: 5000 },
-      { id: 'P3', name: 'Payment: Superfast Cargo → Airplane Loan', status: 'pending', borrowerId: 'bor-superfastcargo', amount: 5000 },
-      { id: 'P4', name: 'Payment: Office Operator → RealEstate Loan', status: 'pending', borrowerId: 'bor-officeop', amount: 250 },
-      { id: 'P5', name: 'Payment: Luxury Apartments → RealEstate Loan', status: 'pending', borrowerId: 'bor-luxuryapt', amount: 250 },
-      { id: 'P6', name: 'Payment: Boat Operator → Boat Loan', status: 'pending', borrowerId: 'bor-boatop', amount: 800 },
+      { id: 'P1', name: 'Payment: Alice Doe → Diamond Loan', status: 'pending', borrowerId: 'bor-alice', amount: 50 },
+      { id: 'P2', name: 'Payment: Cardano Airlines → Airplane Loan', status: 'pending', borrowerId: 'bor-cardanoair', amount: 200 },
+      { id: 'P3', name: 'Payment: Superfast Cargo → Airplane Loan', status: 'pending', borrowerId: 'bor-superfastcargo', amount: 200 },
+      { id: 'P4', name: 'Payment: Office Operator → RealEstate Loan', status: 'pending', borrowerId: 'bor-officeop', amount: 25 },
+      { id: 'P5', name: 'Payment: Luxury Apartments → RealEstate Loan', status: 'pending', borrowerId: 'bor-luxuryapt', amount: 25 },
+      { id: 'P6', name: 'Payment: Boat Operator → Boat Loan', status: 'pending', borrowerId: 'bor-boatop', amount: 30 },
     ]
   }
 ])
@@ -426,6 +543,29 @@ function log(text: string, type: ConsoleLine['type'] = 'info') {
 }
 
 async function handleRunTests(mode: 'emulator' | 'preview' = networkMode.value) {
+  // Create a new test run in DB
+  try {
+    const initialState: TestRunState = {
+      phases: [],
+      identities: [],
+      loanContracts: [],
+      cloContracts: [],
+      currentPhase: 1,
+      completedSteps: 0,
+      totalSteps: totalSteps.value
+    }
+    const testRun = await createTestRun({
+      name: `Test Run ${new Date().toLocaleString()}`,
+      description: `${mode} mode test`,
+      networkMode: mode,
+      state: initialState
+    })
+    currentTestRunId.value = testRun.id
+    log(`Created test run #${testRun.id}`, 'info')
+  } catch (err) {
+    console.warn('Could not create test run:', err)
+  }
+
   await runner.runTests(
     mode,
     identities,
@@ -436,11 +576,36 @@ async function handleRunTests(mode: 'emulator' | 'preview' = networkMode.value) 
     log,
     stats,
     loanContracts,
-    cloContracts
+    cloContracts,
+    breakpointPhase,
+    saveTestState // Called after each phase
   )
+
+  // Save final state
+  await saveTestState()
+
+  // Mark test run as complete
+  if (currentTestRunId.value) {
+    const status = lifecycleStatus.value === 'failed' ? 'failed' : 'passed'
+    await completeTestRun(currentTestRunId.value, status)
+  }
 }
 
 async function handleExecutePhase(phase: Phase) {
+  // Create a test run if one doesn't exist
+  if (!currentTestRunId.value) {
+    try {
+      const testRun = await createTestRun({
+        name: `Manual Phase: ${phase.name}`,
+        networkMode: networkMode.value,
+        state: { phases: [], identities: [], loanContracts: [], cloContracts: [], currentPhase: phase.id, completedSteps: 0, totalSteps: totalSteps.value }
+      })
+      currentTestRunId.value = testRun.id
+    } catch (err) {
+      console.warn('Could not create test run:', err)
+    }
+  }
+
   await runner.executePhase(
     phase,
     identities,
@@ -451,9 +616,26 @@ async function handleExecutePhase(phase: Phase) {
     loanContracts,
     cloContracts
   )
+
+  // Save state after phase execution
+  await saveTestState()
 }
 
 async function handleExecuteStep(phase: Phase, step: any) {
+  // Create a test run if one doesn't exist
+  if (!currentTestRunId.value) {
+    try {
+      const testRun = await createTestRun({
+        name: `Manual Step: ${step.name}`,
+        networkMode: networkMode.value,
+        state: { phases: [], identities: [], loanContracts: [], cloContracts: [], currentPhase: phase.id, completedSteps: 0, totalSteps: totalSteps.value }
+      })
+      currentTestRunId.value = testRun.id
+    } catch (err) {
+      console.warn('Could not create test run:', err)
+    }
+  }
+
   await runner.executeStep(
     phase,
     step,
@@ -465,6 +647,9 @@ async function handleExecuteStep(phase: Phase, step: any) {
     loanContracts,
     cloContracts
   )
+
+  // Save state after step execution
+  await saveTestState()
 }
 
 function clearConsole() {
@@ -480,6 +665,11 @@ async function handleCleanup() {
     // Reset backend state
     await fullTestCleanup()
     log('Backend state cleared (emulator, contracts, wallets)', 'success')
+
+    // Delete all test runs
+    await deleteAllTestRuns()
+    currentTestRunId.value = null
+    log('Test runs cleared', 'success')
 
     // Reset UI state
     identities.value = []

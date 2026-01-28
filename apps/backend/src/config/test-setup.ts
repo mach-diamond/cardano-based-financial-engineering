@@ -33,30 +33,36 @@ export interface TestSetupConfig {
  */
 export const testConfig: TestSetupConfig = {
     // Initial wallets to create (matches Test Suite UI identities)
+    // Funding should be ~2x expected loan principal to cover payments + fees
     wallets: [
-        // Originators - own assets and create loans
-        { name: 'MachDiamond Jewelry', role: 'Originator', initialAda: 10000 },
-        { name: 'Airplane Manufacturing LLC', role: 'Originator', initialAda: 10000 },
-        { name: 'Bob Smith', role: 'Originator', initialAda: 10000 },
-        { name: 'Premier Asset Holdings', role: 'Originator', initialAda: 10000 },
-        { name: 'Yacht Makers Corp', role: 'Originator', initialAda: 10000 },
+        // Originators - own assets and create loans (need tx fees only)
+        { name: 'MachDiamond Jewelry', role: 'Originator', initialAda: 1000 },
+        { name: 'Airplane Manufacturing LLC', role: 'Originator', initialAda: 1000 },
+        { name: 'Bob Smith', role: 'Originator', initialAda: 1000 },
+        { name: 'Premier Asset Holdings', role: 'Originator', initialAda: 1000 },
+        { name: 'Yacht Makers Corp', role: 'Originator', initialAda: 1000 },
 
-        // Borrowers - take out loans using tokenized assets as collateral
+        // Borrowers - take out loans, need enough to cover principal + payments
+        // Loan principals scaled down to be realistic:
+        // - Diamond loan: 500 ADA principal → Alice needs ~1000 ADA
+        // - Airplane loans: 2000 ADA each → Airlines need ~4000 ADA each
+        // - RealEstate loans: 500 ADA each → Operators need ~1000 ADA each
+        // - Boat loan: 800 ADA → Boat Operator needs ~1600 ADA
         { name: 'Cardano Airlines LLC', role: 'Borrower', initialAda: 5000 },
         { name: 'Superfast Cargo Air', role: 'Borrower', initialAda: 5000 },
-        { name: 'Alice Doe', role: 'Borrower', initialAda: 1000 },
-        { name: 'Office Operator LLC', role: 'Borrower', initialAda: 2000 },
-        { name: 'Luxury Apartments LLC', role: 'Borrower', initialAda: 2000 },
-        { name: 'Boat Operator LLC', role: 'Borrower', initialAda: 3000 },
+        { name: 'Alice Doe', role: 'Borrower', initialAda: 1500 },
+        { name: 'Office Operator LLC', role: 'Borrower', initialAda: 1500 },
+        { name: 'Luxury Apartments LLC', role: 'Borrower', initialAda: 1500 },
+        { name: 'Boat Operator LLC', role: 'Borrower', initialAda: 2000 },
 
-        // Analyst - structures CLO deals
-        { name: 'Cardano Investment Bank', role: 'Analyst', initialAda: 5000 },
+        // Analyst - structures CLO deals (needs tx fees)
+        { name: 'Cardano Investment Bank', role: 'Analyst', initialAda: 2000 },
 
-        // Investors - buy CLO tranche tokens
-        { name: 'Senior Tranche Investor', role: 'Investor', initialAda: 50000 },
-        { name: 'Mezzanine Tranche Investor', role: 'Investor', initialAda: 25000 },
-        { name: 'Junior Tranche Investor', role: 'Investor', initialAda: 10000 },
-        { name: 'Hedge Fund Alpha', role: 'Investor', initialAda: 100000 },
+        // Investors - buy CLO tranche tokens (need to cover tranche purchases)
+        { name: 'Senior Tranche Investor', role: 'Investor', initialAda: 10000 },
+        { name: 'Mezzanine Tranche Investor', role: 'Investor', initialAda: 5000 },
+        { name: 'Junior Tranche Investor', role: 'Investor', initialAda: 3000 },
+        { name: 'Hedge Fund Alpha', role: 'Investor', initialAda: 15000 },
     ],
 
     // NFTs to mint as collateral (minted to Originators, used in loans)

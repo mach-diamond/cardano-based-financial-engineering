@@ -84,7 +84,9 @@ export async function runTests(
     log: LogFunction,
     stats: Ref<{ passed: number, failed: number }>,
     loanContracts?: Ref<LoanContract[]>,
-    cloContracts?: Ref<CLOContract[]>
+    cloContracts?: Ref<CLOContract[]>,
+    breakpointPhase?: Ref<number | null>,
+    onPhaseComplete?: () => Promise<void>
 ) {
     isRunning.value = true
     currentPhase.value = 1
@@ -276,6 +278,15 @@ export async function runTests(
         log(`  ✓ Funded all wallets with testnet ADA`, 'success')
     }, currentPhase, phases, log)
 
+    // Check for phase 1 breakpoint
+    if (onPhaseComplete) await onPhaseComplete()
+    if (breakpointPhase?.value === 2) {
+        log('⏸ Breakpoint reached after Phase 1 (Setup & Identities)', 'phase')
+        isRunning.value = false
+        currentStepName.value = 'Paused at breakpoint'
+        return
+    }
+
     // Phase 2: Tokenization (per Originator)
     await simulatePhase(1, 'Asset Tokenization', async () => {
         const mintConfig = [
@@ -301,15 +312,25 @@ export async function runTests(
         }
     }, currentPhase, phases, log)
 
+    // Check for phase 2 breakpoint
+    if (onPhaseComplete) await onPhaseComplete()
+    if (breakpointPhase?.value === 3) {
+        log('⏸ Breakpoint reached after Phase 2 (Asset Tokenization)', 'phase')
+        isRunning.value = false
+        currentStepName.value = 'Paused at breakpoint'
+        return
+    }
+
     // Phase 3: Create Loans
     await simulatePhase(2, 'Initialize Loan Contracts', async () => {
+        // Loan principals scaled to match borrower wallet funding
         const loanDefs = [
-            { borrowerId: 'bor-alice', originatorId: 'orig-jewelry', asset: 'Diamond', qty: 2, principal: 15000, apr: 6, termLength: '12 months' },
-            { borrowerId: 'bor-cardanoair', originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 50000, apr: 4, termLength: '60 months' },
-            { borrowerId: 'bor-superfastcargo', originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 50000, apr: 4, termLength: '60 months' },
-            { borrowerId: 'bor-officeop', originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 2500, apr: 5, termLength: '24 months' },
-            { borrowerId: 'bor-luxuryapt', originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 2500, apr: 5.5, termLength: '24 months' },
-            { borrowerId: 'bor-boatop', originatorId: 'orig-yacht', asset: 'Boat', qty: 3, principal: 8000, apr: 7, termLength: '36 months' },
+            { borrowerId: 'bor-alice', originatorId: 'orig-jewelry', asset: 'Diamond', qty: 2, principal: 500, apr: 6, termLength: '12 months' },
+            { borrowerId: 'bor-cardanoair', originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 2000, apr: 4, termLength: '60 months' },
+            { borrowerId: 'bor-superfastcargo', originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 2000, apr: 4, termLength: '60 months' },
+            { borrowerId: 'bor-officeop', originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 500, apr: 5, termLength: '24 months' },
+            { borrowerId: 'bor-luxuryapt', originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 500, apr: 5.5, termLength: '24 months' },
+            { borrowerId: 'bor-boatop', originatorId: 'orig-yacht', asset: 'Boat', qty: 3, principal: 800, apr: 7, termLength: '36 months' },
         ]
         for (const loan of loanDefs) {
             const borrower = identities.value.find(i => i.id === loan.borrowerId)!
@@ -350,6 +371,15 @@ export async function runTests(
         }
     }, currentPhase, phases, log)
 
+    // Check for phase 3 breakpoint
+    if (onPhaseComplete) await onPhaseComplete()
+    if (breakpointPhase?.value === 4) {
+        log('⏸ Breakpoint reached after Phase 3 (Initialize Loan Contracts)', 'phase')
+        isRunning.value = false
+        currentStepName.value = 'Paused at breakpoint'
+        return
+    }
+
     // Phase 4: CLO
     await simulatePhase(3, 'Collateral Bundle & CLO', async () => {
         const analystWallet = identities.value.find(i => i.role === 'Analyst')!.wallets[0]
@@ -389,6 +419,18 @@ export async function runTests(
         log(`  Senior, Mezzanine, Junior tokens distributed`, 'success')
         phases.value[3].steps[2].status = 'passed'
     }, currentPhase, phases, log)
+
+    // Check for phase 4 breakpoint (before payments)
+    if (onPhaseComplete) await onPhaseComplete()
+    if (breakpointPhase?.value === 5) {
+        log('⏸ Breakpoint reached after Phase 4 (CLO Bundle & Distribution)', 'phase')
+        isRunning.value = false
+        currentStepName.value = 'Paused at breakpoint'
+        return
+    }
+
+    // Save final state
+    if (onPhaseComplete) await onPhaseComplete()
 
     log('═'.repeat(50))
     log(`TEST COMPLETE (${mode.toUpperCase()} MODE)`, 'phase')
@@ -554,6 +596,52 @@ export async function executeStep(
                 })
                 log(`  ✓ Tranche tokens distributed`, 'success')
             }
+        }
+
+        // Phase 5: Make payments
+        if (phase.id === 5 && 'borrowerId' in step && 'amount' in step) {
+            const s = step as { borrowerId: string; amount: number }
+            const borrower = identities.value.find(i => i.id === s.borrowerId)
+
+            if (!borrower) {
+                throw new Error(`Borrower ${s.borrowerId} not found`)
+            }
+
+            // Validate that a loan contract exists for this borrower
+            if (!loanContracts || loanContracts.value.length === 0) {
+                throw new Error('No loan contracts exist. Run Phase 3 (Initialize Loan Contracts) first.')
+            }
+
+            const borrowerLoan = loanContracts.value.find(
+                l => l.borrower === borrower.name
+            )
+
+            if (!borrowerLoan) {
+                throw new Error(`No loan contract found for ${borrower.name}. Initialize the loan first.`)
+            }
+
+            log(`  ${borrower.name}: Making payment of ${s.amount} ADA...`, 'info')
+            await delay(400)
+
+            // Simulate payment - reduce borrower balance
+            if (borrower.wallets[0]) {
+                const paymentLovelace = BigInt(s.amount * 1_000_000)
+                if (borrower.wallets[0].balance < paymentLovelace) {
+                    throw new Error(`Insufficient balance: ${borrower.name} has ${Number(borrower.wallets[0].balance) / 1_000_000} ADA but needs ${s.amount} ADA`)
+                }
+                borrower.wallets[0].balance -= paymentLovelace
+            }
+
+            // Update loan state
+            if (borrowerLoan.state) {
+                borrowerLoan.state.balance -= s.amount * 1_000_000
+                if (borrowerLoan.state.balance <= 0) {
+                    borrowerLoan.state.isPaidOff = true
+                    borrowerLoan.state.isActive = false
+                }
+            }
+
+            log(`  ✓ Payment of ${s.amount} ADA processed for ${borrower.name}`, 'success')
         }
 
         step.status = 'passed'
