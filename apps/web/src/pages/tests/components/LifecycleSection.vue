@@ -81,27 +81,37 @@
 
           <!-- Phase Steps (collapsible) -->
           <div v-show="phase.expanded" class="phase-steps">
-            <div v-for="step in phase.steps" :key="step.id" class="phase-step-item">
+            <div v-for="step in phase.steps" :key="step.id"
+                 class="phase-step-item"
+                 :class="{ 'step-disabled': step.disabled || step.status === 'disabled' }">
               <div class="d-flex align-items-center">
                 <div class="step-status-icon">
-                  <i v-if="step.status === 'passed'" class="fas fa-check-circle text-success"></i>
+                  <i v-if="step.disabled || step.status === 'disabled'" class="fas fa-ban text-secondary" :title="step.disabledReason || 'Disabled'"></i>
+                  <i v-else-if="step.status === 'passed'" class="fas fa-check-circle text-success"></i>
                   <i v-else-if="step.status === 'running'" class="fas fa-spinner fa-spin text-warning"></i>
                   <i v-else-if="step.status === 'failed'" class="fas fa-times-circle text-danger"></i>
                   <i v-else class="far fa-circle text-muted"></i>
                 </div>
-                <span class="step-action-bubble" :class="'action-' + getStepActionClass(phase.id, step)">{{ getStepAction(phase.id, step) }}</span>
-                <span class="step-entity-text">{{ getStepEntity(step) }}</span>
+                <span class="step-action-bubble" :class="[
+                  'action-' + getStepActionClass(phase.id, step),
+                  { 'action-disabled': step.disabled || step.status === 'disabled' }
+                ]">{{ getStepAction(phase.id, step) }}</span>
+                <span class="step-entity-text" :class="{ 'text-muted': step.disabled || step.status === 'disabled' }">
+                  {{ getStepEntity(step) }}
+                  <span v-if="step.disabledReason" class="step-disabled-reason">({{ step.disabledReason }})</span>
+                </span>
                 <span v-if="step.txHash" class="step-tx-hash" :title="step.txHash">
                   <i class="fas fa-link"></i> {{ step.txHash.slice(0, 8) }}...
                 </span>
               </div>
               <div class="step-actions">
-                <button v-if="step.status === 'pending'"
+                <button v-if="step.status === 'pending' && !step.disabled"
                         @click="$emit('executeStep', phase, step)"
                         class="btn-execute"
                         :disabled="isRunning">
                   <i class="fas fa-play"></i>
                 </button>
+                <span v-else-if="step.disabled" class="badge badge-secondary">Disabled</span>
               </div>
             </div>
           </div>
@@ -113,8 +123,8 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { getStepAction, getStepActionClass, getStepEntity as getStepEntityUtil } from '../testRunner'
-import type { Phase, Identity } from '../testRunner'
+import { getStepAction, getStepActionClass, getStepEntity as getStepEntityUtil } from '@/utils/pipeline'
+import type { Phase, Identity } from '@/utils/pipeline/types'
 
 const props = defineProps<{
   phases: Phase[]

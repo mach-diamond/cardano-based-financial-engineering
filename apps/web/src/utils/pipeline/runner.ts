@@ -429,6 +429,12 @@ export async function executePhase(phase: Phase, options: PipelineOptions): Prom
   log(`Starting Phase: ${phase.name}`, 'phase')
 
   for (const step of phase.steps) {
+    // Skip disabled steps
+    if (step.disabled || step.status === 'disabled') {
+      log(`  Skipping disabled step: ${step.name}`, 'info')
+      continue
+    }
+
     if (step.status === 'pending') {
       const result = await executeStep(phase, step, options)
       if (!result.success) {
@@ -449,13 +455,15 @@ export function getStepAction(phaseId: number, step?: any): string {
   if (phaseId === 1 && step?.action) {
     if (step.action === 'create-wallets') return 'Create'
     if (step.action === 'fund-wallets') return 'Fund'
+    if (step.action === 'mint-credentials') return 'Mint'
   }
   switch (phaseId) {
     case 1: return 'Setup'
     case 2: return 'Mint'
-    case 3: return 'Create Loan'
-    case 4: return 'Execute CLO'
-    case 5: return 'Payment'
+    case 3: return 'Create'
+    case 4: return 'Accept'
+    case 5: return 'CLO'
+    case 6: return 'Pay'
     default: return 'Run'
   }
 }
@@ -467,13 +475,15 @@ export function getStepActionClass(phaseId: number, step?: any): string {
   if (phaseId === 1 && step?.action) {
     if (step.action === 'create-wallets') return 'create'
     if (step.action === 'fund-wallets') return 'fund'
+    if (step.action === 'mint-credentials') return 'mint'
   }
   switch (phaseId) {
     case 1: return 'fund'
     case 2: return 'mint'
     case 3: return 'loan'
-    case 4: return 'clo'
-    case 5: return 'payment'
+    case 4: return 'accept'
+    case 5: return 'clo'
+    case 6: return 'payment'
     default: return 'default'
   }
 }

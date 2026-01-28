@@ -47,6 +47,16 @@ const router = createRouter({
       component: () => import('@/pages/tests/Index.vue'),
     },
     {
+      path: '/tests/config',
+      name: 'test-config',
+      component: () => import('@/pages/tests/Config.vue'),
+    },
+    {
+      path: '/tests/config/:id',
+      name: 'test-config-edit',
+      component: () => import('@/pages/tests/Config.vue'),
+    },
+    {
       path: '/tests/loan/:id',
       name: 'test-loan-view',
       component: () => import('@/pages/loan/View.vue'),

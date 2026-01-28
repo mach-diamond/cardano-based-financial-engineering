@@ -95,7 +95,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import WalletCard from '@/components/tests/WalletCard.vue'
-import type { Identity } from '../testRunner'
+import type { Identity } from '@/utils/pipeline/types'
 
 const props = defineProps<{
   identities: Identity[]

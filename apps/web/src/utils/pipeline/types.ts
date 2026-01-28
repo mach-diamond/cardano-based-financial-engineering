@@ -36,19 +36,24 @@ export interface Phase {
   steps: Step[]
 }
 
-export type PhaseStatus = 'pending' | 'running' | 'passed' | 'failed' | 'skipped'
+export type PhaseStatus = 'pending' | 'running' | 'passed' | 'failed' | 'skipped' | 'disabled'
 
 export interface Step {
   id: string
   name: string
   status: PhaseStatus
   action?: string
+  disabled?: boolean // If true, step is skipped during execution
+  disabledReason?: string // Optional reason for why step is disabled
   [key: string]: any // Allow additional step-specific properties
 }
 
 export interface LogFunction {
   (text: string, type?: 'info' | 'success' | 'error' | 'phase' | 'warning'): void
 }
+
+// Type alias for log types
+export type LogType = 'info' | 'success' | 'error' | 'phase' | 'warning'
 
 export interface LoanContract {
   id: string
@@ -62,14 +67,24 @@ export interface LoanContract {
   principal: number // in lovelace
   apr: number
   termLength: string
+  installments?: number
   status: PhaseStatus
   borrower: string | null // null = open to market
   originator: string
+  contractAddress?: string
+  policyId?: string
   state?: {
     balance: number
     isActive: boolean
     isPaidOff: boolean
+    isDefaulted?: boolean
     startTime?: number
+    paymentCount?: number
+    lastPayment?: {
+      amount: number
+      timestamp: number
+      installmentNumber: number
+    }
   }
 }
 

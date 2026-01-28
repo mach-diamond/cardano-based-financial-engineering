@@ -566,6 +566,28 @@
     color: #adb5bd;
 }
 
+.action-disabled {
+    opacity: 0.5;
+    background: rgba(108, 117, 125, 0.15) !important;
+    color: #6c757d !important;
+}
+
+.step-disabled {
+    opacity: 0.6;
+}
+
+.step-disabled .step-entity-text {
+    color: #6c757d !important;
+    text-decoration: line-through;
+}
+
+.step-disabled-reason {
+    font-size: 0.75rem;
+    color: #6c757d;
+    font-style: italic;
+    margin-left: 0.5rem;
+}
+
 .step-entity-text {
     color: #fff;
     font-weight: 500;

@@ -22,12 +22,16 @@
       @load-test-run="loadTestRunById"
     />
 
-    <!-- Config Viewer (collapsible) -->
+    <!-- Config Viewer (with built-in config selector) -->
     <ConfigViewer
       :config="testConfig"
       :phases="phases"
       :identities="identities"
+      :saved-configs="savedConfigs"
+      :selected-config-id="selectedConfigId"
+      :loan-count="pipelineConfig.loans.length"
       @import-config="handleImportConfig"
+      @config-change="handleConfigChange"
     />
 
     <!-- Stats Cards -->
@@ -121,13 +125,22 @@ import Contracts_CLOs from './components/Contracts_CLOs.vue'
 import Contracts_Loans from './components/Contracts_Loans.vue'
 import ConsoleOutput from './components/ConsoleOutput.vue'
 import ConfigViewer from './components/ConfigViewer.vue'
+
+// Test Config
+import { getDefaultConfig, type PipelineConfig } from '@/config/testConfig'
+import { NAME_TO_ID_MAP } from '@/utils/pipeline/types'
 import type { ConsoleLine } from './components/ConsoleOutput.vue'
 import type { LoanContract } from './components/Contracts_Loans.vue'
 import type { CLOContract } from './components/Contracts_CLOs.vue'
 
-// Test Runner Utility
-import * as runner from './testRunner'
-import type { Phase, Identity } from './testRunner'
+// Pipeline Module
+import {
+  runPipeline,
+  executePhase as pipelineExecutePhase,
+  executeStep as pipelineExecuteStep,
+  type PipelineOptions
+} from '@/utils/pipeline'
+import type { Phase, Identity } from '@/utils/pipeline/types'
 
 const router = useRouter()
 
@@ -138,6 +151,11 @@ const currentPhase = ref(1)
 const currentStepName = ref('Initializing...')
 const networkMode = ref<'emulator' | 'preview'>('emulator')
 const isGenerating = ref(false)
+
+// Config state
+const selectedConfigId = ref('default')
+const savedConfigs = ref<{ id: string; name: string }[]>([])
+const pipelineConfig = ref<PipelineConfig>(getDefaultConfig())
 
 // Test run persistence
 const currentTestRunId = ref<number | null>(null)
@@ -185,30 +203,10 @@ const identities = ref<Identity[]>([])
 // Test configuration from backend
 const testConfig = ref<TestSetupConfig | null>(null)
 
-// Map wallet name to identity ID (for consistent IDs between UI and DB)
-const nameToIdMap: Record<string, string> = {
-  'MachDiamond Jewelry': 'orig-jewelry',
-  'Airplane Manufacturing LLC': 'orig-airplane',
-  'Bob Smith': 'orig-home',
-  'Premier Asset Holdings': 'orig-realestate',
-  'Yacht Makers Corp': 'orig-yacht',
-  'Cardano Airlines LLC': 'bor-cardanoair',
-  'Superfast Cargo Air': 'bor-superfastcargo',
-  'Alice Doe': 'bor-alice',
-  'Office Operator LLC': 'bor-officeop',
-  'Luxury Apartments LLC': 'bor-luxuryapt',
-  'Boat Operator LLC': 'bor-boatop',
-  'Cardano Investment Bank': 'analyst',
-  'Senior Tranche Investor': 'inv-1',
-  'Mezzanine Tranche Investor': 'inv-2',
-  'Junior Tranche Investor': 'inv-3',
-  'Hedge Fund Alpha': 'inv-4',
-}
-
 // Convert DB wallet to Identity format
 function walletToIdentity(wallet: WalletFromDB): Identity {
   return {
-    id: nameToIdMap[wallet.name] || `wallet-${wallet.id}`,
+    id: NAME_TO_ID_MAP[wallet.name] || `wallet-${wallet.name.toLowerCase().replace(/\s+/g, '-')}`,
     name: wallet.name,
     role: wallet.role,
     address: wallet.address,
@@ -527,7 +525,26 @@ async function saveTestState() {
 }
 
 onMounted(async () => {
-  // Load test config
+  // Load saved configs from localStorage
+  const storedConfigs = JSON.parse(localStorage.getItem('mintmatrix-test-configs') || '[]')
+  savedConfigs.value = storedConfigs.map((cfg: any) => ({ id: cfg.id, name: cfg.name }))
+
+  // Check for active config from config page
+  const activeConfig = sessionStorage.getItem('mintmatrix-active-config')
+  if (activeConfig) {
+    try {
+      pipelineConfig.value = JSON.parse(activeConfig)
+      log('Loaded configuration from Config page', 'success')
+      sessionStorage.removeItem('mintmatrix-active-config') // Clear after loading
+    } catch (e) {
+      console.warn('Failed to load active config:', e)
+    }
+  }
+
+  // Always update phases from current config (ensures step count matches config)
+  updatePhasesFromConfig(pipelineConfig.value)
+
+  // Load test config from backend
   try {
     testConfig.value = await getTestConfig()
   } catch (err) {
@@ -552,6 +569,147 @@ function handleImportConfig(config: any) {
     identities.value = config.identities
   }
   log('Imported configuration from file', 'success')
+}
+
+// Load selected config from dropdown
+function loadSelectedConfig() {
+  if (selectedConfigId.value === 'default') {
+    pipelineConfig.value = getDefaultConfig()
+    updatePhasesFromConfig(pipelineConfig.value)
+    log('Loaded default configuration', 'success')
+    return
+  }
+
+  // Load from localStorage
+  const storedConfigs = JSON.parse(localStorage.getItem('mintmatrix-test-configs') || '[]')
+  const found = storedConfigs.find((cfg: any) => cfg.id === selectedConfigId.value)
+  if (found && found.config) {
+    pipelineConfig.value = found.config
+    updatePhasesFromConfig(pipelineConfig.value)
+    log(`Loaded configuration: ${found.name}`, 'success')
+  }
+}
+
+// Handle config change from ConfigViewer dropdown
+function handleConfigChange(configId: string) {
+  selectedConfigId.value = configId
+  loadSelectedConfig()
+}
+
+// Generate consistent wallet ID (matches walletToIdentity logic)
+function getWalletId(name: string): string {
+  return NAME_TO_ID_MAP[name] || `wallet-${name.toLowerCase().replace(/\s+/g, '-')}`
+}
+
+// Update phases/steps based on pipeline config
+function updatePhasesFromConfig(config: PipelineConfig) {
+  // Update Phase 1: Setup & Identities
+  const phase1 = phases.value.find(p => p.id === 1)
+  if (phase1) {
+    const walletList = config.wallets.map(w => ({ role: w.role, name: w.name }))
+    phase1.steps = [
+      { id: 'S1', name: 'Create Wallets', status: 'pending', action: 'create-wallets', wallets: walletList },
+      { id: 'S2', name: 'Fund All Wallets', status: 'pending', action: 'fund-wallets', wallets: walletList },
+      {
+        id: 'S3',
+        name: 'Mint Credentials',
+        status: 'disabled' as const,
+        action: 'mint-credentials',
+        disabled: true,
+        disabledReason: 'Coming soon',
+        wallets: walletList
+      },
+    ]
+  }
+
+  // Update Phase 2: Asset Tokenization
+  const phase2 = phases.value.find(p => p.id === 2)
+  if (phase2) {
+    const originators = config.wallets.filter(w => w.role === 'Originator')
+    phase2.steps = originators
+      .filter(o => o.assets && o.assets.length > 0)
+      .flatMap((o, idx) => o.assets!.map((asset, aidx) => ({
+        id: `A${idx * 10 + aidx + 1}`,
+        name: `Mint ${asset.name} tokens (${o.name})`,
+        status: 'pending' as const,
+        originatorId: getWalletId(o.name),
+        asset: asset.name,
+        qty: BigInt(asset.quantity)
+      })))
+  }
+
+  // Update Phase 3: Initialize Loan Contracts
+  const phase3 = phases.value.find(p => p.id === 3)
+  if (phase3) {
+    phase3.steps = config.loans.map((loan, idx) => {
+      const isReserved = loan.reservedBuyer !== false
+      const borrower = config.wallets.find(w => getWalletId(w.name) === loan.borrowerId)
+      return {
+        id: `L${idx + 1}`,
+        name: isReserved
+          ? `Create: ${borrower?.name || 'Unknown'} ← ${loan.asset} (Reserved)`
+          : `Create: Open Market ${loan.asset} Loan`,
+        status: 'pending' as const,
+        action: 'create-loan',
+        contractRef: `LOAN-${loan.asset}-${isReserved ? loan.borrowerId : 'Open'}`,
+        borrowerId: isReserved ? loan.borrowerId : null,
+        originatorId: loan.originatorId,
+        asset: loan.asset,
+        qty: loan.quantity,
+        principal: loan.principal,
+        reservedBuyer: isReserved
+      }
+    })
+  }
+
+  // Update Phase 4: Accept Loan Contracts
+  const phase4 = phases.value.find(p => p.id === 4)
+  if (phase4) {
+    phase4.steps = config.loans.map((loan, idx) => {
+      const isReserved = loan.reservedBuyer !== false
+      const borrower = config.wallets.find(w => getWalletId(w.name) === loan.borrowerId)
+      return {
+        id: `AC${idx + 1}`,
+        name: `Accept: ${borrower?.name || 'Available Buyer'} → ${loan.asset} Loan`,
+        status: 'pending' as const,
+        action: 'accept-loan',
+        contractRef: `LOAN-${loan.asset}-${isReserved ? loan.borrowerId : 'Open'}`,
+        signerId: loan.borrowerId || getWalletId(borrower?.name || `borrower-${idx}`),
+        signerRole: 'Borrower' as const
+      }
+    })
+  }
+
+  // Update Phase 5: CLO Bundle & Distribution
+  const phase5 = phases.value.find(p => p.id === 5)
+  if (phase5 && config.clo) {
+    phase5.steps = [
+      { id: 'C1', name: 'Bundle Collateral Tokens', status: 'pending' as const, action: 'bundle-collateral', signerId: 'analyst', signerRole: 'Analyst' as const },
+      { id: 'C2', name: `Deploy CLO: ${config.clo.name} (${config.clo.tranches.length} Tranches)`, status: 'pending' as const, action: 'deploy-clo', signerId: 'analyst', signerRole: 'Analyst' as const },
+      { id: 'C3', name: 'Distribute Tranche Tokens', status: 'pending' as const, action: 'distribute-tranches', signerId: 'analyst', signerRole: 'Analyst' as const },
+    ]
+  }
+
+  // Update Phase 6: Make Loan Payments
+  const phase6 = phases.value.find(p => p.id === 6)
+  if (phase6) {
+    phase6.steps = config.loans.map((loan, idx) => {
+      const borrower = config.wallets.find(w => getWalletId(w.name) === loan.borrowerId)
+      const isReserved = loan.reservedBuyer !== false
+      return {
+        id: `P${idx + 1}`,
+        name: `Pay: ${borrower?.name || 'Borrower'} → ${loan.asset} Loan`,
+        status: 'pending' as const,
+        action: 'make-payment',
+        contractRef: `LOAN-${loan.asset}-${isReserved ? loan.borrowerId : 'Open'}`,
+        signerId: loan.borrowerId || getWalletId(borrower?.name || `borrower-${idx}`),
+        signerRole: 'Borrower' as const,
+        amount: Math.round(loan.principal / 12) // Approximate monthly payment
+      }
+    })
+  }
+
+  log('Pipeline phases updated from configuration', 'info')
 }
 
 // Generate test wallets and save to DB
@@ -616,6 +774,7 @@ const totalLoanValue = computed(() =>
 )
 
 // Extended Phases with individual executable steps
+// Steps are populated by updatePhasesFromConfig based on loaded configuration
 const phases = ref<Phase[]>([
   {
     id: 1,
@@ -623,56 +782,7 @@ const phases = ref<Phase[]>([
     description: 'Create and fund wallets for all participants',
     status: 'pending',
     expanded: true,
-    steps: [
-      {
-        id: 'S1',
-        name: 'Create Wallets',
-        status: 'pending',
-        action: 'create-wallets',
-        wallets: [
-          { role: 'Originator', name: 'MachDiamond Jewelry' },
-          { role: 'Originator', name: 'Airplane Manufacturing LLC' },
-          { role: 'Originator', name: 'Bob Smith' },
-          { role: 'Originator', name: 'Premier Asset Holdings' },
-          { role: 'Originator', name: 'Yacht Makers Corp' },
-          { role: 'Borrower', name: 'Cardano Airlines LLC' },
-          { role: 'Borrower', name: 'Superfast Cargo Air' },
-          { role: 'Borrower', name: 'Alice Doe' },
-          { role: 'Borrower', name: 'Office Operator LLC' },
-          { role: 'Borrower', name: 'Luxury Apartments LLC' },
-          { role: 'Borrower', name: 'Boat Operator LLC' },
-          { role: 'Analyst', name: 'Cardano Investment Bank' },
-          { role: 'Investor', name: 'Senior Tranche Investor' },
-          { role: 'Investor', name: 'Mezzanine Tranche Investor' },
-          { role: 'Investor', name: 'Junior Tranche Investor' },
-          { role: 'Investor', name: 'Hedge Fund Alpha' },
-        ]
-      },
-      {
-        id: 'S2',
-        name: 'Fund All Wallets',
-        status: 'pending',
-        action: 'fund-wallets',
-        wallets: [
-          { role: 'Originator', name: 'MachDiamond Jewelry' },
-          { role: 'Originator', name: 'Airplane Manufacturing LLC' },
-          { role: 'Originator', name: 'Bob Smith' },
-          { role: 'Originator', name: 'Premier Asset Holdings' },
-          { role: 'Originator', name: 'Yacht Makers Corp' },
-          { role: 'Borrower', name: 'Cardano Airlines LLC' },
-          { role: 'Borrower', name: 'Superfast Cargo Air' },
-          { role: 'Borrower', name: 'Alice Doe' },
-          { role: 'Borrower', name: 'Office Operator LLC' },
-          { role: 'Borrower', name: 'Luxury Apartments LLC' },
-          { role: 'Borrower', name: 'Boat Operator LLC' },
-          { role: 'Analyst', name: 'Cardano Investment Bank' },
-          { role: 'Investor', name: 'Senior Tranche Investor' },
-          { role: 'Investor', name: 'Mezzanine Tranche Investor' },
-          { role: 'Investor', name: 'Junior Tranche Investor' },
-          { role: 'Investor', name: 'Hedge Fund Alpha' },
-        ]
-      },
-    ]
+    steps: [] // Populated from config
   },
   {
     id: 2,
@@ -680,30 +790,15 @@ const phases = ref<Phase[]>([
     description: 'Originators mint tokenized real-world assets',
     status: 'pending',
     expanded: true,
-    steps: [
-      { id: 'A1', name: 'Mint Diamond tokens (MachDiamond)', status: 'pending', originatorId: 'orig-jewelry', asset: 'Diamond', qty: 2n },
-      { id: 'A2', name: 'Mint Airplane tokens', status: 'pending', originatorId: 'orig-airplane', asset: 'Airplane', qty: 10n },
-      { id: 'A3', name: 'Mint Home token (Bob Smith)', status: 'pending', originatorId: 'orig-home', asset: 'Home', qty: 1n },
-      { id: 'A4', name: 'Mint RealEstate tokens', status: 'pending', originatorId: 'orig-realestate', asset: 'RealEstate', qty: 10n },
-      { id: 'A5', name: 'Mint Boat tokens', status: 'pending', originatorId: 'orig-yacht', asset: 'Boat', qty: 3n },
-    ]
+    steps: [] // Populated from config
   },
   {
     id: 3,
     name: 'Initialize Loan Contracts',
-    description: 'Create loans using tokenized assets as collateral (Reserved + Open Market)',
+    description: 'Create loans using tokenized assets as collateral',
     status: 'pending',
     expanded: true,
-    steps: [
-      // Reserved buyer loans - specific buyer must accept
-      { id: 'L1', name: 'Create: Alice Doe ← Diamond (Reserved)', status: 'pending', action: 'create-loan', contractRef: 'LOAN-Diamond-Alice', borrowerId: 'bor-alice', originatorId: 'orig-jewelry', asset: 'Diamond', qty: 2, principal: 500, reservedBuyer: true },
-      { id: 'L2', name: 'Create: Cardano Airlines ← Airplane (Reserved)', status: 'pending', action: 'create-loan', contractRef: 'LOAN-Airplane-CardanoAir', borrowerId: 'bor-cardanoair', originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 2000, reservedBuyer: true },
-      { id: 'L3', name: 'Create: Office Operator ← RealEstate (Reserved)', status: 'pending', action: 'create-loan', contractRef: 'LOAN-RealEstate-OfficeOp', borrowerId: 'bor-officeop', originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 500, reservedBuyer: true },
-      // Open market loans - any buyer can accept
-      { id: 'L4', name: 'Create: Open Market Airplane Loan', status: 'pending', action: 'create-loan', contractRef: 'LOAN-Airplane-Open', borrowerId: null, originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 2000, reservedBuyer: false },
-      { id: 'L5', name: 'Create: Open Market RealEstate Loan', status: 'pending', action: 'create-loan', contractRef: 'LOAN-RealEstate-Open', borrowerId: null, originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 500, reservedBuyer: false },
-      { id: 'L6', name: 'Create: Open Market Boat Loan', status: 'pending', action: 'create-loan', contractRef: 'LOAN-Boat-Open', borrowerId: null, originatorId: 'orig-yacht', asset: 'Boat', qty: 3, principal: 800, reservedBuyer: false },
-    ]
+    steps: [] // Populated from config
   },
   {
     id: 4,
@@ -711,28 +806,15 @@ const phases = ref<Phase[]>([
     description: 'Buyers accept loans and make first payment to activate',
     status: 'pending',
     expanded: true,
-    steps: [
-      // Reserved loans - specific buyer accepts
-      { id: 'AC1', name: 'Accept: Alice Doe → Diamond Loan', status: 'pending', action: 'accept-loan', contractRef: 'LOAN-Diamond-Alice', signerId: 'bor-alice', signerRole: 'Borrower' },
-      { id: 'AC2', name: 'Accept: Cardano Airlines → Airplane Loan', status: 'pending', action: 'accept-loan', contractRef: 'LOAN-Airplane-CardanoAir', signerId: 'bor-cardanoair', signerRole: 'Borrower' },
-      { id: 'AC3', name: 'Accept: Office Operator → RealEstate Loan', status: 'pending', action: 'accept-loan', contractRef: 'LOAN-RealEstate-OfficeOp', signerId: 'bor-officeop', signerRole: 'Borrower' },
-      // Open market loans - available buyers accept
-      { id: 'AC4', name: 'Accept: Superfast Cargo → Airplane Loan', status: 'pending', action: 'accept-loan', contractRef: 'LOAN-Airplane-Open', signerId: 'bor-superfastcargo', signerRole: 'Borrower' },
-      { id: 'AC5', name: 'Accept: Luxury Apartments → RealEstate Loan', status: 'pending', action: 'accept-loan', contractRef: 'LOAN-RealEstate-Open', signerId: 'bor-luxuryapt', signerRole: 'Borrower' },
-      { id: 'AC6', name: 'Accept: Boat Operator → Boat Loan', status: 'pending', action: 'accept-loan', contractRef: 'LOAN-Boat-Open', signerId: 'bor-boatop', signerRole: 'Borrower' },
-    ]
+    steps: [] // Populated from config
   },
   {
     id: 5,
     name: 'CLO Bundle & Distribution',
-    description: 'Bundle collateral into CLO with 3 tranches',
+    description: 'Bundle collateral into CLO with tranches',
     status: 'pending',
     expanded: false,
-    steps: [
-      { id: 'C1', name: 'Bundle Collateral Tokens', status: 'pending', action: 'bundle-collateral', signerId: 'analyst', signerRole: 'Analyst' },
-      { id: 'C2', name: 'Deploy CLO Contract (3 Tranches)', status: 'pending', action: 'deploy-clo', signerId: 'analyst', signerRole: 'Analyst' },
-      { id: 'C3', name: 'Distribute Tranche Tokens', status: 'pending', action: 'distribute-tranches', signerId: 'analyst', signerRole: 'Analyst' },
-    ]
+    steps: [] // Populated from config
   },
   {
     id: 6,
@@ -740,14 +822,7 @@ const phases = ref<Phase[]>([
     description: 'Borrowers make scheduled payments on their loans',
     status: 'pending',
     expanded: false,
-    steps: [
-      { id: 'P1', name: 'Pay: Alice Doe → Diamond Loan', status: 'pending', action: 'make-payment', contractRef: 'LOAN-Diamond-Alice', signerId: 'bor-alice', signerRole: 'Borrower', amount: 50 },
-      { id: 'P2', name: 'Pay: Cardano Airlines → Airplane Loan', status: 'pending', action: 'make-payment', contractRef: 'LOAN-Airplane-CardanoAir', signerId: 'bor-cardanoair', signerRole: 'Borrower', amount: 200 },
-      { id: 'P3', name: 'Pay: Superfast Cargo → Airplane Loan', status: 'pending', action: 'make-payment', contractRef: 'LOAN-Airplane-Open', signerId: 'bor-superfastcargo', signerRole: 'Borrower', amount: 200 },
-      { id: 'P4', name: 'Pay: Office Operator → RealEstate Loan', status: 'pending', action: 'make-payment', contractRef: 'LOAN-RealEstate-OfficeOp', signerId: 'bor-officeop', signerRole: 'Borrower', amount: 25 },
-      { id: 'P5', name: 'Pay: Luxury Apartments → RealEstate Loan', status: 'pending', action: 'make-payment', contractRef: 'LOAN-RealEstate-Open', signerId: 'bor-luxuryapt', signerRole: 'Borrower', amount: 25 },
-      { id: 'P6', name: 'Pay: Boat Operator → Boat Loan', status: 'pending', action: 'make-payment', contractRef: 'LOAN-Boat-Open', signerId: 'bor-boatop', signerRole: 'Borrower', amount: 30 },
-    ]
+    steps: [] // Populated from config
   }
 ])
 
@@ -760,9 +835,10 @@ const lifecycleStatus = computed<'passed' | 'failed' | 'running' | 'pending'>(()
   return 'pending'
 })
 
-// Progress bar computed values
-const totalSteps = computed(() => lifecycleTests.value.length)
-const completedSteps = computed(() => lifecycleTests.value.filter(s => s.status === 'passed').length)
+// Progress bar computed values (excludes disabled steps)
+const enabledSteps = computed(() => lifecycleTests.value.filter(s => !s.disabled && s.status !== 'disabled'))
+const totalSteps = computed(() => enabledSteps.value.length)
+const completedSteps = computed(() => enabledSteps.value.filter(s => s.status === 'passed').length)
 
 // Contract State - starts empty, populated during "Initialize Loan Contracts" phase
 const loanContracts = ref<LoanContract[]>([])
@@ -786,6 +862,25 @@ const statsWithTotal = computed(() => ({
 function log(text: string, type: ConsoleLine['type'] = 'info') {
   const time = new Date().toLocaleTimeString('en-US', { hour12: false })
   consoleLines.value.push({ time, text, type })
+}
+
+// Build pipeline options object for runner calls
+function buildPipelineOptions(mode: 'emulator' | 'preview' = networkMode.value): PipelineOptions {
+  return {
+    mode,
+    identities,
+    phases,
+    isRunning,
+    currentPhase,
+    currentStepName,
+    log,
+    stats,
+    loanContracts,
+    cloContracts,
+    breakpointPhase,
+    testRunId: currentTestRunId,
+    onPhaseComplete: saveTestState
+  }
 }
 
 async function handleRunTests(mode: 'emulator' | 'preview' = networkMode.value) {
@@ -815,21 +910,7 @@ async function handleRunTests(mode: 'emulator' | 'preview' = networkMode.value) 
     console.warn('Could not create test run:', err)
   }
 
-  await runner.runTests(
-    mode,
-    identities,
-    phases,
-    isRunning,
-    currentPhase,
-    currentStepName,
-    log,
-    stats,
-    loanContracts,
-    cloContracts,
-    breakpointPhase,
-    saveTestState, // Called after each phase
-    currentTestRunId // Pass test run ID for DB persistence
-  )
+  await runPipeline(buildPipelineOptions(mode))
 
   // Stop time tracking
   stopTimeTracking()
@@ -859,16 +940,7 @@ async function handleExecutePhase(phase: Phase) {
     }
   }
 
-  await runner.executePhase(
-    phase,
-    identities,
-    phases,
-    isRunning,
-    currentStepName,
-    log,
-    loanContracts,
-    cloContracts
-  )
+  await pipelineExecutePhase(phase, buildPipelineOptions())
 
   // Save state after phase execution
   await saveTestState()
@@ -889,17 +961,7 @@ async function handleExecuteStep(phase: Phase, step: any) {
     }
   }
 
-  await runner.executeStep(
-    phase,
-    step,
-    identities,
-    phases,
-    isRunning,
-    currentStepName,
-    log,
-    loanContracts,
-    cloContracts
-  )
+  await pipelineExecuteStep(phase, step, buildPipelineOptions())
 
   // Save state after step execution
   await saveTestState()

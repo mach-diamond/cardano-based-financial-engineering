@@ -6,7 +6,7 @@
 import type { Ref } from 'vue'
 import type { Identity, Phase, LogFunction, ActionResult, LoanContract } from '../types'
 import { delay } from '../runner'
-import { createContractRecord } from '@/services/api'
+import { createContractRecord, updateContractState } from '@/services/api'
 
 export interface LoanDefinition {
   borrowerId: string | null // null = open to market
@@ -112,7 +112,7 @@ export async function createLoan(
   // Save to database
   if (testRunId.value) {
     try {
-      await createContractRecord({
+      const dbContract = await createContractRecord({
         testRunId: testRunId.value,
         contractType: 'Transfer',
         contractSubtype: loanContract.subtype,
@@ -130,7 +130,9 @@ export async function createLoan(
         policyId: 'policy_' + loan.asset.toLowerCase(),
         networkId: mode === 'emulator' ? 0 : 1,
       })
-      log(`  Contract saved to DB: ${contractId}`, 'info')
+      // Store the database processId for later updates
+      loanContract.id = dbContract.processId
+      log(`  Contract saved to DB: ${dbContract.processId}`, 'info')
     } catch (err) {
       log(`  Warning: Could not save contract to DB: ${(err as Error).message}`, 'error')
     }
@@ -200,10 +202,31 @@ export async function acceptLoan(
     loan.state.isActive = true
     loan.state.balance -= firstPayment
     loan.state.startTime = Date.now()
+    loan.state.paymentCount = 1 // First payment made on accept
   }
 
   log(`  First payment of ${(firstPayment / 1_000_000).toFixed(2)} ADA processed`, 'success')
   log(`  Loan now active. Remaining: ${((loan.state?.balance || 0) / 1_000_000).toFixed(2)} ADA`, 'info')
+
+  // Persist state to database
+  try {
+    await updateContractState(loan.id, {
+      contractData: {
+        borrower: buyer.name
+      },
+      contractDatum: {
+        balance: loan.state?.balance,
+        isActive: loan.state?.isActive,
+        isPaidOff: loan.state?.isPaidOff || false,
+        isDefaulted: loan.state?.isDefaulted || false,
+        startTime: loan.state?.startTime,
+        paymentCount: loan.state?.paymentCount
+      }
+    })
+    log(`  Contract state persisted to DB`, 'info')
+  } catch (err) {
+    log(`  Warning: Could not persist state: ${(err as Error).message}`, 'error')
+  }
 
   return { success: true, message: `Loan accepted by ${buyer.name}`, data: loan }
 }

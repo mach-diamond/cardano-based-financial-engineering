@@ -1,5 +1,23 @@
 <template>
   <div class="config-viewer mb-4">
+    <!-- Config Selector Bar -->
+    <div class="config-selector-bar d-flex align-items-center mb-2">
+      <div class="d-flex align-items-center flex-grow-1">
+        <label class="text-muted mb-0 mr-2 small">Configuration:</label>
+        <select v-model="selectedConfigIdLocal" class="form-control form-control-sm config-dropdown" @change="onConfigChange">
+          <option value="default">Default MintMatrix Config</option>
+          <option v-for="cfg in savedConfigs" :key="cfg.id" :value="cfg.id">
+            {{ cfg.name }}
+          </option>
+        </select>
+        <span class="badge badge-secondary ml-2">{{ walletCount }} wallets</span>
+        <span class="badge badge-info ml-2">{{ loanCount }} loans</span>
+      </div>
+      <router-link to="/tests/config" class="btn btn-sm btn-outline-info">
+        <i class="fas fa-cog mr-1"></i> Edit Config
+      </router-link>
+    </div>
+
     <!-- Collapsed Header -->
     <div
       class="config-header d-flex justify-content-between align-items-center"
@@ -11,9 +29,8 @@
           class="fas fa-chevron-right expand-icon mr-2"
           :class="{ 'expanded': isExpanded }"
         ></i>
-        <i class="fas fa-cog text-info mr-2"></i>
-        <span class="config-title">Test Configuration</span>
-        <span class="badge badge-secondary ml-2">{{ walletCount }} wallets</span>
+        <i class="fas fa-file-alt text-info mr-2"></i>
+        <span class="config-title">Configuration Details</span>
         <span class="badge badge-success ml-2">{{ contractCount }} contracts</span>
         <span class="badge badge-info ml-2">{{ phaseCount }} phases</span>
         <span class="badge badge-warning ml-2">{{ assetCount }} assets</span>
@@ -36,13 +53,14 @@
           Export
         </button>
         <button
-          class="btn btn-sm btn-outline-warning"
+          class="btn btn-sm btn-outline-warning mr-2"
           @click="loadFromFile"
           title="Load config from file"
         >
           <i class="fas fa-upload mr-1"></i>
           Import
         </button>
+        <slot name="actions"></slot>
         <input
           type="file"
           ref="fileInput"
@@ -301,21 +319,33 @@ const props = defineProps<{
     address: string
   }>
   contracts?: typeof defaultContractParams
+  savedConfigs?: Array<{ id: string; name: string }>
+  selectedConfigId?: string
+  loanCount?: number
 }>()
 
 const emit = defineEmits<{
   'import-config': [config: any]
+  'config-change': [configId: string]
 }>()
 
 const isExpanded = ref(false)
 const activeTab = ref<'wallets' | 'assets' | 'contracts' | 'phases' | 'full'>('wallets')
 const showCopySuccess = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
+const selectedConfigIdLocal = ref(props.selectedConfigId || 'default')
+
+const savedConfigs = computed(() => props.savedConfigs || [])
 
 const walletCount = computed(() => props.config?.wallets?.length || props.identities?.length || 0)
+const loanCount = computed(() => props.loanCount || 0)
 const contractCount = computed(() => (props.contracts || defaultContractParams).loanContracts.length)
 const phaseCount = computed(() => props.phases?.length || 0)
 const assetCount = computed(() => initialAssets.length)
+
+function onConfigChange() {
+  emit('config-change', selectedConfigIdLocal.value)
+}
 
 const formattedWallets = computed(() => {
   const wallets = props.config?.wallets || props.identities?.map(i => ({
@@ -445,6 +475,31 @@ function handleFileUpload(event: Event) {
   border-radius: 0.5rem;
   border: 1px solid rgba(255, 255, 255, 0.1);
   overflow: hidden;
+}
+
+.config-selector-bar {
+  padding: 0.5rem 1rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.config-dropdown {
+  max-width: 260px;
+  background: rgba(0, 0, 0, 0.3);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #e2e8f0;
+}
+
+.config-dropdown:focus {
+  background: rgba(0, 0, 0, 0.4);
+  border-color: #38bdf8;
+  color: #f1f5f9;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+}
+
+.config-dropdown option {
+  background: #1e293b;
+  color: #e2e8f0;
 }
 
 .config-header {

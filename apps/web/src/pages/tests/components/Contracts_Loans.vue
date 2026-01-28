@@ -83,7 +83,7 @@
             </div>
             <div class="state-info">
               <span v-if="contract.state" class="text-muted small">
-                {{ getProgressPercent(contract).toFixed(0) }}% | {{ getCurrentInstallment(contract) }}/{{ contract.installments || 12 }}
+                {{ getProgressPercent(contract).toFixed(0) }}% | {{ getCurrentInstallment(contract) }}/{{ getInstallments(contract) }}
               </span>
               <span v-else class="text-muted small">--</span>
             </div>
@@ -120,9 +120,10 @@ import { ref, computed } from 'vue'
 export interface LoanContractState {
   isActive: boolean
   isPaidOff: boolean
-  isDefaulted: boolean
+  isDefaulted?: boolean
   balance: number
   startTime?: number
+  paymentCount?: number // Track how many payments have been made
   lastPayment?: {
     amount: number
     timestamp: number
@@ -184,14 +185,63 @@ function formatAda(lovelace?: number): string {
 }
 
 function getProgressPercent(contract: LoanContract): number {
+  // If no state or not active, show 0%
+  if (!contract.state || !contract.state.isActive) {
+    // Unless it's paid off, then show 100%
+    if (contract.state?.isPaidOff) return 100
+    return 0
+  }
+
   const principal = contract.principal || 1
-  const balance = contract.state?.balance ?? contract.principal
-  return ((principal - balance) / principal) * 100
+  const balance = contract.state.balance
+
+  // If balance is undefined or equal to principal, no progress yet
+  if (balance === undefined || balance === principal) return 0
+
+  // Calculate progress (principal paid off so far)
+  const paid = principal - balance
+  const percent = (paid / principal) * 100
+
+  // Clamp between 0 and 100
+  return Math.max(0, Math.min(100, percent))
 }
 
 function getCurrentInstallment(contract: LoanContract): number {
-  if (!contract.state?.lastPayment) return 0
-  return contract.state.lastPayment.installmentNumber || 0
+  // Use explicit paymentCount if available
+  if (contract.state?.paymentCount !== undefined) {
+    return contract.state.paymentCount
+  }
+
+  // Fall back to lastPayment if available
+  if (contract.state?.lastPayment?.installmentNumber) {
+    return contract.state.lastPayment.installmentNumber
+  }
+
+  // Estimate from balance reduction if active
+  if (contract.state?.isActive && contract.principal) {
+    const paid = contract.principal - (contract.state.balance || 0)
+    if (paid > 0) {
+      // Rough estimate: 1 payment has been made (accept payment)
+      const installments = getInstallments(contract)
+      const paymentAmount = contract.principal / installments
+      return Math.max(1, Math.round(paid / paymentAmount))
+    }
+  }
+
+  return 0
+}
+
+function getInstallments(contract: LoanContract): number {
+  // Try to get from contract directly
+  if (contract.installments) return contract.installments
+
+  // Parse from termLength
+  if (contract.termLength) {
+    const match = contract.termLength.match(/(\d+)/)
+    if (match) return parseInt(match[1])
+  }
+
+  return 12 // Default
 }
 </script>
 

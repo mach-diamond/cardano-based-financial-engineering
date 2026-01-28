@@ -8,6 +8,51 @@ import * as contractService from '../services/contract.service'
 
 const test = new Hono()
 
+// Helper function to transform contracts to frontend format
+function transformLoanContracts(contracts: contractService.ProcessSmartContract[]) {
+  return contracts.map(c => {
+    const datum = c.contractDatum as any || {}
+    const principal = c.contractData?.principal || 0
+    return {
+      id: c.processId,
+      alias: c.alias,
+      subtype: c.contractSubtype,
+      collateral: c.contractData?.collateral,
+      principal,
+      apr: c.contractData?.apr || 0,
+      termLength: c.contractData?.termLength,
+      installments: c.contractData?.installments,
+      status: c.statusCode >= 3 ? 'passed' : 'pending',
+      borrower: c.contractData?.borrower,
+      originator: c.contractData?.originator,
+      contractAddress: c.contractAddress,
+      policyId: c.policyId,
+      state: {
+        balance: datum.balance ?? principal,
+        isActive: datum.isActive ?? false,
+        isPaidOff: datum.isPaidOff ?? false,
+        isDefaulted: datum.isDefaulted ?? false,
+        startTime: datum.startTime || null,
+        paymentCount: datum.paymentCount ?? 0,
+        lastPayment: datum.lastPayment || null
+      }
+    }
+  })
+}
+
+function transformCLOContracts(contracts: contractService.ProcessSmartContract[]) {
+  return contracts.map(c => ({
+    id: c.processId,
+    alias: c.alias,
+    subtype: c.contractSubtype,
+    tranches: c.contractData?.tranches || [],
+    totalValue: (c.contractDatum as any)?.totalValue || 0,
+    collateralCount: c.contractData?.collateralCount || 0,
+    status: c.statusCode >= 3 ? 'passed' : 'pending',
+    manager: c.contractData?.manager
+  }))
+}
+
 /**
  * GET /api/test/runs - Get all test runs
  */
@@ -47,33 +92,8 @@ test.get('/runs/latest', async (c) => {
     })
 
     // Transform contracts to frontend format
-    const loanContractsForFrontend = loanContracts.map(c => ({
-      id: c.processId,
-      alias: c.alias,
-      subtype: c.contractSubtype,
-      collateral: c.contractData?.collateral,
-      principal: c.contractData?.principal || 0,
-      apr: c.contractData?.apr || 0,
-      termLength: c.contractData?.termLength,
-      installments: c.contractData?.installments,
-      status: c.statusCode >= 3 ? 'passed' : 'pending',
-      borrower: c.contractData?.borrower,
-      originator: c.contractData?.originator,
-      contractAddress: c.contractAddress,
-      policyId: c.policyId,
-      state: c.contractDatum
-    }))
-
-    const cloContractsForFrontend = cloContracts.map(c => ({
-      id: c.processId,
-      alias: c.alias,
-      subtype: c.contractSubtype,
-      tranches: c.contractData?.tranches || [],
-      totalValue: (c.contractDatum as any)?.totalValue || 0,
-      collateralCount: c.contractData?.collateralCount || 0,
-      status: c.statusCode >= 3 ? 'passed' : 'pending',
-      manager: c.contractData?.manager
-    }))
+    const loanContractsForFrontend = transformLoanContracts(loanContracts)
+    const cloContractsForFrontend = transformCLOContracts(cloContracts)
 
     // Augment run.state with contracts from DB
     const augmentedRun = {
@@ -120,33 +140,8 @@ test.get('/runs/:id', async (c) => {
     })
 
     // Transform contracts to frontend format
-    const loanContractsForFrontend = loanContracts.map(c => ({
-      id: c.processId,
-      alias: c.alias,
-      subtype: c.contractSubtype,
-      collateral: c.contractData?.collateral,
-      principal: c.contractData?.principal || 0,
-      apr: c.contractData?.apr || 0,
-      termLength: c.contractData?.termLength,
-      installments: c.contractData?.installments,
-      status: c.statusCode >= 3 ? 'passed' : 'pending',
-      borrower: c.contractData?.borrower,
-      originator: c.contractData?.originator,
-      contractAddress: c.contractAddress,
-      policyId: c.policyId,
-      state: c.contractDatum
-    }))
-
-    const cloContractsForFrontend = cloContracts.map(c => ({
-      id: c.processId,
-      alias: c.alias,
-      subtype: c.contractSubtype,
-      tranches: c.contractData?.tranches || [],
-      totalValue: (c.contractDatum as any)?.totalValue || 0,
-      collateralCount: c.contractData?.collateralCount || 0,
-      status: c.statusCode >= 3 ? 'passed' : 'pending',
-      manager: c.contractData?.manager
-    }))
+    const loanContractsForFrontend = transformLoanContracts(loanContracts)
+    const cloContractsForFrontend = transformCLOContracts(cloContracts)
 
     // Augment run.state with contracts from DB
     const augmentedRun = {

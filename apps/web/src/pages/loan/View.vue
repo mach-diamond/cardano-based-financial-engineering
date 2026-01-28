@@ -782,6 +782,7 @@ async function executeAction(action: string) {
         loan.value.state.isActive = true
         loan.value.state.startTime = Date.now()
         loan.value.state.balance = loan.value.terms.principal - firstPaymentAmount.value
+        loan.value.state.paymentCount = 1 // First payment made on accept
         loan.value.buyer = signerName
         logAction('Loan accepted and activated!', 'success')
         break
@@ -789,6 +790,7 @@ async function executeAction(action: string) {
       case 'pay':
         const paymentAmt = nextPaymentAmount.value
         loan.value.state.balance = loan.value.state.balance - paymentAmt
+        loan.value.state.paymentCount = (loan.value.state.paymentCount || 0) + 1
         if (loan.value.state.balance <= 0n) {
           loan.value.state.isPaidOff = true
           logAction('Final payment made. Loan fully paid off!', 'success')
@@ -831,7 +833,8 @@ async function executeAction(action: string) {
             isActive: loan.value.state.isActive,
             isDefaulted: loan.value.state.isDefaulted,
             isPaidOff: loan.value.state.isPaidOff,
-            startTime: loan.value.state.startTime
+            startTime: loan.value.state.startTime,
+            paymentCount: loan.value.state.paymentCount
           }
         })
         logAction('State saved to database', 'info')

@@ -34,33 +34,37 @@ export const DEFAULT_MINT_CONFIG: MintConfig[] = [
 
 /**
  * Mint assets for a single originator
+ * @param originator The originator identity
+ * @param config Can be MintConfig or a step object with originatorId
+ * @param options Tokenization options
  */
 export async function mintAsset(
   originator: Identity,
-  config: MintConfig,
+  config: MintConfig | { originatorId: string; asset: string; qty: bigint; id?: string },
   options: TokenizationOptions
 ): Promise<ActionResult> {
-  const { phases, currentStepName, log } = options
+  const { currentStepName, log } = options
 
-  currentStepName.value = `Minting ${config.asset} tokens for ${originator.name}`
-  log(`  ${originator.name}: Minting ${config.qty} ${config.asset} tokens...`, 'info')
+  // Handle both MintConfig and step objects
+  const asset = config.asset
+  const qty = config.qty
+
+  currentStepName.value = `Minting ${asset} tokens for ${originator.name}`
+  log(`  ${originator.name}: Minting ${qty} ${asset} tokens...`, 'info')
 
   await delay(400)
 
   // Add asset to originator's wallet
   originator.wallets[0].assets.push({
-    policyId: 'policy_' + config.asset.toLowerCase(),
-    assetName: config.asset,
-    quantity: config.qty,
+    policyId: 'policy_' + asset.toLowerCase(),
+    assetName: asset,
+    quantity: qty,
   })
 
-  log(`  Confirmed ${config.qty} ${config.asset} in wallet`, 'success')
+  log(`  Confirmed ${qty} ${asset} in wallet`, 'success')
 
-  // Update step status
-  const step = phases.value[1].steps.find((s: any) => s.originatorId === config.id)
-  if (step) step.status = 'passed'
-
-  return { success: true, message: `Minted ${config.qty} ${config.asset}` }
+  // Note: Step status is managed by the runner after this function returns
+  return { success: true, message: `Minted ${qty} ${asset}` }
 }
 
 /**

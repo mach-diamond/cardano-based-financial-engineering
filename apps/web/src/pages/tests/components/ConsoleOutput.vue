@@ -35,7 +35,7 @@ import { ref, watch, nextTick } from 'vue'
 export interface ConsoleLine {
   time: string
   text: string
-  type: 'info' | 'success' | 'error' | 'phase'
+  type: 'info' | 'success' | 'error' | 'phase' | 'warning'
 }
 
 const props = defineProps<{
@@ -145,5 +145,9 @@ watch(() => props.consoleLines.length, () => {
 .console-line.phase .console-text {
   color: #8b5cf6;
   font-weight: 600;
+}
+
+.console-line.warning .console-text {
+  color: #f59e0b;
 }
 </style>
