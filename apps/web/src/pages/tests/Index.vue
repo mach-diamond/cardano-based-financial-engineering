@@ -144,8 +144,8 @@ const currentTestRunId = ref<number | null>(null)
 const availableTestRuns = ref<TestRun[]>([])
 
 // Breakpoint control - set to phase ID to stop before that phase
-// null = no breakpoint, 2 = stop before tokenization, 4 = stop before CLO, etc.
-const breakpointPhase = ref<number | null>(4) // Default: stop before CLO
+// null = no breakpoint, 2 = stop before tokenization, 5 = stop before CLO, etc.
+const breakpointPhase = ref<number | null>(5) // Default: stop before CLO
 
 // Time tracking
 const currentSlot = ref(0)
@@ -696,40 +696,57 @@ const phases = ref<Phase[]>([
     expanded: true,
     steps: [
       // Reserved buyer loans - specific buyer must accept
-      { id: 'L1', name: 'Loan: Alice Doe ← Diamond (Reserved)', status: 'pending', borrowerId: 'bor-alice', originatorId: 'orig-jewelry', asset: 'Diamond', qty: 2, principal: 500, reservedBuyer: true },
-      { id: 'L2', name: 'Loan: Cardano Airlines ← Airplane (Reserved)', status: 'pending', borrowerId: 'bor-cardanoair', originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 2000, reservedBuyer: true },
-      { id: 'L3', name: 'Loan: Office Operator ← RealEstate (Reserved)', status: 'pending', borrowerId: 'bor-officeop', originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 500, reservedBuyer: true },
+      { id: 'L1', name: 'Create: Alice Doe ← Diamond (Reserved)', status: 'pending', action: 'create-loan', contractRef: 'LOAN-Diamond-Alice', borrowerId: 'bor-alice', originatorId: 'orig-jewelry', asset: 'Diamond', qty: 2, principal: 500, reservedBuyer: true },
+      { id: 'L2', name: 'Create: Cardano Airlines ← Airplane (Reserved)', status: 'pending', action: 'create-loan', contractRef: 'LOAN-Airplane-CardanoAir', borrowerId: 'bor-cardanoair', originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 2000, reservedBuyer: true },
+      { id: 'L3', name: 'Create: Office Operator ← RealEstate (Reserved)', status: 'pending', action: 'create-loan', contractRef: 'LOAN-RealEstate-OfficeOp', borrowerId: 'bor-officeop', originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 500, reservedBuyer: true },
       // Open market loans - any buyer can accept
-      { id: 'L4', name: 'Open Market: Airplane Loan', status: 'pending', borrowerId: null, originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 2000, reservedBuyer: false },
-      { id: 'L5', name: 'Open Market: RealEstate Loan', status: 'pending', borrowerId: null, originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 500, reservedBuyer: false },
-      { id: 'L6', name: 'Open Market: Boat Loan', status: 'pending', borrowerId: null, originatorId: 'orig-yacht', asset: 'Boat', qty: 3, principal: 800, reservedBuyer: false },
+      { id: 'L4', name: 'Create: Open Market Airplane Loan', status: 'pending', action: 'create-loan', contractRef: 'LOAN-Airplane-Open', borrowerId: null, originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 2000, reservedBuyer: false },
+      { id: 'L5', name: 'Create: Open Market RealEstate Loan', status: 'pending', action: 'create-loan', contractRef: 'LOAN-RealEstate-Open', borrowerId: null, originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 500, reservedBuyer: false },
+      { id: 'L6', name: 'Create: Open Market Boat Loan', status: 'pending', action: 'create-loan', contractRef: 'LOAN-Boat-Open', borrowerId: null, originatorId: 'orig-yacht', asset: 'Boat', qty: 3, principal: 800, reservedBuyer: false },
     ]
   },
   {
     id: 4,
+    name: 'Accept Loan Contracts',
+    description: 'Buyers accept loans and make first payment to activate',
+    status: 'pending',
+    expanded: true,
+    steps: [
+      // Reserved loans - specific buyer accepts
+      { id: 'AC1', name: 'Accept: Alice Doe → Diamond Loan', status: 'pending', action: 'accept-loan', contractRef: 'LOAN-Diamond-Alice', signerId: 'bor-alice', signerRole: 'Borrower' },
+      { id: 'AC2', name: 'Accept: Cardano Airlines → Airplane Loan', status: 'pending', action: 'accept-loan', contractRef: 'LOAN-Airplane-CardanoAir', signerId: 'bor-cardanoair', signerRole: 'Borrower' },
+      { id: 'AC3', name: 'Accept: Office Operator → RealEstate Loan', status: 'pending', action: 'accept-loan', contractRef: 'LOAN-RealEstate-OfficeOp', signerId: 'bor-officeop', signerRole: 'Borrower' },
+      // Open market loans - available buyers accept
+      { id: 'AC4', name: 'Accept: Superfast Cargo → Airplane Loan', status: 'pending', action: 'accept-loan', contractRef: 'LOAN-Airplane-Open', signerId: 'bor-superfastcargo', signerRole: 'Borrower' },
+      { id: 'AC5', name: 'Accept: Luxury Apartments → RealEstate Loan', status: 'pending', action: 'accept-loan', contractRef: 'LOAN-RealEstate-Open', signerId: 'bor-luxuryapt', signerRole: 'Borrower' },
+      { id: 'AC6', name: 'Accept: Boat Operator → Boat Loan', status: 'pending', action: 'accept-loan', contractRef: 'LOAN-Boat-Open', signerId: 'bor-boatop', signerRole: 'Borrower' },
+    ]
+  },
+  {
+    id: 5,
     name: 'CLO Bundle & Distribution',
     description: 'Bundle collateral into CLO with 3 tranches',
     status: 'pending',
     expanded: false,
     steps: [
-      { id: 'C1', name: 'Bundle 6 Collateral Tokens', status: 'pending' },
-      { id: 'C2', name: 'Deploy CLO Contract (3 Tranches)', status: 'pending' },
-      { id: 'C3', name: 'Distribute Tranche Tokens to Investors', status: 'pending' },
+      { id: 'C1', name: 'Bundle Collateral Tokens', status: 'pending', action: 'bundle-collateral', signerId: 'analyst', signerRole: 'Analyst' },
+      { id: 'C2', name: 'Deploy CLO Contract (3 Tranches)', status: 'pending', action: 'deploy-clo', signerId: 'analyst', signerRole: 'Analyst' },
+      { id: 'C3', name: 'Distribute Tranche Tokens', status: 'pending', action: 'distribute-tranches', signerId: 'analyst', signerRole: 'Analyst' },
     ]
   },
   {
-    id: 5,
+    id: 6,
     name: 'Make Loan Payments',
     description: 'Borrowers make scheduled payments on their loans',
     status: 'pending',
     expanded: false,
     steps: [
-      { id: 'P1', name: 'Payment: Alice Doe → Diamond Loan', status: 'pending', borrowerId: 'bor-alice', amount: 50 },
-      { id: 'P2', name: 'Payment: Cardano Airlines → Airplane Loan', status: 'pending', borrowerId: 'bor-cardanoair', amount: 200 },
-      { id: 'P3', name: 'Payment: Superfast Cargo → Airplane Loan', status: 'pending', borrowerId: 'bor-superfastcargo', amount: 200 },
-      { id: 'P4', name: 'Payment: Office Operator → RealEstate Loan', status: 'pending', borrowerId: 'bor-officeop', amount: 25 },
-      { id: 'P5', name: 'Payment: Luxury Apartments → RealEstate Loan', status: 'pending', borrowerId: 'bor-luxuryapt', amount: 25 },
-      { id: 'P6', name: 'Payment: Boat Operator → Boat Loan', status: 'pending', borrowerId: 'bor-boatop', amount: 30 },
+      { id: 'P1', name: 'Pay: Alice Doe → Diamond Loan', status: 'pending', action: 'make-payment', contractRef: 'LOAN-Diamond-Alice', signerId: 'bor-alice', signerRole: 'Borrower', amount: 50 },
+      { id: 'P2', name: 'Pay: Cardano Airlines → Airplane Loan', status: 'pending', action: 'make-payment', contractRef: 'LOAN-Airplane-CardanoAir', signerId: 'bor-cardanoair', signerRole: 'Borrower', amount: 200 },
+      { id: 'P3', name: 'Pay: Superfast Cargo → Airplane Loan', status: 'pending', action: 'make-payment', contractRef: 'LOAN-Airplane-Open', signerId: 'bor-superfastcargo', signerRole: 'Borrower', amount: 200 },
+      { id: 'P4', name: 'Pay: Office Operator → RealEstate Loan', status: 'pending', action: 'make-payment', contractRef: 'LOAN-RealEstate-OfficeOp', signerId: 'bor-officeop', signerRole: 'Borrower', amount: 25 },
+      { id: 'P5', name: 'Pay: Luxury Apartments → RealEstate Loan', status: 'pending', action: 'make-payment', contractRef: 'LOAN-RealEstate-Open', signerId: 'bor-luxuryapt', signerRole: 'Borrower', amount: 25 },
+      { id: 'P6', name: 'Pay: Boat Operator → Boat Loan', status: 'pending', action: 'make-payment', contractRef: 'LOAN-Boat-Open', signerId: 'bor-boatop', signerRole: 'Borrower', amount: 30 },
     ]
   }
 ])

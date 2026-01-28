@@ -164,8 +164,224 @@
         </div>
       </div>
 
-      <!-- Contract Actions -->
-      <div v-if="canTakeActions" class="card mb-4">
+      <!-- Contract Actions (Test Mode) -->
+      <div v-if="props.isTestMode" class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">Contract Actions</h5>
+          <div class="d-flex align-items-center">
+            <span class="text-muted small mr-2">Sign as:</span>
+            <select v-model="selectedSignerWallet" class="form-control form-control-sm wallet-selector">
+              <option value="">Select Wallet...</option>
+              <optgroup label="Originators">
+                <option v-for="w in availableWallets.filter(w => w.role === 'Originator')" :key="w.id" :value="w.address">
+                  {{ w.name }}
+                </option>
+              </optgroup>
+              <optgroup label="Borrowers">
+                <option v-for="w in availableWallets.filter(w => w.role === 'Borrower')" :key="w.id" :value="w.address">
+                  {{ w.name }}
+                </option>
+              </optgroup>
+              <optgroup label="Other">
+                <option v-for="w in availableWallets.filter(w => !['Originator', 'Borrower'].includes(w.role))" :key="w.id" :value="w.address">
+                  {{ w.name }} ({{ w.role }})
+                </option>
+              </optgroup>
+            </select>
+          </div>
+        </div>
+        <div class="card-body">
+          <!-- Action Grid -->
+          <div class="row">
+            <!-- Cancel (Originator only, before acceptance) -->
+            <div class="col-md-6 col-lg-4 mb-3">
+              <div class="action-card" :class="{ disabled: !canCancel }">
+                <div class="action-header">
+                  <span class="action-title">Cancel</span>
+                  <span class="badge badge-originator">Originator</span>
+                </div>
+                <p class="action-desc">Terminate contract and reclaim asset</p>
+                <div class="action-prereq">
+                  <i :class="loan.state.isActive ? 'fas fa-times text-danger' : 'fas fa-check text-success'"></i>
+                  <span>Loan not yet accepted</span>
+                </div>
+                <button
+                  class="btn btn-outline-danger btn-sm btn-block mt-2"
+                  :disabled="!canCancel || isExecuting"
+                  @click="executeAction('cancel')"
+                >
+                  <span v-if="isExecuting && executingAction === 'cancel'" class="spinner-border spinner-border-sm mr-1"></span>
+                  Cancel Contract
+                </button>
+              </div>
+            </div>
+
+            <!-- Accept (Buyer, before acceptance) -->
+            <div class="col-md-6 col-lg-4 mb-3">
+              <div class="action-card" :class="{ disabled: !canAccept }">
+                <div class="action-header">
+                  <span class="action-title">Accept</span>
+                  <span class="badge badge-borrower">Borrower</span>
+                </div>
+                <p class="action-desc">Accept terms & make first payment</p>
+                <div class="action-prereq">
+                  <i :class="loan.state.isActive ? 'fas fa-times text-danger' : 'fas fa-check text-success'"></i>
+                  <span>Loan awaiting acceptance</span>
+                </div>
+                <div class="action-prereq" v-if="loan.borrower">
+                  <i :class="isSelectedWalletBuyer ? 'fas fa-check text-success' : 'fas fa-times text-danger'"></i>
+                  <span>Reserved for: {{ loan.borrower }}</span>
+                </div>
+                <button
+                  class="btn btn-primary btn-sm btn-block mt-2"
+                  :disabled="!canAccept || isExecuting"
+                  @click="executeAction('accept')"
+                >
+                  <span v-if="isExecuting && executingAction === 'accept'" class="spinner-border spinner-border-sm mr-1"></span>
+                  Accept & Pay {{ formatADA(firstPaymentAmount) }} ADA
+                </button>
+              </div>
+            </div>
+
+            <!-- Make Payment (Borrower, active) -->
+            <div class="col-md-6 col-lg-4 mb-3">
+              <div class="action-card" :class="{ disabled: !canPay }">
+                <div class="action-header">
+                  <span class="action-title">Pay</span>
+                  <span class="badge badge-borrower">Borrower</span>
+                </div>
+                <p class="action-desc">Make scheduled payment</p>
+                <div class="action-prereq">
+                  <i :class="loan.state.isActive ? 'fas fa-check text-success' : 'fas fa-times text-danger'"></i>
+                  <span>Loan is active</span>
+                </div>
+                <div class="action-prereq">
+                  <i :class="!loan.state.isPaidOff ? 'fas fa-check text-success' : 'fas fa-times text-danger'"></i>
+                  <span>Balance remaining</span>
+                </div>
+                <button
+                  class="btn btn-success btn-sm btn-block mt-2"
+                  :disabled="!canPay || isExecuting"
+                  @click="executeAction('pay')"
+                >
+                  <span v-if="isExecuting && executingAction === 'pay'" class="spinner-border spinner-border-sm mr-1"></span>
+                  Pay {{ formatADA(nextPaymentAmount) }} ADA
+                </button>
+              </div>
+            </div>
+
+            <!-- Collect (Originator, active with payments) -->
+            <div class="col-md-6 col-lg-4 mb-3">
+              <div class="action-card" :class="{ disabled: !canCollect }">
+                <div class="action-header">
+                  <span class="action-title">Collect</span>
+                  <span class="badge badge-originator">Originator</span>
+                </div>
+                <p class="action-desc">Withdraw available payments</p>
+                <div class="action-prereq">
+                  <i :class="loan.state.isActive ? 'fas fa-check text-success' : 'fas fa-times text-danger'"></i>
+                  <span>Loan is active</span>
+                </div>
+                <button
+                  class="btn btn-outline-secondary btn-sm btn-block mt-2"
+                  :disabled="!canCollect || isExecuting"
+                  @click="executeAction('collect')"
+                >
+                  <span v-if="isExecuting && executingAction === 'collect'" class="spinner-border spinner-border-sm mr-1"></span>
+                  Collect Payments
+                </button>
+              </div>
+            </div>
+
+            <!-- Default (Originator, late) -->
+            <div class="col-md-6 col-lg-4 mb-3">
+              <div class="action-card" :class="{ disabled: !canDefault }">
+                <div class="action-header">
+                  <span class="action-title">Default</span>
+                  <span class="badge badge-originator">Originator</span>
+                </div>
+                <p class="action-desc">Declare default & claim collateral</p>
+                <div class="action-prereq">
+                  <i :class="isLate ? 'fas fa-check text-success' : 'fas fa-times text-danger'"></i>
+                  <span>Payment is late</span>
+                </div>
+                <div class="action-prereq">
+                  <i :class="!loan.state.isDefaulted ? 'fas fa-check text-success' : 'fas fa-times text-danger'"></i>
+                  <span>Not already defaulted</span>
+                </div>
+                <button
+                  class="btn btn-danger btn-sm btn-block mt-2"
+                  :disabled="!canDefault || isExecuting"
+                  @click="executeAction('default')"
+                >
+                  <span v-if="isExecuting && executingAction === 'default'" class="spinner-border spinner-border-sm mr-1"></span>
+                  Mark Default
+                </button>
+              </div>
+            </div>
+
+            <!-- Claim (Originator, defaulted) -->
+            <div class="col-md-6 col-lg-4 mb-3">
+              <div class="action-card" :class="{ disabled: !canClaim }">
+                <div class="action-header">
+                  <span class="action-title">Claim</span>
+                  <span class="badge badge-originator">Originator</span>
+                </div>
+                <p class="action-desc">Claim collateral after default</p>
+                <div class="action-prereq">
+                  <i :class="loan.state.isDefaulted ? 'fas fa-check text-success' : 'fas fa-times text-danger'"></i>
+                  <span>Loan is in default</span>
+                </div>
+                <button
+                  class="btn btn-warning btn-sm btn-block mt-2"
+                  :disabled="!canClaim || isExecuting"
+                  @click="executeAction('claim')"
+                >
+                  <span v-if="isExecuting && executingAction === 'claim'" class="spinner-border spinner-border-sm mr-1"></span>
+                  Claim Collateral
+                </button>
+              </div>
+            </div>
+
+            <!-- Complete (Paid off) -->
+            <div class="col-md-6 col-lg-4 mb-3">
+              <div class="action-card" :class="{ disabled: !canComplete }">
+                <div class="action-header">
+                  <span class="action-title">Complete</span>
+                  <span class="badge badge-info">Either Party</span>
+                </div>
+                <p class="action-desc">Finalize transfer & release asset</p>
+                <div class="action-prereq">
+                  <i :class="loan.state.isPaidOff ? 'fas fa-check text-success' : 'fas fa-times text-danger'"></i>
+                  <span>Loan is fully paid</span>
+                </div>
+                <button
+                  class="btn btn-success btn-sm btn-block mt-2"
+                  :disabled="!canComplete || isExecuting"
+                  @click="executeAction('complete')"
+                >
+                  <span v-if="isExecuting && executingAction === 'complete'" class="spinner-border spinner-border-sm mr-1"></span>
+                  Complete Transfer
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Execution Log -->
+          <div v-if="executionLog.length > 0" class="mt-4">
+            <h6 class="text-muted">Execution Log</h6>
+            <div class="execution-log">
+              <div v-for="(entry, i) in executionLog" :key="i" class="log-entry" :class="entry.type">
+                <span class="log-time">{{ entry.time }}</span>
+                <span class="log-text">{{ entry.text }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Contract Actions (Production Mode - original) -->
+      <div v-else-if="canTakeActions" class="card mb-4">
         <div class="card-header">
           <h5 class="mb-0">Contract Actions</h5>
         </div>
@@ -313,7 +529,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useWalletStore } from '@/stores/wallet'
 import { formatDuration, formatTimeSince, formatTimeUntil } from '@/composables/useLoanCalculations'
-import { getContract, getTestContract } from '@/services/api'
+import { getContract, getTestContract, getWallets, type WalletFromDB } from '@/services/api'
 import type { LoanContract } from '@/types'
 
 // Components
@@ -333,10 +549,179 @@ const loan = ref<LoanContract | null>(null)
 const isLoading = ref(true)
 const now = ref(Date.now())
 
+// Test mode state
+const availableWallets = ref<WalletFromDB[]>([])
+const selectedSignerWallet = ref('')
+const isExecuting = ref(false)
+const executingAction = ref<string | null>(null)
+const executionLog = ref<{ time: string; text: string; type: 'info' | 'success' | 'error' }[]>([])
+
+// Load available wallets for test mode
+async function loadAvailableWallets() {
+  if (props.isTestMode) {
+    try {
+      availableWallets.value = await getWallets()
+    } catch (err) {
+      console.warn('Could not load wallets:', err)
+    }
+  }
+}
+
+// Get selected wallet info
+const selectedWalletInfo = computed(() => {
+  return availableWallets.value.find(w => w.address === selectedSignerWallet.value)
+})
+
+// Check if selected wallet is the buyer
+const isSelectedWalletBuyer = computed(() => {
+  if (!loan.value || !selectedWalletInfo.value) return false
+  // For reserved loans, check if selected wallet matches reserved buyer
+  if (loan.value.buyer) {
+    return selectedWalletInfo.value.name === loan.value.buyer
+  }
+  // For open market, any borrower can accept
+  return selectedWalletInfo.value.role === 'Borrower'
+})
+
+// Check if selected wallet is the seller/originator
+const isSelectedWalletSeller = computed(() => {
+  if (!loan.value || !selectedWalletInfo.value) return false
+  return selectedWalletInfo.value.name === loan.value.seller ||
+         selectedWalletInfo.value.role === 'Originator'
+})
+
+// Calculate first payment amount (for accept action)
+const firstPaymentAmount = computed(() => {
+  if (!loan.value) return 0n
+  const installments = loan.value.terms.installments || 12
+  const monthlyPrincipal = loan.value.terms.principal / BigInt(installments)
+  const monthlyInterest = (loan.value.terms.principal * BigInt(loan.value.terms.apr)) / 100n / 12n
+  return monthlyPrincipal + monthlyInterest
+})
+
+// Action permission computed properties
+const canCancel = computed(() => {
+  if (!loan.value || !selectedSignerWallet.value) return false
+  return isSelectedWalletSeller.value && !loan.value.state.isActive
+})
+
+const canAccept = computed(() => {
+  if (!loan.value || !selectedSignerWallet.value) return false
+  if (loan.value.state.isActive) return false
+  // For reserved loans, must be the reserved buyer
+  if (loan.value.buyer) {
+    return selectedWalletInfo.value?.name === loan.value.buyer
+  }
+  // For open market, any borrower can accept
+  return selectedWalletInfo.value?.role === 'Borrower'
+})
+
+const canPay = computed(() => {
+  if (!loan.value || !selectedSignerWallet.value) return false
+  return loan.value.state.isActive &&
+         !loan.value.state.isPaidOff &&
+         (selectedWalletInfo.value?.name === loan.value.buyer || isSelectedWalletBuyer.value)
+})
+
+const canCollect = computed(() => {
+  if (!loan.value || !selectedSignerWallet.value) return false
+  return loan.value.state.isActive && isSelectedWalletSeller.value
+})
+
+const canDefault = computed(() => {
+  if (!loan.value || !selectedSignerWallet.value) return false
+  return isLate.value && !loan.value.state.isDefaulted && isSelectedWalletSeller.value
+})
+
+const canClaim = computed(() => {
+  if (!loan.value || !selectedSignerWallet.value) return false
+  return loan.value.state.isDefaulted && isSelectedWalletSeller.value
+})
+
+const canComplete = computed(() => {
+  if (!loan.value || !selectedSignerWallet.value) return false
+  return loan.value.state.isPaidOff
+})
+
+// Log helper
+function logAction(text: string, type: 'info' | 'success' | 'error' = 'info') {
+  const time = new Date().toLocaleTimeString('en-US', { hour12: false })
+  executionLog.value.push({ time, text, type })
+}
+
+// Execute action
+async function executeAction(action: string) {
+  if (!loan.value || !selectedSignerWallet.value) return
+
+  isExecuting.value = true
+  executingAction.value = action
+
+  const signerName = selectedWalletInfo.value?.name || 'Unknown'
+  logAction(`Executing ${action.toUpperCase()} as ${signerName}...`, 'info')
+
+  try {
+    // Simulate action execution
+    await new Promise(resolve => setTimeout(resolve, 1000))
+
+    switch (action) {
+      case 'cancel':
+        logAction('Contract cancelled. Asset returned to originator.', 'success')
+        // Update local state
+        loan.value.state.isActive = false
+        break
+
+      case 'accept':
+        logAction(`First payment of ${formatADA(firstPaymentAmount.value)} ADA submitted`, 'info')
+        loan.value.state.isActive = true
+        loan.value.state.startTime = Date.now()
+        loan.value.state.balance = loan.value.terms.principal - firstPaymentAmount.value
+        loan.value.buyer = signerName
+        logAction('Loan accepted and activated!', 'success')
+        break
+
+      case 'pay':
+        const paymentAmt = nextPaymentAmount.value
+        loan.value.state.balance = loan.value.state.balance - paymentAmt
+        if (loan.value.state.balance <= 0n) {
+          loan.value.state.isPaidOff = true
+          logAction('Final payment made. Loan fully paid off!', 'success')
+        } else {
+          logAction(`Payment of ${formatADA(paymentAmt)} ADA processed. Remaining: ${formatADA(loan.value.state.balance)} ADA`, 'success')
+        }
+        break
+
+      case 'collect':
+        logAction('Available payments collected to originator wallet', 'success')
+        break
+
+      case 'default':
+        loan.value.state.isDefaulted = true
+        logAction('Loan marked as defaulted. Collateral can now be claimed.', 'success')
+        break
+
+      case 'claim':
+        logAction('Collateral claimed by originator', 'success')
+        loan.value.state.isActive = false
+        break
+
+      case 'complete':
+        loan.value.state.isActive = false
+        logAction('Transfer completed. Asset released to buyer.', 'success')
+        break
+    }
+  } catch (err) {
+    logAction(`Error: ${(err as Error).message}`, 'error')
+  } finally {
+    isExecuting.value = false
+    executingAction.value = null
+  }
+}
+
 // Update time every second
 let timeInterval: number
 onMounted(() => {
   loadLoan()
+  loadAvailableWallets()
   timeInterval = window.setInterval(() => {
     now.value = Date.now()
   }, 1000)
@@ -543,7 +928,13 @@ const principalPaid = computed(() => {
 const isDue = computed(() => true) // Placeholder
 const isLate = computed(() => false) // Placeholder
 const lateFeeAccrued = computed(() => 0n) // Placeholder
-const nextPaymentAmount = computed(() => loan.value?.terms.principal || 0n)
+const nextPaymentAmount = computed(() => {
+  if (!loan.value) return 0n
+  const installments = loan.value.terms.installments || 12
+  const monthlyPrincipal = loan.value.terms.principal / BigInt(installments)
+  const monthlyInterest = (loan.value.terms.principal * BigInt(loan.value.terms.apr)) / 100n / 12n
+  return monthlyPrincipal + monthlyInterest
+})
 const nextPaymentDate = computed(() => '--')
 const latePaymentDate = computed(() => '--')
 const estimatedEndDate = computed(() => '--')
@@ -607,3 +998,136 @@ async function handleComplete() {
   alert('Complete action')
 }
 </script>
+
+<style scoped>
+/* Wallet Selector */
+.wallet-selector {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #e2e8f0;
+  min-width: 200px;
+}
+
+.wallet-selector:focus {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: #0ea5e9;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.3);
+}
+
+.wallet-selector option,
+.wallet-selector optgroup {
+  background: #1e293b;
+  color: #e2e8f0;
+}
+
+/* Action Cards */
+.action-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  height: 100%;
+  transition: all 0.2s ease;
+}
+
+.action-card:hover:not(.disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.action-card.disabled {
+  opacity: 0.5;
+}
+
+.action-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.action-title {
+  font-weight: 600;
+  font-size: 1rem;
+  color: #f1f5f9;
+}
+
+.action-desc {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  margin-bottom: 0.75rem;
+}
+
+.action-prereq {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin-bottom: 0.25rem;
+}
+
+.action-prereq i {
+  font-size: 0.65rem;
+}
+
+/* Role Badges */
+.badge-originator {
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  color: white;
+  font-size: 0.65rem;
+  padding: 0.2rem 0.5rem;
+}
+
+.badge-borrower {
+  background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+  color: white;
+  font-size: 0.65rem;
+  padding: 0.2rem 0.5rem;
+}
+
+/* Execution Log */
+.execution-log {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.375rem;
+  padding: 0.75rem;
+  max-height: 200px;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 0.8rem;
+}
+
+.log-entry {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.log-entry:last-child {
+  border-bottom: none;
+}
+
+.log-time {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.log-text {
+  color: #94a3b8;
+}
+
+.log-entry.success .log-text {
+  color: #22c55e;
+}
+
+.log-entry.error .log-text {
+  color: #ef4444;
+}
+
+.log-entry.info .log-text {
+  color: #94a3b8;
+}
+</style>
