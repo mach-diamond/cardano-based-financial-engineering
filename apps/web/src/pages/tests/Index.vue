@@ -15,6 +15,8 @@
       :is-cleaning="isCleaning"
       :available-test-runs="availableTestRuns"
       :current-test-run-id="currentTestRunId"
+      :current-slot="currentSlot"
+      :elapsed-time="elapsedTime"
       @run-tests="handleRunTests"
       @cleanup="handleCleanup"
       @load-test-run="loadTestRunById"
@@ -144,6 +146,34 @@ const availableTestRuns = ref<TestRun[]>([])
 // Breakpoint control - set to phase ID to stop before that phase
 // null = no breakpoint, 2 = stop before tokenization, 4 = stop before CLO, etc.
 const breakpointPhase = ref<number | null>(4) // Default: stop before CLO
+
+// Time tracking
+const currentSlot = ref(0)
+const elapsedTime = ref(0)
+const startTime = ref<number | null>(null)
+let timeInterval: number | null = null
+
+function startTimeTracking() {
+  startTime.value = Date.now()
+  currentSlot.value = 0
+  elapsedTime.value = 0
+
+  if (timeInterval) clearInterval(timeInterval)
+  timeInterval = window.setInterval(() => {
+    if (startTime.value) {
+      elapsedTime.value = Date.now() - startTime.value
+      // Approximate slot calculation (1 slot ~= 1 second in Cardano)
+      currentSlot.value = Math.floor(elapsedTime.value / 1000)
+    }
+  }, 100)
+}
+
+function stopTimeTracking() {
+  if (timeInterval) {
+    clearInterval(timeInterval)
+    timeInterval = null
+  }
+}
 
 // Console output
 const consoleLines = ref<ConsoleLine[]>([])
@@ -661,16 +691,18 @@ const phases = ref<Phase[]>([
   {
     id: 3,
     name: 'Initialize Loan Contracts',
-    description: 'Create loans using tokenized assets as collateral',
+    description: 'Create loans using tokenized assets as collateral (Reserved + Open Market)',
     status: 'pending',
     expanded: true,
     steps: [
-      { id: 'L1', name: 'Loan: Alice Doe ← Diamond', status: 'pending', borrowerId: 'bor-alice', originatorId: 'orig-jewelry', asset: 'Diamond', qty: 2, principal: 500 },
-      { id: 'L2', name: 'Loan: Cardano Airlines ← Airplane', status: 'pending', borrowerId: 'bor-cardanoair', originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 2000 },
-      { id: 'L3', name: 'Loan: Superfast Cargo ← Airplane', status: 'pending', borrowerId: 'bor-superfastcargo', originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 2000 },
-      { id: 'L4', name: 'Loan: Office Operator ← RealEstate', status: 'pending', borrowerId: 'bor-officeop', originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 500 },
-      { id: 'L5', name: 'Loan: Luxury Apartments ← RealEstate', status: 'pending', borrowerId: 'bor-luxuryapt', originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 500 },
-      { id: 'L6', name: 'Loan: Boat Operator ← Boat', status: 'pending', borrowerId: 'bor-boatop', originatorId: 'orig-yacht', asset: 'Boat', qty: 3, principal: 800 },
+      // Reserved buyer loans - specific buyer must accept
+      { id: 'L1', name: 'Loan: Alice Doe ← Diamond (Reserved)', status: 'pending', borrowerId: 'bor-alice', originatorId: 'orig-jewelry', asset: 'Diamond', qty: 2, principal: 500, reservedBuyer: true },
+      { id: 'L2', name: 'Loan: Cardano Airlines ← Airplane (Reserved)', status: 'pending', borrowerId: 'bor-cardanoair', originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 2000, reservedBuyer: true },
+      { id: 'L3', name: 'Loan: Office Operator ← RealEstate (Reserved)', status: 'pending', borrowerId: 'bor-officeop', originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 500, reservedBuyer: true },
+      // Open market loans - any buyer can accept
+      { id: 'L4', name: 'Open Market: Airplane Loan', status: 'pending', borrowerId: null, originatorId: 'orig-airplane', asset: 'Airplane', qty: 5, principal: 2000, reservedBuyer: false },
+      { id: 'L5', name: 'Open Market: RealEstate Loan', status: 'pending', borrowerId: null, originatorId: 'orig-realestate', asset: 'RealEstate', qty: 5, principal: 500, reservedBuyer: false },
+      { id: 'L6', name: 'Open Market: Boat Loan', status: 'pending', borrowerId: null, originatorId: 'orig-yacht', asset: 'Boat', qty: 3, principal: 800, reservedBuyer: false },
     ]
   },
   {
@@ -740,6 +772,9 @@ function log(text: string, type: ConsoleLine['type'] = 'info') {
 }
 
 async function handleRunTests(mode: 'emulator' | 'preview' = networkMode.value) {
+  // Start time tracking
+  startTimeTracking()
+
   // Create a new test run in DB
   try {
     const initialState: TestRunState = {
@@ -778,6 +813,9 @@ async function handleRunTests(mode: 'emulator' | 'preview' = networkMode.value) 
     saveTestState, // Called after each phase
     currentTestRunId // Pass test run ID for DB persistence
   )
+
+  // Stop time tracking
+  stopTimeTracking()
 
   // Save final state
   await saveTestState()

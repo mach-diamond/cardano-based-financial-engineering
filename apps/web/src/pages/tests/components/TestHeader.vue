@@ -1,28 +1,45 @@
 <template>
   <div class="test-header mb-4">
-    <div class="d-flex justify-content-between align-items-center">
+    <!-- Top Row: Title and Test Run Selector -->
+    <div class="d-flex justify-content-between align-items-start mb-3">
       <div>
         <h1 class="h3 mb-1 text-white">Full Lifecycle Test Monitor</h1>
         <p class="text-muted mb-0">Assets → Loans → Collateral → CLO Bundle</p>
       </div>
-      <div class="d-flex align-items-end gap-3">
-        <!-- Test Run Selector -->
-        <div class="test-run-selector" v-if="availableTestRuns && availableTestRuns.length > 0">
-          <div class="network-label">Load Test Run</div>
-          <select
-            class="form-control form-control-sm test-run-dropdown"
-            :value="currentTestRunId || ''"
-            @change="handleTestRunChange"
-            :disabled="isRunning"
-          >
-            <option value="">New Run</option>
-            <option v-for="run in availableTestRuns" :key="run.id" :value="run.id">
-              #{{ run.id }} - {{ formatRunName(run) }}
-            </option>
-          </select>
-        </div>
 
-        <!-- Network Selector - Prominent Button Group -->
+      <!-- Test Run Selector - Top Right Corner -->
+      <div class="test-run-selector" v-if="availableTestRuns && availableTestRuns.length > 0">
+        <div class="network-label">Load Test Run</div>
+        <select
+          class="form-control form-control-sm test-run-dropdown"
+          :value="currentTestRunId || ''"
+          @change="handleTestRunChange"
+          :disabled="isRunning"
+        >
+          <option value="">New Run</option>
+          <option v-for="run in availableTestRuns" :key="run.id" :value="run.id">
+            #{{ run.id }} - {{ formatRunName(run) }}
+          </option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Bottom Row: Controls -->
+    <div class="d-flex justify-content-between align-items-end">
+      <!-- Simulated Time Display -->
+      <div class="time-display">
+        <div class="network-label">Simulated Time</div>
+        <div class="time-value">
+          <i class="fas fa-clock mr-2"></i>
+          <span>Slot {{ currentSlot.toLocaleString() }}</span>
+          <span class="time-separator">|</span>
+          <span class="elapsed-time">{{ formatElapsed(elapsedTime) }}</span>
+        </div>
+      </div>
+
+      <!-- Action Buttons Group -->
+      <div class="d-flex align-items-end gap-3">
+        <!-- Network Selector -->
         <div class="network-selector">
           <div class="network-label">Test Network</div>
           <div class="btn-group btn-group-lg" role="group">
@@ -102,12 +119,17 @@ interface TestRun {
   createdAt: string
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   isRunning: boolean
   isCleaning?: boolean
   availableTestRuns?: TestRun[]
   currentTestRunId?: number | null
-}>()
+  currentSlot?: number
+  elapsedTime?: number // in milliseconds
+}>(), {
+  currentSlot: 0,
+  elapsedTime: 0,
+})
 
 const emit = defineEmits<{
   runTests: [mode: 'emulator' | 'preview']
@@ -141,6 +163,18 @@ function formatRunName(run: TestRun): string {
   })
   return `${status} ${date} (${run.networkMode})`
 }
+
+function formatElapsed(ms: number): string {
+  if (ms === 0) return '0:00'
+  const seconds = Math.floor(ms / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes % 60).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
+  }
+  return `${minutes}:${String(seconds % 60).padStart(2, '0')}`
+}
 </script>
 
 <style scoped>
@@ -154,7 +188,34 @@ function formatRunName(run: TestRun): string {
 .test-run-selector {
   display: flex;
   flex-direction: column;
+  align-items: flex-end;
+}
+
+.time-display {
+  display: flex;
+  flex-direction: column;
   align-items: flex-start;
+}
+
+.time-value {
+  display: flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-family: monospace;
+  font-size: 0.95rem;
+  color: #22d3ee;
+}
+
+.time-separator {
+  margin: 0 0.75rem;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.elapsed-time {
+  color: #a5b4fc;
 }
 
 .test-run-dropdown {
