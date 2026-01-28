@@ -29,43 +29,49 @@ export interface TestSetupConfig {
 
 /**
  * Default test environment configuration
+ * Matches the identities used in the Test Suite UI
  */
 export const testConfig: TestSetupConfig = {
-    // Initial wallets to create
+    // Initial wallets to create (matches Test Suite UI identities)
     wallets: [
-        // Originators - create and package loans
-        { name: 'Originator Alpha', role: 'Originator', initialAda: 10000 },
-        { name: 'Originator Beta', role: 'Originator', initialAda: 10000 },
+        // Originators - own assets and create loans
+        { name: 'MachDiamond Jewelry', role: 'Originator', initialAda: 10000 },
+        { name: 'Airplane Manufacturing LLC', role: 'Originator', initialAda: 10000 },
+        { name: 'Bob Smith', role: 'Originator', initialAda: 10000 },
+        { name: 'Premier Asset Holdings', role: 'Originator', initialAda: 10000 },
+        { name: 'Yacht Makers Corp', role: 'Originator', initialAda: 10000 },
 
-        // Borrowers - take out loans
-        { name: 'Borrower 1', role: 'Borrower', initialAda: 1000 },
-        { name: 'Borrower 2', role: 'Borrower', initialAda: 1000 },
-        { name: 'Borrower 3', role: 'Borrower', initialAda: 1000 },
-        { name: 'Borrower 4', role: 'Borrower', initialAda: 1000 },
-        { name: 'Borrower 5', role: 'Borrower', initialAda: 1000 },
+        // Borrowers - take out loans using tokenized assets as collateral
+        { name: 'Cardano Airlines LLC', role: 'Borrower', initialAda: 5000 },
+        { name: 'Superfast Cargo Air', role: 'Borrower', initialAda: 5000 },
+        { name: 'Alice Doe', role: 'Borrower', initialAda: 1000 },
+        { name: 'Office Operator LLC', role: 'Borrower', initialAda: 2000 },
+        { name: 'Luxury Apartments LLC', role: 'Borrower', initialAda: 2000 },
+        { name: 'Boat Operator LLC', role: 'Borrower', initialAda: 3000 },
 
-        // CLO Manager - structures CLO deals
-        { name: 'CLO Manager', role: 'Analyst', initialAda: 5000 },
+        // Analyst - structures CLO deals
+        { name: 'Cardano Investment Bank', role: 'Analyst', initialAda: 5000 },
 
-        // Investors - buy CLO tranches
-        { name: 'Senior Investor', role: 'Investor', initialAda: 50000 },
-        { name: 'Mezz Investor', role: 'Investor', initialAda: 25000 },
-        { name: 'Junior Investor', role: 'Investor', initialAda: 10000 },
+        // Investors - buy CLO tranche tokens
+        { name: 'Senior Tranche Investor', role: 'Investor', initialAda: 50000 },
+        { name: 'Mezzanine Tranche Investor', role: 'Investor', initialAda: 25000 },
+        { name: 'Junior Tranche Investor', role: 'Investor', initialAda: 10000 },
+        { name: 'Hedge Fund Alpha', role: 'Investor', initialAda: 100000 },
     ],
 
-    // NFTs to mint as collateral for borrowers
+    // NFTs to mint as collateral (minted to Originators, used in loans)
     assets: [
-        { policyId: 'test_nft_policy_1', assetName: 'CryptoArt001', quantity: 1, mintTo: 'Borrower 1' },
-        { policyId: 'test_nft_policy_1', assetName: 'CryptoArt002', quantity: 1, mintTo: 'Borrower 2' },
-        { policyId: 'test_nft_policy_1', assetName: 'CryptoArt003', quantity: 1, mintTo: 'Borrower 3' },
-        { policyId: 'test_nft_policy_2', assetName: 'RealEstate001', quantity: 1, mintTo: 'Borrower 4' },
-        { policyId: 'test_nft_policy_2', assetName: 'RealEstate002', quantity: 1, mintTo: 'Borrower 5' },
+        { policyId: 'policy_diamond', assetName: 'Diamond', quantity: 2, mintTo: 'MachDiamond Jewelry' },
+        { policyId: 'policy_airplane', assetName: 'Airplane', quantity: 10, mintTo: 'Airplane Manufacturing LLC' },
+        { policyId: 'policy_home', assetName: 'Home', quantity: 1, mintTo: 'Bob Smith' },
+        { policyId: 'policy_realestate', assetName: 'RealEstate', quantity: 10, mintTo: 'Premier Asset Holdings' },
+        { policyId: 'policy_boat', assetName: 'Boat', quantity: 3, mintTo: 'Yacht Makers Corp' },
     ],
 
     // Default funding amounts by role (in ADA)
     defaultFunding: {
         originator: 10000,
-        borrower: 1000,
+        borrower: 2000,
         analyst: 5000,
         investor: 25000,
     },

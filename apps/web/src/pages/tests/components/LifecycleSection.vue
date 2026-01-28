@@ -11,10 +11,15 @@
         </div>
       </div>
       <div class="d-flex align-items-center">
-        <div class="custom-control custom-switch mr-3" @click.stop>
-          <input type="checkbox" class="custom-control-input" id="manualModeSwitch" :checked="manualMode" @change="$emit('update:manualMode', ($event.target as HTMLInputElement).checked)">
-          <label class="custom-control-label text-muted small" for="manualModeSwitch">{{ manualMode ? 'Manual' : 'Auto' }}</label>
-        </div>
+        <button
+          @click.stop="$emit('runFullTest')"
+          class="btn btn-sm btn-primary mr-3"
+          :disabled="isRunning"
+        >
+          <span v-if="isRunning" class="spinner-border spinner-border-sm mr-1" role="status"></span>
+          <i v-else class="fas fa-play mr-1"></i>
+          {{ isRunning ? 'Running...' : 'Run Full Test' }}
+        </button>
         <span class="badge badge-pill badge-primary mr-2">{{ totalSteps }} steps</span>
         <span v-if="lifecycleStatus === 'passed'" class="badge badge-success mr-2">All Passed</span>
         <span v-else-if="lifecycleStatus === 'failed'" class="badge badge-danger mr-2">Failed</span>
@@ -45,9 +50,9 @@
               </div>
             </div>
             <div class="d-flex align-items-center gap-2">
-              <button v-if="manualMode && phase.status !== 'passed'"
+              <button v-if="phase.status !== 'passed'"
                       @click.stop="$emit('executePhase', phase)"
-                      class="btn btn-sm btn-primary"
+                      class="btn btn-sm btn-outline-primary"
                       :disabled="isRunning">
                 <i class="fas fa-play mr-1"></i> Run Phase
               </button>
@@ -76,14 +81,14 @@
                   <i v-else-if="step.status === 'failed'" class="fas fa-times-circle text-danger"></i>
                   <i v-else class="far fa-circle text-muted"></i>
                 </div>
-                <span class="step-action-bubble" :class="'action-' + getStepActionClass(phase.id)">{{ getStepAction(phase.id) }}</span>
+                <span class="step-action-bubble" :class="'action-' + getStepActionClass(phase.id, step)">{{ getStepAction(phase.id, step) }}</span>
                 <span class="step-entity-text">{{ getStepEntity(step) }}</span>
                 <span v-if="step.txHash" class="step-tx-hash" :title="step.txHash">
                   <i class="fas fa-link"></i> {{ step.txHash.slice(0, 8) }}...
                 </span>
               </div>
               <div class="step-actions">
-                <button v-if="manualMode && step.status === 'pending'"
+                <button v-if="step.status === 'pending'"
                         @click="$emit('executeStep', phase, step)"
                         class="btn-execute"
                         :disabled="isRunning">
@@ -106,7 +111,6 @@ import type { Phase, Identity } from '../testRunner'
 const props = defineProps<{
   phases: Phase[]
   identities: Identity[]
-  manualMode: boolean
   isRunning: boolean
   completedSteps: number
   totalSteps: number
@@ -114,7 +118,7 @@ const props = defineProps<{
 }>()
 
 defineEmits<{
-  'update:manualMode': [value: boolean]
+  runFullTest: []
   executePhase: [phase: Phase]
   executeStep: [phase: Phase, step: any]
 }>()

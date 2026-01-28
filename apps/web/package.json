@@ -10,10 +10,10 @@
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts"
   },
   "dependencies": {
-    "@lucid-evolution/lucid": "^0.4.0",
     "bootstrap": "^4.6.2",
     "chart.js": "^4.4.0",
     "jquery": "^3.7.1",
+    "lodash-es": "^4.17.21",
     "pinia": "^2.2.0",
     "popper.js": "^1.16.1",
     "vue": "^3.5.0",

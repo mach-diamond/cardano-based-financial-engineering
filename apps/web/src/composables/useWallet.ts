@@ -1,86 +1,38 @@
 /**
  * Wallet Composable
  *
- * Provides wallet connection state and Lucid Evolution API access
- * for browser-based Cardano interactions.
+ * Provides wallet connection state using CIP-30 wallet API directly.
+ * Transaction building should be done via backend API.
  */
 
 import { ref, computed, watch } from 'vue'
 import { useWalletStore } from '@/stores/wallet'
-import type { LucidEvolution } from '@lucid-evolution/lucid'
-
-// Lucid Evolution API instance (browser-side singleton)
-let lucidApi: LucidEvolution | null = null
-
-/**
- * Initialize Lucid Evolution API for the browser
- */
-async function initLucid(networkId: 0 | 1): Promise<LucidEvolution> {
-  const { Lucid, Blockfrost } = await import('@lucid-evolution/lucid')
-
-  // Determine network based on networkId
-  const network = networkId === 0 ? 'Preview' : 'Mainnet'
-
-  // Use environment variable or fallback for Blockfrost key
-  // In production, this should come from a backend or be user-provided
-  const blockfrostUrl = networkId === 0
-    ? 'https://cardano-preview.blockfrost.io/api/v0'
-    : 'https://cardano-mainnet.blockfrost.io/api/v0'
-
-  // Note: In production, you should use an actual API key
-  // For testnet development, Blockfrost offers free tier
-  const blockfrostKey = import.meta.env.VITE_BLOCKFROST_KEY || 'preview_placeholder'
-
-  const api = await Lucid(
-    new Blockfrost(blockfrostUrl, blockfrostKey),
-    network
-  )
-
-  return api
-}
 
 /**
  * Use wallet composable
  *
- * Provides reactive wallet state and Lucid API access.
- * Automatically initializes Lucid when wallet is connected.
+ * Provides reactive wallet state.
+ * Lucid/transaction operations should go through backend API.
  */
 export function useWallet() {
   const store = useWalletStore()
 
-  const api = ref<LucidEvolution | null>(null)
   const isApiReady = ref(false)
   const apiError = ref<string | null>(null)
 
-  // Watch for wallet connection and initialize Lucid
+  // Watch for wallet connection
   watch(
     () => store.isConnected,
     async (connected) => {
       if (connected && store.walletName) {
         try {
           apiError.value = null
-
-          // Initialize Lucid if not already done
-          if (!lucidApi) {
-            lucidApi = await initLucid(store.networkId)
-          }
-
-          // Connect the wallet to Lucid
-          const cardano = (window as any).cardano
-          if (cardano && cardano[store.walletName]) {
-            const walletApi = await cardano[store.walletName].enable()
-            lucidApi.selectWallet.fromAPI(walletApi)
-          }
-
-          api.value = lucidApi
           isApiReady.value = true
-
         } catch (e) {
-          apiError.value = e instanceof Error ? e.message : 'Failed to initialize Lucid API'
-          console.error('Lucid API initialization error:', e)
+          apiError.value = e instanceof Error ? e.message : 'Failed to initialize wallet'
+          console.error('Wallet initialization error:', e)
         }
       } else {
-        api.value = null
         isApiReady.value = false
       }
     },
@@ -111,9 +63,7 @@ export function useWallet() {
    */
   function disconnect() {
     store.disconnect()
-    api.value = null
     isApiReady.value = false
-    lucidApi = null
   }
 
   /**
@@ -123,28 +73,9 @@ export function useWallet() {
     await store.refreshBalance()
   }
 
-  /**
-   * Get wallet UTxOs via Lucid
-   */
-  async function getUtxos() {
-    if (!api.value) return []
-    return await api.value.wallet().getUtxos()
-  }
-
-  /**
-   * Query UTxOs at a specific address
-   */
-  async function queryUtxos(addr: string) {
-    if (!api.value) return []
-    return await api.value.utxosAt(addr)
-  }
-
   return {
-    // API
-    api,
-    isApiReady,
-
     // State
+    isApiReady,
     isConnected,
     address,
     networkId,
@@ -160,7 +91,5 @@ export function useWallet() {
     connect,
     disconnect,
     refreshBalance,
-    getUtxos,
-    queryUtxos,
   }
 }

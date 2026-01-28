@@ -12,11 +12,16 @@ export default defineConfig({
   server: {
     port: 3001,
     open: true,
+    // Proxy API calls to backend
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3005',
+        changeOrigin: true,
+      },
+    },
   },
   build: {
     sourcemap: true,
-  },
-  optimizeDeps: {
-    exclude: ['@lucid-evolution/lucid'],
+    target: 'esnext',
   },
 })

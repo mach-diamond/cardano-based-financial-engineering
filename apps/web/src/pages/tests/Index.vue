@@ -19,12 +19,11 @@
     <LifecycleSection
       :phases="phases"
       :identities="identities"
-      :manual-mode="manualMode"
       :is-running="isRunning"
       :completed-steps="completedSteps"
       :total-steps="totalSteps"
       :lifecycle-status="lifecycleStatus"
-      @update:manual-mode="manualMode = $event"
+      @run-full-test="handleRunTests(networkMode)"
       @execute-phase="handleExecutePhase"
       @execute-step="handleExecuteStep"
     />
@@ -70,8 +69,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+
+// API Service
+import {
+  getWallets,
+  getTestConfig,
+  createWallet,
+  deleteAllWallets,
+  generateMockAddress,
+  generateMockPaymentKeyHash,
+  generateMockPrivateKey,
+  type WalletFromDB
+} from '@/services/api'
 
 // Components
 import ProgressOverlay from './components/ProgressOverlay.vue'
@@ -98,50 +109,111 @@ const router = useRouter()
 const isRunning = ref(false)
 const currentPhase = ref(1)
 const currentStepName = ref('Initializing...')
-const manualMode = ref(true)
+const networkMode = ref<'emulator' | 'preview'>('emulator')
 const isGenerating = ref(false)
 
 // Console output
 const consoleLines = ref<ConsoleLine[]>([])
 
-// Identity State - All Participants
-const identities = ref<Identity[]>([
-  // Originators
-  { id: 'orig-jewelry', name: 'MachDiamond Jewelry', role: 'Originator', address: 'addr_test1qr_machdiamond', wallets: [{ id: 'w0', name: 'Main', address: 'addr_test1qr_machdiamond', balance: 0n, assets: [] }] },
-  { id: 'orig-airplane', name: 'Airplane Manufacturing LLC', role: 'Originator', address: 'addr_test1qr_airplane', wallets: [{ id: 'w1', name: 'Main', address: 'addr_test1qr_airplane', balance: 0n, assets: [] }] },
-  { id: 'orig-home', name: 'Bob Smith', role: 'Originator', address: 'addr_test1qr_bob', wallets: [{ id: 'w2', name: 'Main', address: 'addr_test1qr_bob', balance: 0n, assets: [] }] },
-  { id: 'orig-realestate', name: 'Premier Asset Holdings', role: 'Originator', address: 'addr_test1qr_premier', wallets: [{ id: 'w3', name: 'Main', address: 'addr_test1qr_premier', balance: 0n, assets: [] }] },
-  { id: 'orig-yacht', name: 'Yacht Makers Corp', role: 'Originator', address: 'addr_test1qr_yacht', wallets: [{ id: 'w4', name: 'Main', address: 'addr_test1qr_yacht', balance: 0n, assets: [] }] },
-  // Borrowers
-  { id: 'bor-cardanoair', name: 'Cardano Airlines LLC', role: 'Borrower', address: 'addr_test1qb_cardanoair', wallets: [{ id: 'w5', name: 'Main', address: 'addr_test1qb_cardanoair', balance: 0n, assets: [] }] },
-  { id: 'bor-superfastcargo', name: 'Superfast Cargo Air', role: 'Borrower', address: 'addr_test1qb_superfastcargo', wallets: [{ id: 'w6', name: 'Main', address: 'addr_test1qb_superfastcargo', balance: 0n, assets: [] }] },
-  { id: 'bor-alice', name: 'Alice Doe', role: 'Borrower', address: 'addr_test1qb_alice', wallets: [{ id: 'w7', name: 'Main', address: 'addr_test1qb_alice', balance: 0n, assets: [] }] },
-  { id: 'bor-officeop', name: 'Office Operator LLC', role: 'Borrower', address: 'addr_test1qb_officeop', wallets: [{ id: 'w8', name: 'Main', address: 'addr_test1qb_officeop', balance: 0n, assets: [] }] },
-  { id: 'bor-luxuryapt', name: 'Luxury Apartments LLC', role: 'Borrower', address: 'addr_test1qb_luxuryapt', wallets: [{ id: 'w9', name: 'Main', address: 'addr_test1qb_luxuryapt', balance: 0n, assets: [] }] },
-  { id: 'bor-boatop', name: 'Boat Operator LLC', role: 'Borrower', address: 'addr_test1qb_boatop', wallets: [{ id: 'w10', name: 'Main', address: 'addr_test1qb_boatop', balance: 0n, assets: [] }] },
-  // Analyst
-  { id: 'analyst', name: 'Cardano Investment Bank', role: 'Analyst', address: 'addr_test1qa_cib', wallets: [{ id: 'w11', name: 'Main', address: 'addr_test1qa_cib', balance: 0n, assets: [] }] },
-  // Investors
-  { id: 'inv-1', name: 'Senior Tranche Investor', role: 'Investor', address: 'addr_test1qi_senior', wallets: [{ id: 'w12', name: 'Main', address: 'addr_test1qi_senior', balance: 0n, assets: [] }] },
-  { id: 'inv-2', name: 'Mezzanine Tranche Investor', role: 'Investor', address: 'addr_test1qi_mezz', wallets: [{ id: 'w13', name: 'Main', address: 'addr_test1qi_mezz', balance: 0n, assets: [] }] },
-  { id: 'inv-3', name: 'Junior Tranche Investor', role: 'Investor', address: 'addr_test1qi_junior', wallets: [{ id: 'w14', name: 'Main', address: 'addr_test1qi_junior', balance: 0n, assets: [] }] },
-  { id: 'inv-4', name: 'Hedge Fund Alpha', role: 'Investor', address: 'addr_test1qi_hedgea', wallets: [{ id: 'w15', name: 'Main', address: 'addr_test1qi_hedgea', balance: 0n, assets: [] }] },
-])
+// Identity State - starts empty, loaded from DB
+const identities = ref<Identity[]>([])
 
-// Generate real wallet addresses
+// Map wallet name to identity ID (for consistent IDs between UI and DB)
+const nameToIdMap: Record<string, string> = {
+  'MachDiamond Jewelry': 'orig-jewelry',
+  'Airplane Manufacturing LLC': 'orig-airplane',
+  'Bob Smith': 'orig-home',
+  'Premier Asset Holdings': 'orig-realestate',
+  'Yacht Makers Corp': 'orig-yacht',
+  'Cardano Airlines LLC': 'bor-cardanoair',
+  'Superfast Cargo Air': 'bor-superfastcargo',
+  'Alice Doe': 'bor-alice',
+  'Office Operator LLC': 'bor-officeop',
+  'Luxury Apartments LLC': 'bor-luxuryapt',
+  'Boat Operator LLC': 'bor-boatop',
+  'Cardano Investment Bank': 'analyst',
+  'Senior Tranche Investor': 'inv-1',
+  'Mezzanine Tranche Investor': 'inv-2',
+  'Junior Tranche Investor': 'inv-3',
+  'Hedge Fund Alpha': 'inv-4',
+}
+
+// Convert DB wallet to Identity format
+function walletToIdentity(wallet: WalletFromDB): Identity {
+  return {
+    id: nameToIdMap[wallet.name] || `wallet-${wallet.id}`,
+    name: wallet.name,
+    role: wallet.role,
+    address: wallet.address,
+    wallets: [{
+      id: `w${wallet.id}`,
+      name: 'Main',
+      address: wallet.address,
+      balance: 0n,
+      assets: []
+    }]
+  }
+}
+
+// Load wallets from DB on mount
+async function loadWalletsFromDB() {
+  try {
+    const wallets = await getWallets()
+    if (wallets.length > 0) {
+      identities.value = wallets.map(walletToIdentity)
+      log(`Loaded ${wallets.length} wallets from database`, 'success')
+    }
+  } catch (err) {
+    log('Could not connect to backend API. Make sure it\'s running with `just api`', 'error')
+  }
+}
+
+onMounted(() => {
+  loadWalletsFromDB()
+})
+
+// Generate test wallets and save to DB
 async function generateTestUsers() {
   isGenerating.value = true
   try {
-    for (const identity of identities.value) {
-      const randomBytes = Array.from({ length: 56 }, () => Math.floor(Math.random() * 16).toString(16)).join('')
-      const testnetPrefix = 'addr_test1qz'
-      identity.address = testnetPrefix + randomBytes
-      identity.wallets[0].address = identity.address
-      await new Promise(r => setTimeout(r, 50))
+    // First, clear existing wallets
+    log('Clearing existing wallets...', 'info')
+    await deleteAllWallets()
+    identities.value = []
+
+    // Get wallet config from backend
+    log('Fetching wallet configuration...', 'info')
+    const config = await getTestConfig()
+
+    // Create each wallet
+    const newIdentities: Identity[] = []
+    for (const walletConfig of config.wallets) {
+      log(`Creating wallet: ${walletConfig.name}...`, 'info')
+
+      const address = generateMockAddress()
+      const paymentKeyHash = generateMockPaymentKeyHash()
+      const privateKey = generateMockPrivateKey()
+
+      // Save to DB
+      const savedWallet = await createWallet({
+        name: walletConfig.name,
+        role: walletConfig.role,
+        address,
+        paymentKeyHash,
+        privateKey
+      })
+
+      // Convert to Identity format
+      newIdentities.push(walletToIdentity(savedWallet))
+
+      await new Promise(r => setTimeout(r, 30)) // Small delay for UI feedback
     }
-    log('Generated real wallet addresses for all identities', 'success')
+
+    identities.value = newIdentities
+    log(`Generated ${newIdentities.length} wallets and saved to database`, 'success')
   } catch (err) {
     log('Error generating wallets: ' + (err as Error).message, 'error')
+    console.error(err)
   } finally {
     isGenerating.value = false
   }
@@ -166,26 +238,58 @@ const phases = ref<Phase[]>([
   {
     id: 1,
     name: 'Setup & Identities',
-    description: 'Fund wallets for all 16 participants',
+    description: 'Create and fund wallets for all participants',
     status: 'pending',
     expanded: true,
     steps: [
-      { id: 'S1', name: 'Fund MachDiamond Jewelry', status: 'pending', targetId: 'orig-jewelry' },
-      { id: 'S2', name: 'Fund Airplane Manufacturing LLC', status: 'pending', targetId: 'orig-airplane' },
-      { id: 'S3', name: 'Fund Bob Smith', status: 'pending', targetId: 'orig-home' },
-      { id: 'S4', name: 'Fund Premier Asset Holdings', status: 'pending', targetId: 'orig-realestate' },
-      { id: 'S5', name: 'Fund Yacht Makers Corp', status: 'pending', targetId: 'orig-yacht' },
-      { id: 'S6', name: 'Fund Cardano Airlines LLC', status: 'pending', targetId: 'bor-cardanoair' },
-      { id: 'S7', name: 'Fund Superfast Cargo Air', status: 'pending', targetId: 'bor-superfastcargo' },
-      { id: 'S8', name: 'Fund Alice Doe', status: 'pending', targetId: 'bor-alice' },
-      { id: 'S9', name: 'Fund Office Operator LLC', status: 'pending', targetId: 'bor-officeop' },
-      { id: 'S10', name: 'Fund Luxury Apartments LLC', status: 'pending', targetId: 'bor-luxuryapt' },
-      { id: 'S11', name: 'Fund Boat Operator LLC', status: 'pending', targetId: 'bor-boatop' },
-      { id: 'S12', name: 'Fund Cardano Investment Bank', status: 'pending', targetId: 'analyst' },
-      { id: 'S13', name: 'Fund Senior Tranche Investor', status: 'pending', targetId: 'inv-1' },
-      { id: 'S14', name: 'Fund Mezzanine Tranche Investor', status: 'pending', targetId: 'inv-2' },
-      { id: 'S15', name: 'Fund Junior Tranche Investor', status: 'pending', targetId: 'inv-3' },
-      { id: 'S16', name: 'Fund Hedge Fund Alpha', status: 'pending', targetId: 'inv-4' },
+      {
+        id: 'S1',
+        name: 'Create Wallets',
+        status: 'pending',
+        action: 'create-wallets',
+        wallets: [
+          { role: 'Originator', name: 'MachDiamond Jewelry' },
+          { role: 'Originator', name: 'Airplane Manufacturing LLC' },
+          { role: 'Originator', name: 'Bob Smith' },
+          { role: 'Originator', name: 'Premier Asset Holdings' },
+          { role: 'Originator', name: 'Yacht Makers Corp' },
+          { role: 'Borrower', name: 'Cardano Airlines LLC' },
+          { role: 'Borrower', name: 'Superfast Cargo Air' },
+          { role: 'Borrower', name: 'Alice Doe' },
+          { role: 'Borrower', name: 'Office Operator LLC' },
+          { role: 'Borrower', name: 'Luxury Apartments LLC' },
+          { role: 'Borrower', name: 'Boat Operator LLC' },
+          { role: 'Analyst', name: 'Cardano Investment Bank' },
+          { role: 'Investor', name: 'Senior Tranche Investor' },
+          { role: 'Investor', name: 'Mezzanine Tranche Investor' },
+          { role: 'Investor', name: 'Junior Tranche Investor' },
+          { role: 'Investor', name: 'Hedge Fund Alpha' },
+        ]
+      },
+      {
+        id: 'S2',
+        name: 'Fund All Wallets',
+        status: 'pending',
+        action: 'fund-wallets',
+        wallets: [
+          { role: 'Originator', name: 'MachDiamond Jewelry' },
+          { role: 'Originator', name: 'Airplane Manufacturing LLC' },
+          { role: 'Originator', name: 'Bob Smith' },
+          { role: 'Originator', name: 'Premier Asset Holdings' },
+          { role: 'Originator', name: 'Yacht Makers Corp' },
+          { role: 'Borrower', name: 'Cardano Airlines LLC' },
+          { role: 'Borrower', name: 'Superfast Cargo Air' },
+          { role: 'Borrower', name: 'Alice Doe' },
+          { role: 'Borrower', name: 'Office Operator LLC' },
+          { role: 'Borrower', name: 'Luxury Apartments LLC' },
+          { role: 'Borrower', name: 'Boat Operator LLC' },
+          { role: 'Analyst', name: 'Cardano Investment Bank' },
+          { role: 'Investor', name: 'Senior Tranche Investor' },
+          { role: 'Investor', name: 'Mezzanine Tranche Investor' },
+          { role: 'Investor', name: 'Junior Tranche Investor' },
+          { role: 'Investor', name: 'Hedge Fund Alpha' },
+        ]
+      },
     ]
   },
   {
@@ -283,7 +387,7 @@ function log(text: string, type: ConsoleLine['type'] = 'info') {
   consoleLines.value.push({ time, text, type })
 }
 
-async function handleRunTests(mode: 'demo' | 'emulator' | 'preview') {
+async function handleRunTests(mode: 'emulator' | 'preview' = networkMode.value) {
   await runner.runTests(
     mode,
     identities,

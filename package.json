@@ -3,7 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "description": "MintMatrix Financial Instruments - Smart Contracts Monorepo",
-  "keywords": ["cardano", "smart-contracts", "defi", "cdo", "lending", "aiken"],
+  "keywords": [
+    "cardano",
+    "smart-contracts",
+    "defi",
+    "cdo",
+    "lending",
+    "aiken"
+  ],
   "author": "MintMatrix",
   "license": "UNLICENSED",
   "workspaces": [
@@ -32,8 +39,15 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\""
   },
   "devDependencies": {
-    "turbo": "^2.3.0",
     "prettier": "^3.2.0",
+    "turbo": "^2.3.0",
     "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.9",
+    "@lucid-evolution/lucid": "^0.4.29",
+    "hono": "^4.11.7",
+    "postgres": "^3.4.8",
+    "tsx": "^4.21.0"
   }
 }

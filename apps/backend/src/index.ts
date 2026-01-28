@@ -3,6 +3,7 @@ import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import sql from './db'
 import wallets from './routes/wallets'
+import emulator from './routes/emulator'
 
 const app = new Hono()
 
@@ -29,6 +30,7 @@ app.get('/health', async (c) => {
 
 // API routes
 app.route('/api/wallets', wallets)
+app.route('/api/emulator', emulator)
 
 // 404 handler
 app.notFound((c) => {
@@ -36,8 +38,11 @@ app.notFound((c) => {
 })
 
 const port = Number(process.env.PORT) || 3005
+
+// Bun uses the default export, Node uses explicit serve
 console.log(`🚀 MintMatrix API running on http://localhost:${port}`)
 
+// Export for Bun
 export default {
     port,
     fetch: app.fetch
