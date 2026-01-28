@@ -1,5 +1,5 @@
 <template>
-  <div class="card console-card">
+  <div class="card console-card" :class="{ 'console-collapsed': !expanded }">
     <div class="card-header d-flex justify-content-between align-items-center section-header" @click="$emit('toggle')">
       <div class="d-flex align-items-center">
         <div class="section-icon section-icon--console mr-3">
@@ -64,6 +64,15 @@ watch(() => props.consoleLines.length, () => {
 .console-card {
   background: rgba(15, 23, 42, 0.9);
   border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.75rem;
+}
+
+.console-card.console-collapsed .card-header {
+  border-bottom: none;
+  border-radius: 0.75rem;
+}
+
+.console-card.console-collapsed {
   border-radius: 0.75rem;
 }
 

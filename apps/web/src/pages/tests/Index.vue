@@ -102,6 +102,7 @@ import {
   updateTestRunState,
   completeTestRun,
   deleteAllTestRuns,
+  deleteAllContractRecords,
   type WalletFromDB,
   type TestSetupConfig,
   type TestRunState,
@@ -293,6 +294,11 @@ async function loadAvailableTestRuns() {
 async function loadTestRunById(runId: number) {
   try {
     const run = await getTestRun(runId)
+    console.log('loadTestRunById: Raw response:', run)
+    console.log('loadTestRunById: State:', run?.state)
+    console.log('loadTestRunById: loanContracts in state:', run?.state?.loanContracts)
+    console.log('loadTestRunById: cloContracts in state:', run?.state?.cloContracts)
+
     if (run && run.state) {
       // Reset all phases to pending first
       phases.value.forEach(phase => {
@@ -335,15 +341,19 @@ async function loadTestRunById(runId: number) {
       // Restore loan contracts
       if (run.state.loanContracts && run.state.loanContracts.length > 0) {
         loanContracts.value = run.state.loanContracts
+        console.log('loadTestRunById: Restored loanContracts:', loanContracts.value.length)
       } else {
         loanContracts.value = []
+        console.log('loadTestRunById: No loanContracts to restore')
       }
 
       // Restore CLO contracts
       if (run.state.cloContracts && run.state.cloContracts.length > 0) {
         cloContracts.value = run.state.cloContracts
+        console.log('loadTestRunById: Restored cloContracts:', cloContracts.value.length)
       } else {
         cloContracts.value = []
+        console.log('loadTestRunById: No cloContracts to restore')
       }
 
       currentPhase.value = run.state.currentPhase || 1
@@ -354,6 +364,7 @@ async function loadTestRunById(runId: number) {
     }
   } catch (err) {
     log(`Error loading test run: ${(err as Error).message}`, 'error')
+    console.error('loadTestRunById: Error:', err)
   }
 }
 
@@ -364,6 +375,10 @@ async function loadTestRunFromDB() {
     await loadAvailableTestRuns()
 
     const latestRun = await getLatestTestRun()
+    console.log('loadTestRunFromDB: Latest run:', latestRun)
+    console.log('loadTestRunFromDB: State:', latestRun?.state)
+    console.log('loadTestRunFromDB: loanContracts in state:', latestRun?.state?.loanContracts)
+
     if (latestRun && latestRun.state) {
       currentTestRunId.value = latestRun.id
 
@@ -398,11 +413,17 @@ async function loadTestRunFromDB() {
       // Restore loan contracts
       if (latestRun.state.loanContracts && latestRun.state.loanContracts.length > 0) {
         loanContracts.value = latestRun.state.loanContracts
+        console.log('loadTestRunFromDB: Restored loanContracts:', loanContracts.value.length)
+      } else {
+        console.log('loadTestRunFromDB: No loanContracts in state to restore')
       }
 
       // Restore CLO contracts
       if (latestRun.state.cloContracts && latestRun.state.cloContracts.length > 0) {
         cloContracts.value = latestRun.state.cloContracts
+        console.log('loadTestRunFromDB: Restored cloContracts:', cloContracts.value.length)
+      } else {
+        console.log('loadTestRunFromDB: No cloContracts in state to restore')
       }
 
       currentPhase.value = latestRun.state.currentPhase || 1
@@ -410,15 +431,31 @@ async function loadTestRunFromDB() {
 
       // Sync step status based on restored state
       syncStepStatusFromState()
+    } else {
+      console.log('loadTestRunFromDB: No latest run found or no state')
     }
   } catch (err) {
-    console.warn('Could not load test run:', err)
+    console.warn('loadTestRunFromDB: Error:', err)
   }
 }
 
 // Save current test state to database
 async function saveTestState() {
-  if (!currentTestRunId.value) return
+  if (!currentTestRunId.value) {
+    console.warn('saveTestState: No test run ID, skipping save')
+    return
+  }
+
+  // Deep clone contracts to ensure we capture current state
+  const contractsCopy = JSON.parse(JSON.stringify(loanContracts.value))
+  const cloContractsCopy = JSON.parse(JSON.stringify(cloContracts.value))
+
+  console.log('saveTestState: Saving state with:', {
+    testRunId: currentTestRunId.value,
+    loanContractsCount: contractsCopy.length,
+    cloContractsCount: cloContractsCopy.length,
+    identitiesCount: identities.value.length
+  })
 
   const state: TestRunState = {
     phases: phases.value.map(p => ({
@@ -444,17 +481,18 @@ async function saveTestState() {
         }))
       }))
     })),
-    loanContracts: loanContracts.value,
-    cloContracts: cloContracts.value,
+    loanContracts: contractsCopy,
+    cloContracts: cloContractsCopy,
     currentPhase: currentPhase.value,
     completedSteps: completedSteps.value,
     totalSteps: totalSteps.value
   }
 
   try {
-    await updateTestRunState(currentTestRunId.value, state)
+    const result = await updateTestRunState(currentTestRunId.value, state)
+    console.log('saveTestState: Save result:', result ? 'success' : 'failed')
   } catch (err) {
-    console.warn('Could not save test state:', err)
+    console.error('saveTestState: Error saving:', err)
   }
 }
 
@@ -737,7 +775,8 @@ async function handleRunTests(mode: 'emulator' | 'preview' = networkMode.value) 
     loanContracts,
     cloContracts,
     breakpointPhase,
-    saveTestState // Called after each phase
+    saveTestState, // Called after each phase
+    currentTestRunId // Pass test run ID for DB persistence
   )
 
   // Save final state
@@ -824,6 +863,10 @@ async function handleCleanup() {
     // Reset backend state
     await fullTestCleanup()
     log('Backend state cleared (emulator, contracts, wallets)', 'success')
+
+    // Delete all contracts from process_smart_contract table
+    await deleteAllContractRecords()
+    log('Contract records cleared', 'success')
 
     // Delete all test runs
     await deleteAllTestRuns()

@@ -2,7 +2,7 @@ import { type Ref } from 'vue'
 import type { LoanContract } from './components/Contracts_Loans.vue'
 import type { CLOContract } from './components/Contracts_CLOs.vue'
 import * as ctx from './testContext'
-import { getWallets, getTestConfig, createWallet, deleteAllWallets, generateMockPrivateKey } from '@/services/api'
+import { getWallets, getTestConfig, createWallet, deleteAllWallets, generateMockPrivateKey, createContractRecord } from '@/services/api'
 
 // Map wallet name to identity ID
 const nameToIdMap: Record<string, string> = {
@@ -86,7 +86,8 @@ export async function runTests(
     loanContracts?: Ref<LoanContract[]>,
     cloContracts?: Ref<CLOContract[]>,
     breakpointPhase?: Ref<number | null>,
-    onPhaseComplete?: () => Promise<void>
+    onPhaseComplete?: () => Promise<void>,
+    testRunId?: Ref<number | null> // Add test run ID for DB persistence
 ) {
     isRunning.value = true
     currentPhase.value = 1
@@ -346,10 +347,11 @@ export async function runTests(
                     originator.wallets[0].assets = originator.wallets[0].assets.filter(a => a.assetName !== loan.asset)
                 }
             }
-            // Add to loanContracts
+            // Add to loanContracts and save to DB
             if (loanContracts) {
-                loanContracts.value.push({
-                    id: `LOAN-${loan.borrowerId}-${loan.asset}`,
+                const contractId = `LOAN-${loan.borrowerId}-${loan.asset}`
+                const loanContract: LoanContract = {
+                    id: contractId,
                     alias: `${borrower.name} - ${loan.asset} Loan`,
                     subtype: 'Asset-Backed',
                     collateral: {
@@ -363,7 +365,33 @@ export async function runTests(
                     status: 'passed',
                     borrower: borrower.name,
                     originator: originator.name
-                })
+                }
+                loanContracts.value.push(loanContract)
+
+                // Save to process_smart_contract table
+                if (testRunId?.value) {
+                    try {
+                        await createContractRecord({
+                            testRunId: testRunId.value,
+                            contractType: 'Transfer',
+                            contractSubtype: 'Asset-Backed',
+                            alias: loanContract.alias,
+                            contractData: {
+                                collateral: loanContract.collateral,
+                                principal: loanContract.principal,
+                                apr: loanContract.apr,
+                                termLength: loanContract.termLength,
+                                borrower: loanContract.borrower,
+                                originator: loanContract.originator
+                            },
+                            policyId: 'policy_' + loan.asset.toLowerCase(),
+                            networkId: mode === 'emulator' ? 0 : 1
+                        })
+                        log(`  Contract saved to DB: ${contractId}`, 'info')
+                    } catch (err) {
+                        log(`  Warning: Could not save contract to DB: ${(err as Error).message}`, 'error')
+                    }
+                }
             }
             log(`  Collateral Token issued, asset escrowed`, 'success')
             const step = phases.value[2].steps.find((s: any) => s.borrowerId === loan.borrowerId)
@@ -395,10 +423,10 @@ export async function runTests(
         phases.value[3].steps[0].status = 'passed'
         phases.value[3].steps[1].status = 'passed'
 
-        // Add CLO contract
+        // Add CLO contract and save to DB
         if (cloContracts) {
             const totalValue = loanContracts ? loanContracts.value.reduce((sum, l) => sum + l.principal, 0) : 128000 * 1_000_000
-            cloContracts.value.push({
+            const cloContract: CLOContract = {
                 id: 'CLO-001',
                 alias: 'MintMatrix CLO Series 1',
                 subtype: 'Waterfall',
@@ -411,7 +439,35 @@ export async function runTests(
                 collateralCount: loanContracts ? loanContracts.value.length : 6,
                 status: 'passed',
                 manager: 'Cardano Investment Bank'
-            })
+            }
+            cloContracts.value.push(cloContract)
+
+            // Save to process_smart_contract table
+            if (testRunId?.value) {
+                try {
+                    await createContractRecord({
+                        testRunId: testRunId.value,
+                        contractType: 'CLO',
+                        contractSubtype: 'Waterfall',
+                        alias: cloContract.alias,
+                        contractData: {
+                            tranches: cloContract.tranches,
+                            collateralCount: cloContract.collateralCount,
+                            manager: cloContract.manager
+                        },
+                        contractDatum: {
+                            totalValue: cloContract.totalValue,
+                            isActive: true,
+                            isMatured: false
+                        },
+                        policyId: 'policy_clo_manager',
+                        networkId: mode === 'emulator' ? 0 : 1
+                    })
+                    log(`  CLO Contract saved to DB`, 'info')
+                } catch (err) {
+                    log(`  Warning: Could not save CLO contract to DB: ${(err as Error).message}`, 'error')
+                }
+            }
         }
 
         currentStepName.value = 'Distributing Tranche Tokens to Investors'

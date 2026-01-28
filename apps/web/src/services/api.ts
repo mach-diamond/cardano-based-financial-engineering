@@ -518,3 +518,103 @@ export async function deleteTestRun(id: number): Promise<boolean> {
 export async function deleteAllTestRuns(): Promise<void> {
     await fetch(`${API_BASE}/api/test/runs`, { method: 'DELETE' })
 }
+
+// =============================================================================
+// Contract API - stored in process_smart_contract table
+// =============================================================================
+
+export interface CreateContractParams {
+    testRunId: number
+    contractType: 'Transfer' | 'CLO'
+    contractSubtype?: string
+    alias?: string
+    contractData?: {
+        collateral?: {
+            policyId: string
+            assetName: string
+            quantity: number
+        }
+        principal?: number
+        apr?: number
+        termLength?: string
+        installments?: number
+        tranches?: Array<{
+            name: string
+            allocation: number
+            yieldModifier: number
+        }>
+        collateralCount?: number
+        originator?: string
+        borrower?: string
+        manager?: string
+    }
+    contractDatum?: Record<string, unknown>
+    contractAddress?: string
+    policyId?: string
+    networkId?: number
+}
+
+export interface ProcessSmartContract {
+    processId: string
+    userId: number | null
+    contractDatum: Record<string, unknown> | null
+    contractData: Record<string, unknown> | null
+    contractAddress: string | null
+    instantiated: string
+    modified: string
+    policyId: string | null
+    contractType: string
+    deployment: string | null
+    contractVersion: string
+    statusCode: number
+    networkId: number
+    contractSubtype: string | null
+    alias: string | null
+    txs: string[]
+    parameters: Record<string, unknown> | null
+    raId: string | null
+    testRunId: number | null
+}
+
+/**
+ * Create a contract in process_smart_contract table
+ */
+export async function createContractRecord(params: CreateContractParams): Promise<ProcessSmartContract> {
+    const res = await fetch(`${API_BASE}/api/test/contracts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params)
+    })
+    if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || 'Failed to create contract')
+    }
+    const data = await res.json()
+    return data.contract
+}
+
+/**
+ * Get contracts for a test run
+ */
+export async function getContractsByTestRun(testRunId: number): Promise<ProcessSmartContract[]> {
+    const res = await fetch(`${API_BASE}/api/test/contracts?testRunId=${testRunId}`)
+    const data = await res.json()
+    return data.contracts || []
+}
+
+/**
+ * Get a specific contract by process ID (from process_smart_contract table)
+ */
+export async function getTestContract(processId: string): Promise<ProcessSmartContract | null> {
+    const res = await fetch(`${API_BASE}/api/test/contracts/${encodeURIComponent(processId)}`)
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.contract || null
+}
+
+/**
+ * Delete all contracts
+ */
+export async function deleteAllContractRecords(): Promise<void> {
+    await fetch(`${API_BASE}/api/test/contracts`, { method: 'DELETE' })
+}

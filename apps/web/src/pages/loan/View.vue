@@ -313,7 +313,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useWalletStore } from '@/stores/wallet'
 import { formatDuration, formatTimeSince, formatTimeUntil } from '@/composables/useLoanCalculations'
-import { getContract } from '@/services/api'
+import { getContract, getTestContract } from '@/services/api'
 import type { LoanContract } from '@/types'
 
 // Components
@@ -360,15 +360,14 @@ async function loadLoan() {
     }
 
     if (props.isTestMode) {
-      // In test mode, try to fetch from backend API
-      // The ID could be a contract address
-      const contract = await getContract(loanId)
+      // In test mode, fetch from process_smart_contract table
+      const contract = await getTestContract(loanId)
 
       if (contract) {
-        // Convert backend contract format to frontend LoanContract type
-        loan.value = convertBackendContract(contract, loanId)
+        // Convert process_smart_contract format to frontend LoanContract type
+        loan.value = convertProcessContract(contract, loanId)
       } else {
-        // No backend contract found - might be a mock test ID
+        // No contract found in database
         loan.value = null
       }
     } else {
@@ -425,6 +424,50 @@ function convertTestContract(testContract: any, id: string): LoanContract {
       isPaidOff: testContract.state?.isPaidOff ?? false,
     },
     createdAt: new Date(),
+  }
+}
+
+// Convert process_smart_contract record to frontend LoanContract type
+function convertProcessContract(contract: any, id: string): LoanContract {
+  const data = contract.contractData || {}
+  const datum = contract.contractDatum || {}
+
+  const principal = BigInt((data.principal || 0))
+  const balance = datum.balance ? BigInt(datum.balance) : principal
+
+  return {
+    id,
+    address: contract.contractAddress || `test_addr_${id}`,
+    policyId: contract.policyId || `test_policy_${id}`,
+    alias: contract.alias || `Loan ${id}`,
+    seller: data.originator || 'Unknown Seller',
+    buyer: data.borrower || null,
+    baseAsset: {
+      policyId: data.collateral?.policyId || '',
+      assetName: data.collateral?.assetName || '',
+      quantity: BigInt(data.collateral?.quantity || 1),
+    },
+    terms: {
+      principal,
+      apr: data.apr || 500,
+      frequency: data.frequency || 12,
+      installments: data.installments || 12,
+      lateFee: BigInt((data.lateFee || 0) * 1_000_000),
+      transferFee: 0n,
+    },
+    state: {
+      balance,
+      lastPayment: datum.lastPayment ? {
+        amount: BigInt(datum.lastPayment.amount || 0),
+        timestamp: datum.lastPayment.timestamp || Date.now(),
+        installmentNumber: datum.lastPayment.installmentNumber || 1,
+      } : null,
+      startTime: datum.startTime || null,
+      isActive: datum.isActive ?? !!data.borrower,
+      isDefaulted: datum.isDefaulted ?? false,
+      isPaidOff: datum.isPaidOff ?? false,
+    },
+    createdAt: new Date(contract.instantiated || Date.now()),
   }
 }
 
