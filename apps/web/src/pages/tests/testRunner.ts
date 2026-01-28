@@ -408,11 +408,109 @@ export async function runTests(
         return
     }
 
-    // Phase 4: CLO
-    await simulatePhase(3, 'Collateral Bundle & CLO', async () => {
+    // Phase 4: Accept Loan Contracts
+    await simulatePhase(3, 'Accept Loan Contracts', async () => {
+        if (!loanContracts || loanContracts.value.length === 0) {
+            log(`  No loan contracts to accept`, 'warning')
+            return
+        }
+
+        // Map of which borrower accepts which open market loan
+        const openMarketAssignments: Record<string, string> = {
+            'bor-superfastcargo': 'Airplane',
+            'bor-luxuryapt': 'RealEstate',
+            'bor-boatop': 'Boat',
+        }
+
+        for (const loan of loanContracts.value) {
+            // Find the appropriate buyer for this loan
+            let buyerId: string | null = null
+            let buyerName: string = ''
+
+            if (loan.borrower) {
+                // Reserved loan - find buyer by name
+                const buyer = identities.value.find(i => i.name === loan.borrower)
+                if (buyer) {
+                    buyerId = buyer.id
+                    buyerName = buyer.name
+                }
+            } else {
+                // Open market loan - find available borrower based on asset type
+                const assetType = loan.collateral?.assetName || ''
+                for (const [borrowerId, assignedAsset] of Object.entries(openMarketAssignments)) {
+                    if (assignedAsset === assetType) {
+                        const buyer = identities.value.find(i => i.id === borrowerId)
+                        if (buyer && !loanContracts.value.some(l => l.borrower === buyer.name && l.state?.isActive)) {
+                            buyerId = buyer.id
+                            buyerName = buyer.name
+                            delete openMarketAssignments[borrowerId] // Mark as used
+                            break
+                        }
+                    }
+                }
+            }
+
+            if (!buyerId || !buyerName) {
+                log(`  Skipping ${loan.alias}: No buyer available`, 'warning')
+                continue
+            }
+
+            currentStepName.value = `${buyerName}: Accepting ${loan.alias}`
+            log(`  ${buyerName}: Accepting loan for ${loan.collateral?.assetName}...`, 'info')
+            await delay(300)
+
+            // Calculate first payment
+            const installments = parseInt(loan.termLength) || 12
+            const monthlyPayment = Math.ceil(loan.principal / installments)
+            const interestPayment = Math.ceil((loan.principal * (loan.apr / 100)) / 12)
+            const firstPayment = monthlyPayment + interestPayment
+
+            // Deduct from buyer's wallet
+            const buyer = identities.value.find(i => i.name === buyerName)
+            if (buyer?.wallets[0]) {
+                buyer.wallets[0].balance -= BigInt(firstPayment)
+            }
+
+            // Update loan state
+            loan.borrower = buyerName
+            loan.status = 'running'
+            if (!loan.state) {
+                loan.state = {
+                    balance: loan.principal,
+                    isActive: false,
+                    isPaidOff: false
+                }
+            }
+            loan.state.isActive = true
+            loan.state.balance = loan.principal - firstPayment
+            loan.state.startTime = Date.now()
+
+            log(`  First payment of ${(firstPayment / 1_000_000).toFixed(2)} ADA processed`, 'success')
+
+            // Update step status
+            const step = phases.value[3].steps.find((s: any) =>
+                s.signerId === buyerId || s.contractRef?.includes(loan.collateral?.assetName)
+            )
+            if (step) step.status = 'passed'
+        }
+
+        log(`  All loans accepted and activated`, 'success')
+    }, currentPhase, phases, log)
+
+    // Check for phase 4 breakpoint
+    if (onPhaseComplete) await onPhaseComplete()
+    if (breakpointPhase?.value === 5) {
+        log('⏸ Breakpoint reached after Phase 4 (Accept Loan Contracts)', 'phase')
+        isRunning.value = false
+        currentStepName.value = 'Paused at breakpoint'
+        return
+    }
+
+    // Phase 5: CLO Bundle & Distribution
+    await simulatePhase(4, 'CLO Bundle & Distribution', async () => {
         const analystWallet = identities.value.find(i => i.role === 'Analyst')!.wallets[0]
         currentStepName.value = 'Cardano Investment Bank: Bundling Collateral Tokens'
-        log(`  Bundling 6 Loan Collateral Tokens into CLO`, 'info')
+        log(`  Bundling ${loanContracts?.value.length || 6} Loan Collateral Tokens into CLO`, 'info')
         await delay(600)
         analystWallet.assets.push({
             policyId: 'policy_clo_manager',
@@ -420,8 +518,8 @@ export async function runTests(
             quantity: 1n
         })
         log(`  CLO Bond deployed with 3 tranches`, 'success')
-        phases.value[3].steps[0].status = 'passed'
-        phases.value[3].steps[1].status = 'passed'
+        phases.value[4].steps[0].status = 'passed'
+        phases.value[4].steps[1].status = 'passed'
 
         // Add CLO contract and save to DB
         if (cloContracts) {
@@ -473,13 +571,13 @@ export async function runTests(
         currentStepName.value = 'Distributing Tranche Tokens to Investors'
         await delay(400)
         log(`  Senior, Mezzanine, Junior tokens distributed`, 'success')
-        phases.value[3].steps[2].status = 'passed'
+        phases.value[4].steps[2].status = 'passed'
     }, currentPhase, phases, log)
 
-    // Check for phase 4 breakpoint (before payments)
+    // Check for phase 5 breakpoint (before payments)
     if (onPhaseComplete) await onPhaseComplete()
-    if (breakpointPhase?.value === 5) {
-        log('⏸ Breakpoint reached after Phase 4 (CLO Bundle & Distribution)', 'phase')
+    if (breakpointPhase?.value === 6) {
+        log('⏸ Breakpoint reached after Phase 5 (CLO Bundle & Distribution)', 'phase')
         isRunning.value = false
         currentStepName.value = 'Paused at breakpoint'
         return
@@ -599,10 +697,56 @@ export async function executeStep(
             }
         }
 
-        // Phase 4: CLO steps
-        if (phase.id === 4) {
+        // Phase 4: Accept Loan steps
+        if (phase.id === 4 && step.action === 'accept-loan') {
+            const s = step as { signerId: string; contractRef: string }
+            const signer = identities.value.find(i => i.id === s.signerId)
+
+            if (!signer) {
+                throw new Error(`Signer ${s.signerId} not found`)
+            }
+
+            // Find the loan by contractRef
+            const loan = loanContracts?.value.find(l =>
+                l.id?.includes(s.contractRef?.replace('LOAN-', '')) ||
+                l.alias?.includes(s.contractRef?.replace('LOAN-', '').split('-')[0])
+            )
+
+            if (!loan) {
+                log(`  Warning: Loan ${s.contractRef} not found, may already be accepted`, 'info')
+            } else {
+                log(`  ${signer.name}: Accepting loan ${loan.alias}...`, 'info')
+                await delay(400)
+
+                // Calculate first payment
+                const installments = parseInt(loan.termLength) || 12
+                const monthlyPayment = Math.ceil(loan.principal / installments)
+                const interestPayment = Math.ceil((loan.principal * (loan.apr / 100)) / 12)
+                const firstPayment = monthlyPayment + interestPayment
+
+                // Deduct from signer's wallet
+                if (signer.wallets[0]) {
+                    signer.wallets[0].balance -= BigInt(firstPayment)
+                }
+
+                // Update loan state
+                loan.borrower = signer.name
+                loan.status = 'running'
+                if (!loan.state) {
+                    loan.state = { balance: loan.principal, isActive: false, isPaidOff: false }
+                }
+                loan.state.isActive = true
+                loan.state.balance = loan.principal - firstPayment
+                loan.state.startTime = Date.now()
+
+                log(`  ✓ Loan accepted. First payment: ${(firstPayment / 1_000_000).toFixed(2)} ADA`, 'success')
+            }
+        }
+
+        // Phase 5: CLO steps
+        if (phase.id === 5) {
             if (step.id === 'C1') {
-                log(`  Bundling 6 collateral tokens into CLO...`, 'info')
+                log(`  Bundling collateral tokens into CLO...`, 'info')
                 await delay(500)
                 log(`  ✓ Collateral bundle created`, 'success')
             } else if (step.id === 'C2') {
@@ -654,8 +798,48 @@ export async function executeStep(
             }
         }
 
-        // Phase 5: Make payments
-        if (phase.id === 5 && 'borrowerId' in step && 'amount' in step) {
+        // Phase 6: Make payments (by signerId or borrowerId)
+        if (phase.id === 6 && (('signerId' in step && 'amount' in step) || ('borrowerId' in step && 'amount' in step))) {
+            const signerId = step.signerId || step.borrowerId
+            const amount = step.amount as number
+            const signer = identities.value.find(i => i.id === signerId)
+
+            if (!signer) {
+                throw new Error(`Signer ${signerId} not found`)
+            }
+
+            // Find loan for this signer
+            const loan = loanContracts?.value.find(l => l.borrower === signer.name && l.state?.isActive)
+            if (!loan) {
+                throw new Error(`No active loan found for ${signer.name}`)
+            }
+
+            log(`  ${signer.name}: Making payment of ${amount} ADA...`, 'info')
+            await delay(400)
+
+            const paymentLovelace = BigInt(amount * 1_000_000)
+            if (signer.wallets[0] && signer.wallets[0].balance < paymentLovelace) {
+                throw new Error(`Insufficient balance: ${signer.name} has ${Number(signer.wallets[0].balance) / 1_000_000} ADA but needs ${amount} ADA`)
+            }
+            if (signer.wallets[0]) {
+                signer.wallets[0].balance -= paymentLovelace
+            }
+
+            if (loan.state) {
+                loan.state.balance -= amount * 1_000_000
+                if (loan.state.balance <= 0) {
+                    loan.state.isPaidOff = true
+                    loan.state.isActive = false
+                    loan.status = 'passed'
+                    log(`  ✓ Loan fully paid off!`, 'success')
+                } else {
+                    log(`  ✓ Payment processed. Remaining: ${(loan.state.balance / 1_000_000).toFixed(2)} ADA`, 'success')
+                }
+            }
+        }
+
+        // Legacy Phase 5: Make payments (old format)
+        if (phase.id === 5 && 'borrowerId' in step && 'amount' in step && !('signerId' in step)) {
             const s = step as { borrowerId: string; amount: number }
             const borrower = identities.value.find(i => i.id === s.borrowerId)
 
@@ -741,33 +925,51 @@ export async function executePhase(
 }
 
 export function getStepAction(phaseId: number, step?: any): string {
-    // Phase 1: Check for action type
-    if (phaseId === 1 && step?.action) {
-        if (step.action === 'create-wallets') return 'Create'
-        if (step.action === 'fund-wallets') return 'Fund'
+    // Check for action type in step
+    if (step?.action) {
+        switch (step.action) {
+            case 'create-wallets': return 'Create'
+            case 'fund-wallets': return 'Fund'
+            case 'create-loan': return 'Create Loan'
+            case 'accept-loan': return 'Accept'
+            case 'make-payment': return 'Pay'
+            case 'bundle-collateral': return 'Bundle'
+            case 'deploy-clo': return 'Deploy'
+            case 'distribute-tranches': return 'Distribute'
+        }
     }
     switch (phaseId) {
         case 1: return 'Setup'
         case 2: return 'Mint'
-        case 3: return 'Initiate Loan'
-        case 4: return 'Execute CLO'
-        case 5: return 'Payment'
+        case 3: return 'Create Loan'
+        case 4: return 'Accept'
+        case 5: return 'Execute CLO'
+        case 6: return 'Payment'
         default: return 'Run'
     }
 }
 
 export function getStepActionClass(phaseId: number, step?: any): string {
-    // Phase 1: Check for action type
-    if (phaseId === 1 && step?.action) {
-        if (step.action === 'create-wallets') return 'create'
-        if (step.action === 'fund-wallets') return 'fund'
+    // Check for action type in step
+    if (step?.action) {
+        switch (step.action) {
+            case 'create-wallets': return 'create'
+            case 'fund-wallets': return 'fund'
+            case 'create-loan': return 'loan'
+            case 'accept-loan': return 'accept'
+            case 'make-payment': return 'payment'
+            case 'bundle-collateral': return 'clo'
+            case 'deploy-clo': return 'clo'
+            case 'distribute-tranches': return 'clo'
+        }
     }
     switch (phaseId) {
         case 1: return 'fund'
         case 2: return 'mint'
         case 3: return 'loan'
-        case 4: return 'clo'
-        case 5: return 'payment'
+        case 4: return 'accept'
+        case 5: return 'clo'
+        case 6: return 'payment'
         default: return 'default'
     }
 }
@@ -788,19 +990,30 @@ export function getStepEntity(
         return identity?.name || step.name
     }
     // Phase 2: Asset name
-    if ('asset' in step && !('borrowerId' in step)) {
+    if ('asset' in step && !('borrowerId' in step) && !('signerId' in step)) {
         return `${step.asset} tokens`
     }
-    // Phase 3: Borrower + Asset (Loan)
+    // Phase 3: Borrower + Asset (Loan creation)
     if ('borrowerId' in step && 'asset' in step) {
         const borrower = identities.find(i => i.id === step.borrowerId)
-        return `${borrower?.name || ''} ← ${step.asset}`
+        const marketType = step.reservedBuyer ? '(Reserved)' : '(Open)'
+        return `${borrower?.name || 'Open Market'} ← ${step.asset} ${marketType}`
     }
-    // Phase 5: Payment
+    // Phase 4: Accept loan (signerId + contractRef)
+    if (step.action === 'accept-loan' && 'signerId' in step) {
+        const signer = identities.find(i => i.id === step.signerId)
+        return `${signer?.name || 'Unknown'} → ${step.contractRef || 'Loan'}`
+    }
+    // Phase 6: Payment (signerId + amount)
+    if (step.action === 'make-payment' && 'signerId' in step && 'amount' in step) {
+        const signer = identities.find(i => i.id === step.signerId)
+        return `${signer?.name || ''} (${step.amount} ADA)`
+    }
+    // Legacy Phase 5: Payment with borrowerId
     if ('borrowerId' in step && 'amount' in step) {
         const borrower = identities.find(i => i.id === step.borrowerId)
         return `${borrower?.name || ''} (${step.amount} ADA)`
     }
-    // Phase 4: Just the name
-    return step.name.replace('Bundle ', '').replace('Deploy ', '').replace('Distribute ', '')
+    // Phase 5 CLO: Just the name
+    return step.name?.replace('Bundle ', '').replace('Deploy ', '').replace('Distribute ', '') || 'Step'
 }

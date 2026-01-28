@@ -420,6 +420,41 @@ test.put('/contracts/:id/datum', async (c) => {
 })
 
 /**
+ * PATCH /api/test/contracts/:id - Update contract data and/or datum
+ */
+test.patch('/contracts/:id', async (c) => {
+  try {
+    const id = c.req.param('id')
+    const { contractData, contractDatum, statusCode, tx } = await c.req.json()
+
+    if (!contractData && !contractDatum && !statusCode) {
+      return c.json({ error: 'At least one of contractData, contractDatum, or statusCode is required' }, 400)
+    }
+
+    const contract = await contractService.updateContractState(id, {
+      contractData,
+      contractDatum,
+      statusCode
+    }, tx)
+
+    if (!contract) {
+      return c.json({ error: 'Contract not found' }, 404)
+    }
+
+    console.log('Updated contract state:', {
+      processId: contract.processId,
+      isActive: (contract.contractDatum as any)?.isActive,
+      borrower: (contract.contractData as any)?.borrower
+    })
+
+    return c.json({ contract })
+  } catch (err) {
+    console.error('Update contract state error:', err)
+    return c.json({ error: String(err) }, 500)
+  }
+})
+
+/**
  * DELETE /api/test/contracts/:id - Delete a contract
  */
 test.delete('/contracts/:id', async (c) => {

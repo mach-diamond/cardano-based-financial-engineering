@@ -577,7 +577,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useWalletStore } from '@/stores/wallet'
 import { formatDuration, formatTimeSince, formatTimeUntil } from '@/composables/useLoanCalculations'
-import { getContract, getTestContract, getWallets, type WalletFromDB } from '@/services/api'
+import { getContract, getTestContract, getWallets, updateContractState, type WalletFromDB } from '@/services/api'
 import type { LoanContract } from '@/types'
 
 // Components
@@ -695,7 +695,11 @@ const stateAllowsComplete = computed(() => {
 const isCollateralHolder = computed(() => {
   if (!loan.value || !selectedWalletInfo.value) return false
   // The originator/seller holds the collateral token
-  return selectedWalletInfo.value.name === loan.value.seller
+  // Check both seller field and originator field (contracts may store it differently)
+  const seller = loan.value.seller
+  const originator = (loan.value as any).originator
+  return selectedWalletInfo.value.name === seller ||
+         selectedWalletInfo.value.name === originator
 })
 
 // Check if selected wallet is the Liability Token holder (Buyer/Borrower)
@@ -811,6 +815,29 @@ async function executeAction(action: string) {
         loan.value.state.isActive = false
         logAction('Transfer completed. Asset released to buyer.', 'success')
         break
+    }
+
+    // Save state changes to database if in test mode
+    if (props.isTestMode && loan.value) {
+      try {
+        const loanId = route.params.id as string
+        await updateContractState(loanId, {
+          contractData: {
+            borrower: loan.value.buyer,
+            originator: loan.value.seller || (loan.value as any).originator
+          },
+          contractDatum: {
+            balance: Number(loan.value.state.balance),
+            isActive: loan.value.state.isActive,
+            isDefaulted: loan.value.state.isDefaulted,
+            isPaidOff: loan.value.state.isPaidOff,
+            startTime: loan.value.state.startTime
+          }
+        })
+        logAction('State saved to database', 'info')
+      } catch (err) {
+        logAction(`Warning: Could not save state: ${(err as Error).message}`, 'error')
+      }
     }
   } catch (err) {
     logAction(`Error: ${(err as Error).message}`, 'error')

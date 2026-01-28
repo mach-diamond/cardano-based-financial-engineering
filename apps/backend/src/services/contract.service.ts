@@ -480,6 +480,79 @@ export async function updateContractDatum(
 }
 
 /**
+ * Update contract data and datum together (for full state updates)
+ */
+export async function updateContractState(
+  processId: string,
+  updates: {
+    contractData?: ContractData
+    contractDatum?: LoanContractDatum | CLOContractDatum | Record<string, unknown>
+    statusCode?: StatusCode
+  },
+  tx?: string
+): Promise<ProcessSmartContract | null> {
+  const setClauses: string[] = ['modified = NOW()']
+  const values: unknown[] = []
+  let paramIndex = 1
+
+  if (updates.contractData) {
+    setClauses.push(`contract_data = $${paramIndex}::json`)
+    values.push(JSON.stringify(updates.contractData))
+    paramIndex++
+  }
+
+  if (updates.contractDatum) {
+    setClauses.push(`contract_datum = $${paramIndex}::json`)
+    values.push(JSON.stringify(updates.contractDatum))
+    paramIndex++
+  }
+
+  if (updates.statusCode) {
+    setClauses.push(`status_code = $${paramIndex}`)
+    values.push(updates.statusCode)
+    paramIndex++
+  }
+
+  if (tx) {
+    setClauses.push(`txs = array_append(txs, $${paramIndex})`)
+    values.push(tx)
+    paramIndex++
+  }
+
+  values.push(processId)
+
+  const query = `
+    UPDATE process_smart_contract
+    SET ${setClauses.join(', ')}
+    WHERE process_id = $${paramIndex}::uuid
+    RETURNING
+      process_id as "processId",
+      user_id as "userId",
+      metadata_form as "metadataForm",
+      contract_datum as "contractDatum",
+      contract_data as "contractData",
+      contract_address as "contractAddress",
+      instantiated,
+      modified,
+      policy_id as "policyId",
+      contract_type as "contractType",
+      deployment,
+      contract_version as "contractVersion",
+      status_code as "statusCode",
+      network_id as "networkId",
+      contract_subtype as "contractSubtype",
+      alias,
+      txs,
+      parameters,
+      ra_id as "raId",
+      test_run_id as "testRunId"
+  `
+
+  const result = await sql.unsafe<ProcessSmartContract[]>(query, values)
+  return result[0] || null
+}
+
+/**
  * Update contract status
  */
 export async function updateContractStatus(

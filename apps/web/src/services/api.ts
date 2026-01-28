@@ -613,6 +613,37 @@ export async function getTestContract(processId: string): Promise<ProcessSmartCo
 }
 
 /**
+ * Update a contract's datum (state) by process ID
+ */
+export async function updateContractDatum(processId: string, datum: Record<string, any>): Promise<ProcessSmartContract | null> {
+    const res = await fetch(`${API_BASE}/api/test/contracts/${encodeURIComponent(processId)}/datum`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ datum })
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.contract || null
+}
+
+/**
+ * Update a contract's data and datum by process ID
+ */
+export async function updateContractState(processId: string, updates: {
+    contractData?: Record<string, any>
+    contractDatum?: Record<string, any>
+}): Promise<ProcessSmartContract | null> {
+    const res = await fetch(`${API_BASE}/api/test/contracts/${encodeURIComponent(processId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.contract || null
+}
+
+/**
  * Delete all contracts
  */
 export async function deleteAllContractRecords(): Promise<void> {
