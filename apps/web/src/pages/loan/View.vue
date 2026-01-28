@@ -193,17 +193,23 @@
         <div class="card-body">
           <!-- Action Grid -->
           <div class="row">
-            <!-- Cancel (Originator only, before acceptance) -->
+            <!-- Cancel (Collateral Token holder only, before acceptance) -->
             <div class="col-md-6 col-lg-4 mb-3">
-              <div class="action-card" :class="{ disabled: !canCancel }">
+              <div class="action-card" :class="{ 'state-disabled': !stateAllowsCancel }">
                 <div class="action-header">
                   <span class="action-title">Cancel</span>
-                  <span class="badge badge-originator">Originator</span>
+                  <span class="badge badge-collateral">Collateral Holder</span>
                 </div>
                 <p class="action-desc">Terminate contract and reclaim asset</p>
                 <div class="action-prereq">
-                  <i :class="loan.state.isActive ? 'fas fa-times text-danger' : 'fas fa-check text-success'"></i>
+                  <i :class="!loan.state.isActive ? 'fas fa-check text-success' : 'fas fa-times text-danger'"></i>
                   <span>Loan not yet accepted</span>
+                </div>
+                <div class="signer-status" :class="{ 'can-sign': signerCanCancel, 'cannot-sign': selectedSignerWallet && !signerCanCancel }">
+                  <i :class="signerCanCancel ? 'fas fa-key text-success' : 'fas fa-lock text-muted'"></i>
+                  <span v-if="!selectedSignerWallet">Select a wallet</span>
+                  <span v-else-if="signerCanCancel">{{ selectedWalletInfo?.name }} can sign</span>
+                  <span v-else>{{ selectedWalletInfo?.name }} cannot sign</span>
                 </div>
                 <button
                   class="btn btn-outline-danger btn-sm btn-block mt-2"
@@ -216,21 +222,28 @@
               </div>
             </div>
 
-            <!-- Accept (Buyer, before acceptance) -->
+            <!-- Accept (Anyone for open market, or reserved buyer) -->
             <div class="col-md-6 col-lg-4 mb-3">
-              <div class="action-card" :class="{ disabled: !canAccept }">
+              <div class="action-card" :class="{ 'state-disabled': !stateAllowsAccept }">
                 <div class="action-header">
                   <span class="action-title">Accept</span>
-                  <span class="badge badge-borrower">Borrower</span>
+                  <span v-if="loan.borrower" class="badge badge-reserved">Reserved</span>
+                  <span v-else class="badge badge-open">Open Market</span>
                 </div>
                 <p class="action-desc">Accept terms & make first payment</p>
                 <div class="action-prereq">
-                  <i :class="loan.state.isActive ? 'fas fa-times text-danger' : 'fas fa-check text-success'"></i>
+                  <i :class="!loan.state.isActive ? 'fas fa-check text-success' : 'fas fa-times text-danger'"></i>
                   <span>Loan awaiting acceptance</span>
                 </div>
                 <div class="action-prereq" v-if="loan.borrower">
-                  <i :class="isSelectedWalletBuyer ? 'fas fa-check text-success' : 'fas fa-times text-danger'"></i>
+                  <i class="fas fa-user-tag text-info"></i>
                   <span>Reserved for: {{ loan.borrower }}</span>
+                </div>
+                <div class="signer-status" :class="{ 'can-sign': signerCanAccept, 'cannot-sign': selectedSignerWallet && !signerCanAccept }">
+                  <i :class="signerCanAccept ? 'fas fa-key text-success' : 'fas fa-lock text-muted'"></i>
+                  <span v-if="!selectedSignerWallet">Select a wallet</span>
+                  <span v-else-if="signerCanAccept">{{ selectedWalletInfo?.name }} can sign</span>
+                  <span v-else>{{ selectedWalletInfo?.name }} cannot sign</span>
                 </div>
                 <button
                   class="btn btn-primary btn-sm btn-block mt-2"
@@ -243,12 +256,12 @@
               </div>
             </div>
 
-            <!-- Make Payment (Borrower, active) -->
+            <!-- Make Payment (Liability Token holder, active) -->
             <div class="col-md-6 col-lg-4 mb-3">
-              <div class="action-card" :class="{ disabled: !canPay }">
+              <div class="action-card" :class="{ 'state-disabled': !stateAllowsPay }">
                 <div class="action-header">
                   <span class="action-title">Pay</span>
-                  <span class="badge badge-borrower">Borrower</span>
+                  <span class="badge badge-liability">Liability Holder</span>
                 </div>
                 <p class="action-desc">Make scheduled payment</p>
                 <div class="action-prereq">
@@ -258,6 +271,13 @@
                 <div class="action-prereq">
                   <i :class="!loan.state.isPaidOff ? 'fas fa-check text-success' : 'fas fa-times text-danger'"></i>
                   <span>Balance remaining</span>
+                </div>
+                <div class="signer-status" :class="{ 'can-sign': signerCanPay, 'cannot-sign': selectedSignerWallet && !signerCanPay }">
+                  <i :class="signerCanPay ? 'fas fa-key text-success' : 'fas fa-lock text-muted'"></i>
+                  <span v-if="!selectedSignerWallet">Select a wallet</span>
+                  <span v-else-if="!loan.buyer">No buyer assigned yet</span>
+                  <span v-else-if="signerCanPay">{{ selectedWalletInfo?.name }} can sign</span>
+                  <span v-else>{{ selectedWalletInfo?.name }} cannot sign</span>
                 </div>
                 <button
                   class="btn btn-success btn-sm btn-block mt-2"
@@ -270,17 +290,23 @@
               </div>
             </div>
 
-            <!-- Collect (Originator, active with payments) -->
+            <!-- Collect (Collateral Token holder, active) -->
             <div class="col-md-6 col-lg-4 mb-3">
-              <div class="action-card" :class="{ disabled: !canCollect }">
+              <div class="action-card" :class="{ 'state-disabled': !stateAllowsCollect }">
                 <div class="action-header">
                   <span class="action-title">Collect</span>
-                  <span class="badge badge-originator">Originator</span>
+                  <span class="badge badge-collateral">Collateral Holder</span>
                 </div>
                 <p class="action-desc">Withdraw available payments</p>
                 <div class="action-prereq">
                   <i :class="loan.state.isActive ? 'fas fa-check text-success' : 'fas fa-times text-danger'"></i>
                   <span>Loan is active</span>
+                </div>
+                <div class="signer-status" :class="{ 'can-sign': signerCanCollect, 'cannot-sign': selectedSignerWallet && !signerCanCollect }">
+                  <i :class="signerCanCollect ? 'fas fa-key text-success' : 'fas fa-lock text-muted'"></i>
+                  <span v-if="!selectedSignerWallet">Select a wallet</span>
+                  <span v-else-if="signerCanCollect">{{ selectedWalletInfo?.name }} can sign</span>
+                  <span v-else>{{ selectedWalletInfo?.name }} cannot sign</span>
                 </div>
                 <button
                   class="btn btn-outline-secondary btn-sm btn-block mt-2"
@@ -293,14 +319,18 @@
               </div>
             </div>
 
-            <!-- Default (Originator, late) -->
+            <!-- Default (Collateral Token holder, late) -->
             <div class="col-md-6 col-lg-4 mb-3">
-              <div class="action-card" :class="{ disabled: !canDefault }">
+              <div class="action-card" :class="{ 'state-disabled': !stateAllowsDefault }">
                 <div class="action-header">
                   <span class="action-title">Default</span>
-                  <span class="badge badge-originator">Originator</span>
+                  <span class="badge badge-collateral">Collateral Holder</span>
                 </div>
                 <p class="action-desc">Declare default & claim collateral</p>
+                <div class="action-prereq">
+                  <i :class="loan.state.isActive ? 'fas fa-check text-success' : 'fas fa-times text-danger'"></i>
+                  <span>Loan is active</span>
+                </div>
                 <div class="action-prereq">
                   <i :class="isLate ? 'fas fa-check text-success' : 'fas fa-times text-danger'"></i>
                   <span>Payment is late</span>
@@ -308,6 +338,12 @@
                 <div class="action-prereq">
                   <i :class="!loan.state.isDefaulted ? 'fas fa-check text-success' : 'fas fa-times text-danger'"></i>
                   <span>Not already defaulted</span>
+                </div>
+                <div class="signer-status" :class="{ 'can-sign': signerCanDefault, 'cannot-sign': selectedSignerWallet && !signerCanDefault }">
+                  <i :class="signerCanDefault ? 'fas fa-key text-success' : 'fas fa-lock text-muted'"></i>
+                  <span v-if="!selectedSignerWallet">Select a wallet</span>
+                  <span v-else-if="signerCanDefault">{{ selectedWalletInfo?.name }} can sign</span>
+                  <span v-else>{{ selectedWalletInfo?.name }} cannot sign</span>
                 </div>
                 <button
                   class="btn btn-danger btn-sm btn-block mt-2"
@@ -320,17 +356,23 @@
               </div>
             </div>
 
-            <!-- Claim (Originator, defaulted) -->
+            <!-- Claim (Collateral Token holder, defaulted) -->
             <div class="col-md-6 col-lg-4 mb-3">
-              <div class="action-card" :class="{ disabled: !canClaim }">
+              <div class="action-card" :class="{ 'state-disabled': !stateAllowsClaim }">
                 <div class="action-header">
                   <span class="action-title">Claim</span>
-                  <span class="badge badge-originator">Originator</span>
+                  <span class="badge badge-collateral">Collateral Holder</span>
                 </div>
                 <p class="action-desc">Claim collateral after default</p>
                 <div class="action-prereq">
                   <i :class="loan.state.isDefaulted ? 'fas fa-check text-success' : 'fas fa-times text-danger'"></i>
                   <span>Loan is in default</span>
+                </div>
+                <div class="signer-status" :class="{ 'can-sign': signerCanClaim, 'cannot-sign': selectedSignerWallet && !signerCanClaim }">
+                  <i :class="signerCanClaim ? 'fas fa-key text-success' : 'fas fa-lock text-muted'"></i>
+                  <span v-if="!selectedSignerWallet">Select a wallet</span>
+                  <span v-else-if="signerCanClaim">{{ selectedWalletInfo?.name }} can sign</span>
+                  <span v-else>{{ selectedWalletInfo?.name }} cannot sign</span>
                 </div>
                 <button
                   class="btn btn-warning btn-sm btn-block mt-2"
@@ -343,17 +385,23 @@
               </div>
             </div>
 
-            <!-- Complete (Paid off) -->
+            <!-- Complete (Liability Token holder, paid off) -->
             <div class="col-md-6 col-lg-4 mb-3">
-              <div class="action-card" :class="{ disabled: !canComplete }">
+              <div class="action-card" :class="{ 'state-disabled': !stateAllowsComplete }">
                 <div class="action-header">
                   <span class="action-title">Complete</span>
-                  <span class="badge badge-info">Either Party</span>
+                  <span class="badge badge-liability">Liability Holder</span>
                 </div>
                 <p class="action-desc">Finalize transfer & release asset</p>
                 <div class="action-prereq">
                   <i :class="loan.state.isPaidOff ? 'fas fa-check text-success' : 'fas fa-times text-danger'"></i>
                   <span>Loan is fully paid</span>
+                </div>
+                <div class="signer-status" :class="{ 'can-sign': signerCanComplete, 'cannot-sign': selectedSignerWallet && !signerCanComplete }">
+                  <i :class="signerCanComplete ? 'fas fa-key text-success' : 'fas fa-lock text-muted'"></i>
+                  <span v-if="!selectedSignerWallet">Select a wallet</span>
+                  <span v-else-if="signerCanComplete">{{ selectedWalletInfo?.name }} can sign</span>
+                  <span v-else>{{ selectedWalletInfo?.name }} cannot sign</span>
                 </div>
                 <button
                   class="btn btn-success btn-sm btn-block mt-2"
@@ -599,49 +647,104 @@ const firstPaymentAmount = computed(() => {
   return monthlyPrincipal + monthlyInterest
 })
 
-// Action permission computed properties
-const canCancel = computed(() => {
-  if (!loan.value || !selectedSignerWallet.value) return false
-  return isSelectedWalletSeller.value && !loan.value.state.isActive
+// ============================================
+// Contract State Conditions (greyed out cards)
+// These determine if the action is possible based on contract state
+// ============================================
+const stateAllowsCancel = computed(() => {
+  if (!loan.value) return false
+  return !loan.value.state.isActive // Can only cancel before acceptance
 })
 
-const canAccept = computed(() => {
-  if (!loan.value || !selectedSignerWallet.value) return false
-  if (loan.value.state.isActive) return false
-  // For reserved loans, must be the reserved buyer
+const stateAllowsAccept = computed(() => {
+  if (!loan.value) return false
+  return !loan.value.state.isActive // Can only accept if not yet active
+})
+
+const stateAllowsPay = computed(() => {
+  if (!loan.value) return false
+  return loan.value.state.isActive && !loan.value.state.isPaidOff
+})
+
+const stateAllowsCollect = computed(() => {
+  if (!loan.value) return false
+  return loan.value.state.isActive // Can collect while loan is active
+})
+
+const stateAllowsDefault = computed(() => {
+  if (!loan.value) return false
+  return loan.value.state.isActive && isLate.value && !loan.value.state.isDefaulted
+})
+
+const stateAllowsClaim = computed(() => {
+  if (!loan.value) return false
+  return loan.value.state.isDefaulted // Can only claim after default
+})
+
+const stateAllowsComplete = computed(() => {
+  if (!loan.value) return false
+  return loan.value.state.isPaidOff // Can only complete when paid off
+})
+
+// ============================================
+// Signer Permissions (who can execute)
+// These determine if the selected wallet can execute the action
+// ============================================
+
+// Check if selected wallet is the Collateral Token holder (Originator/Seller)
+const isCollateralHolder = computed(() => {
+  if (!loan.value || !selectedWalletInfo.value) return false
+  // The originator/seller holds the collateral token
+  return selectedWalletInfo.value.name === loan.value.seller
+})
+
+// Check if selected wallet is the Liability Token holder (Buyer/Borrower)
+const isLiabilityHolder = computed(() => {
+  if (!loan.value || !selectedWalletInfo.value) return false
+  // The buyer holds the liability token (once accepted)
+  return selectedWalletInfo.value.name === loan.value.buyer
+})
+
+// Signer can Cancel: Only Collateral Token holder
+const signerCanCancel = computed(() => isCollateralHolder.value)
+
+// Signer can Accept: Anyone if open market, or reserved buyer only
+const signerCanAccept = computed(() => {
+  if (!loan.value || !selectedWalletInfo.value) return false
   if (loan.value.buyer) {
-    return selectedWalletInfo.value?.name === loan.value.buyer
+    // Reserved loan - only the reserved buyer can accept
+    return selectedWalletInfo.value.name === loan.value.buyer
   }
-  // For open market, any borrower can accept
-  return selectedWalletInfo.value?.role === 'Borrower'
+  // Open market - any borrower can accept
+  return selectedWalletInfo.value.role === 'Borrower'
 })
 
-const canPay = computed(() => {
-  if (!loan.value || !selectedSignerWallet.value) return false
-  return loan.value.state.isActive &&
-         !loan.value.state.isPaidOff &&
-         (selectedWalletInfo.value?.name === loan.value.buyer || isSelectedWalletBuyer.value)
-})
+// Signer can Pay: Only Liability Token holder (buyer)
+const signerCanPay = computed(() => isLiabilityHolder.value)
 
-const canCollect = computed(() => {
-  if (!loan.value || !selectedSignerWallet.value) return false
-  return loan.value.state.isActive && isSelectedWalletSeller.value
-})
+// Signer can Collect: Only Collateral Token holder
+const signerCanCollect = computed(() => isCollateralHolder.value)
 
-const canDefault = computed(() => {
-  if (!loan.value || !selectedSignerWallet.value) return false
-  return isLate.value && !loan.value.state.isDefaulted && isSelectedWalletSeller.value
-})
+// Signer can Default: Only Collateral Token holder
+const signerCanDefault = computed(() => isCollateralHolder.value)
 
-const canClaim = computed(() => {
-  if (!loan.value || !selectedSignerWallet.value) return false
-  return loan.value.state.isDefaulted && isSelectedWalletSeller.value
-})
+// Signer can Claim: Only Collateral Token holder
+const signerCanClaim = computed(() => isCollateralHolder.value)
 
-const canComplete = computed(() => {
-  if (!loan.value || !selectedSignerWallet.value) return false
-  return loan.value.state.isPaidOff
-})
+// Signer can Complete: Only Liability Token holder (buyer gets the asset)
+const signerCanComplete = computed(() => isLiabilityHolder.value)
+
+// ============================================
+// Combined Permissions (state + signer)
+// Button is disabled if either condition fails
+// ============================================
+const canCancel = computed(() => stateAllowsCancel.value && signerCanCancel.value)
+const canAccept = computed(() => stateAllowsAccept.value && signerCanAccept.value)
+const canPay = computed(() => stateAllowsPay.value && signerCanPay.value)
+const canCollect = computed(() => stateAllowsCollect.value && signerCanCollect.value)
+const canDefault = computed(() => stateAllowsDefault.value && signerCanDefault.value)
+const canClaim = computed(() => stateAllowsClaim.value && signerCanClaim.value)
+const canComplete = computed(() => stateAllowsComplete.value && signerCanComplete.value)
 
 // Log helper
 function logAction(text: string, type: 'info' | 'success' | 'error' = 'info') {
@@ -1031,13 +1134,20 @@ async function handleComplete() {
   transition: all 0.2s ease;
 }
 
-.action-card:hover:not(.disabled) {
+.action-card:hover:not(.state-disabled) {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.2);
 }
 
-.action-card.disabled {
-  opacity: 0.5;
+/* Greyed out when contract state doesn't allow action */
+.action-card.state-disabled {
+  opacity: 0.4;
+  filter: grayscale(50%);
+}
+
+.action-card.state-disabled .action-title {
+  text-decoration: line-through;
+  text-decoration-color: rgba(255, 255, 255, 0.3);
 }
 
 .action-header {
@@ -1072,7 +1182,44 @@ async function handleComplete() {
   font-size: 0.65rem;
 }
 
-/* Role Badges */
+/* Token Holder Badges */
+.badge-collateral {
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  color: white;
+  font-size: 0.6rem;
+  padding: 0.2rem 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.badge-liability {
+  background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+  color: white;
+  font-size: 0.6rem;
+  padding: 0.2rem 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.badge-reserved {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: white;
+  font-size: 0.6rem;
+  padding: 0.2rem 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.badge-open {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  color: white;
+  font-size: 0.6rem;
+  padding: 0.2rem 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* Legacy badges for compatibility */
 .badge-originator {
   background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
   color: white;
@@ -1085,6 +1232,45 @@ async function handleComplete() {
   color: white;
   font-size: 0.65rem;
   padding: 0.2rem 0.5rem;
+}
+
+/* Signer Status Indicator */
+.signer-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.25rem;
+  margin-top: 0.5rem;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.signer-status i {
+  font-size: 0.7rem;
+}
+
+.signer-status span {
+  color: #94a3b8;
+}
+
+.signer-status.can-sign {
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.signer-status.can-sign span {
+  color: #4ade80;
+}
+
+.signer-status.cannot-sign {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.signer-status.cannot-sign span {
+  color: #f87171;
 }
 
 /* Execution Log */
