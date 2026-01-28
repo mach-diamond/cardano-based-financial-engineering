@@ -13,8 +13,11 @@
     <TestHeader
       :is-running="isRunning"
       :is-cleaning="isCleaning"
+      :available-test-runs="availableTestRuns"
+      :current-test-run-id="currentTestRunId"
       @run-tests="handleRunTests"
       @cleanup="handleCleanup"
+      @load-test-run="loadTestRunById"
     />
 
     <!-- Config Viewer (collapsible) -->
@@ -61,25 +64,20 @@
 
     <Contracts_CLOs
       :contracts="cloContracts"
+      :loan-portfolio="loanPortfolio"
+      :total-loan-value="totalLoanValue"
       @view-contract="viewCLOContract"
       @execute-contract="executeCLOContract"
       @run-all="runAllCLOContracts"
     />
 
-    <!-- Loan Portfolio Visualization -->
-    <div class="row mb-4">
-      <div class="col-lg-8 mb-4 mb-lg-0">
-        <LoanPortfolio :loan-portfolio="loanPortfolio" />
-      </div>
-
-      <!-- CDO Tranche Structure -->
-      <div class="col-lg-4">
-        <TrancheStructure :total-value="totalLoanValue" />
-      </div>
-    </div>
-
-    <!-- Console Output -->
-    <ConsoleOutput :console-lines="consoleLines" @clear="clearConsole" />
+    <!-- Console Output (collapsible) -->
+    <ConsoleOutput
+      :console-lines="consoleLines"
+      :expanded="consoleExpanded"
+      @clear="clearConsole"
+      @toggle="consoleExpanded = !consoleExpanded"
+    />
   </div>
 </template>
 
@@ -97,6 +95,8 @@ import {
   generateMockPaymentKeyHash,
   generateMockPrivateKey,
   fullTestCleanup,
+  getTestRuns,
+  getTestRun,
   getLatestTestRun,
   createTestRun,
   updateTestRunState,
@@ -114,8 +114,6 @@ import TestHeader from './components/TestHeader.vue'
 import StatsCards from './components/StatsCards.vue'
 import LifecycleSection from './components/LifecycleSection.vue'
 import IdentitiesSection from './components/IdentitiesSection.vue'
-import LoanPortfolio from './components/LoanPortfolio.vue'
-import TrancheStructure from './components/TrancheStructure.vue'
 import Contracts_CLOs from './components/Contracts_CLOs.vue'
 import Contracts_Loans from './components/Contracts_Loans.vue'
 import ConsoleOutput from './components/ConsoleOutput.vue'
@@ -140,6 +138,7 @@ const isGenerating = ref(false)
 
 // Test run persistence
 const currentTestRunId = ref<number | null>(null)
+const availableTestRuns = ref<TestRun[]>([])
 
 // Breakpoint control - set to phase ID to stop before that phase
 // null = no breakpoint, 2 = stop before tokenization, 4 = stop before CLO, etc.
@@ -147,6 +146,7 @@ const breakpointPhase = ref<number | null>(4) // Default: stop before CLO
 
 // Console output
 const consoleLines = ref<ConsoleLine[]>([])
+const consoleExpanded = ref(true)
 
 // Identity State - starts empty, loaded from DB
 const identities = ref<Identity[]>([])
@@ -198,15 +198,171 @@ async function loadWalletsFromDB() {
     if (wallets.length > 0) {
       identities.value = wallets.map(walletToIdentity)
       log(`Loaded ${wallets.length} wallets from database`, 'success')
+
+      // Sync lifecycle step status based on loaded data
+      syncStepStatusFromState()
     }
   } catch (err) {
     log('Could not connect to backend API. Make sure it\'s running with `just api`', 'error')
   }
 }
 
+// Sync lifecycle step status based on current state
+// This ensures steps show as "passed" if their prerequisites are already satisfied
+function syncStepStatusFromState() {
+  // Phase 1: Setup & Identities
+  const phase1 = phases.value.find(p => p.id === 1)
+  if (phase1) {
+    // Step 1: Create Wallets - passed if we have identities
+    const createWalletsStep = phase1.steps.find((s: any) => s.id === 'S1')
+    if (createWalletsStep && identities.value.length > 0) {
+      createWalletsStep.status = 'passed'
+    }
+
+    // Step 2: Fund Wallets - passed if any wallet has balance
+    const fundWalletsStep = phase1.steps.find((s: any) => s.id === 'S2')
+    if (fundWalletsStep && identities.value.some(i => i.wallets.some(w => w.balance > 0n))) {
+      fundWalletsStep.status = 'passed'
+    }
+
+    // Update phase status
+    if (phase1.steps.every((s: any) => s.status === 'passed')) {
+      phase1.status = 'passed'
+    } else if (phase1.steps.some((s: any) => s.status === 'passed')) {
+      phase1.status = 'pending' // Partially complete
+    }
+  }
+
+  // Phase 2: Asset Tokenization - passed if originators have assets
+  const phase2 = phases.value.find(p => p.id === 2)
+  if (phase2) {
+    phase2.steps.forEach((step: any) => {
+      if ('originatorId' in step) {
+        const originator = identities.value.find(i => i.id === step.originatorId)
+        if (originator && originator.wallets.some(w => w.assets.length > 0)) {
+          step.status = 'passed'
+        }
+      }
+    })
+
+    if (phase2.steps.every((s: any) => s.status === 'passed')) {
+      phase2.status = 'passed'
+    } else if (phase2.steps.some((s: any) => s.status === 'passed')) {
+      phase2.status = 'pending'
+    }
+  }
+
+  // Phase 3: Initialize Loan Contracts - passed if loan contracts exist
+  const phase3 = phases.value.find(p => p.id === 3)
+  if (phase3 && loanContracts.value.length > 0) {
+    phase3.steps.forEach((step: any) => {
+      if ('borrowerId' in step) {
+        const borrower = identities.value.find(i => i.id === step.borrowerId)
+        const loan = loanContracts.value.find(l => l.borrower === borrower?.name)
+        if (loan) {
+          step.status = 'passed'
+        }
+      }
+    })
+
+    if (phase3.steps.every((s: any) => s.status === 'passed')) {
+      phase3.status = 'passed'
+    } else if (phase3.steps.some((s: any) => s.status === 'passed')) {
+      phase3.status = 'pending'
+    }
+  }
+
+  // Phase 4: CLO Bundle - passed if CLO contracts exist
+  const phase4 = phases.value.find(p => p.id === 4)
+  if (phase4 && cloContracts.value.length > 0) {
+    phase4.steps.forEach((s: any) => s.status = 'passed')
+    phase4.status = 'passed'
+  }
+}
+
+// Load available test runs for dropdown
+async function loadAvailableTestRuns() {
+  try {
+    availableTestRuns.value = await getTestRuns(20)
+  } catch (err) {
+    console.warn('Could not load test runs:', err)
+  }
+}
+
+// Load a specific test run by ID
+async function loadTestRunById(runId: number) {
+  try {
+    const run = await getTestRun(runId)
+    if (run && run.state) {
+      // Reset all phases to pending first
+      phases.value.forEach(phase => {
+        phase.status = 'pending'
+        phase.steps.forEach((step: any) => {
+          step.status = 'pending'
+        })
+      })
+
+      currentTestRunId.value = run.id
+
+      // Restore phases state
+      if (run.state.phases && run.state.phases.length > 0) {
+        for (let i = 0; i < run.state.phases.length && i < phases.value.length; i++) {
+          phases.value[i].status = run.state.phases[i].status || 'pending'
+          phases.value[i].expanded = run.state.phases[i].expanded ?? phases.value[i].expanded
+          if (run.state.phases[i].steps) {
+            for (let j = 0; j < run.state.phases[i].steps.length && j < phases.value[i].steps.length; j++) {
+              phases.value[i].steps[j].status = run.state.phases[i].steps[j].status || 'pending'
+            }
+          }
+        }
+      }
+
+      // Restore identities
+      if (run.state.identities && run.state.identities.length > 0) {
+        identities.value = run.state.identities.map((id: any) => ({
+          ...id,
+          wallets: id.wallets?.map((w: any) => ({
+            ...w,
+            balance: BigInt(w.balance || '0'),
+            assets: w.assets?.map((a: any) => ({
+              ...a,
+              quantity: BigInt(a.quantity || '0')
+            })) || []
+          })) || []
+        }))
+      }
+
+      // Restore loan contracts
+      if (run.state.loanContracts && run.state.loanContracts.length > 0) {
+        loanContracts.value = run.state.loanContracts
+      } else {
+        loanContracts.value = []
+      }
+
+      // Restore CLO contracts
+      if (run.state.cloContracts && run.state.cloContracts.length > 0) {
+        cloContracts.value = run.state.cloContracts
+      } else {
+        cloContracts.value = []
+      }
+
+      currentPhase.value = run.state.currentPhase || 1
+      log(`Loaded test run #${run.id}: ${run.name}`, 'success')
+
+      // Sync step status based on restored state
+      syncStepStatusFromState()
+    }
+  } catch (err) {
+    log(`Error loading test run: ${(err as Error).message}`, 'error')
+  }
+}
+
 // Load test run state from database
 async function loadTestRunFromDB() {
   try {
+    // Also load available runs for dropdown
+    await loadAvailableTestRuns()
+
     const latestRun = await getLatestTestRun()
     if (latestRun && latestRun.state) {
       currentTestRunId.value = latestRun.id
@@ -251,6 +407,9 @@ async function loadTestRunFromDB() {
 
       currentPhase.value = latestRun.state.currentPhase || 1
       log(`Restored test state from run #${latestRun.id} (${latestRun.status})`, 'success')
+
+      // Sync step status based on restored state
+      syncStepStatusFromState()
     }
   } catch (err) {
     console.warn('Could not load test run:', err)

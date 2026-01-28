@@ -1,16 +1,23 @@
 /**
  * Test Service
  * Handles test run state storage and retrieval
+ *
+ * This is a pipeline runner - tracks execution of test phases/steps,
+ * breakpoints, contract references, and configuration used.
  */
 
 import sql from '../db'
 
-export type TestStatus = 'pending' | 'running' | 'passed' | 'failed'
+export type TestStatus = 'pending' | 'running' | 'passed' | 'failed' | 'skipped'
 
 export interface PhaseStep {
   id: string
   name: string
   status: TestStatus
+  executedAt?: string | null
+  txHash?: string | null
+  error?: string | null
+  // Step-specific data
   action?: string
   originatorId?: string
   borrowerId?: string
@@ -28,6 +35,14 @@ export interface Phase {
   status: TestStatus
   expanded: boolean
   steps: PhaseStep[]
+  startedAt?: string | null
+  completedAt?: string | null
+}
+
+export interface Breakpoint {
+  phaseId: number
+  enabled: boolean
+  pauseAfter: boolean  // true = pause after phase, false = pause before
 }
 
 export interface TestRunState {
@@ -91,6 +106,7 @@ export interface TestRunState {
   currentPhase: number
   completedSteps: number
   totalSteps: number
+  breakpoints: Breakpoint[]
 }
 
 export interface TestRun {
@@ -99,9 +115,12 @@ export interface TestRun {
   description: string | null
   networkMode: 'emulator' | 'preview'
   status: TestStatus
+  configHash: string | null        // Hash of config used for this run
   state: TestRunState
+  contractIds: number[]            // References to contracts table
   startedAt: Date
   completedAt: Date | null
+  pausedAt: Date | null            // When hit a breakpoint
   error: string | null
   createdAt: Date
   updatedAt: Date
@@ -111,6 +130,7 @@ export interface CreateTestRunInput {
   name: string
   description?: string
   networkMode: 'emulator' | 'preview'
+  configHash?: string
   state: TestRunState
 }
 
@@ -119,12 +139,13 @@ export interface CreateTestRunInput {
  */
 export async function createTestRun(input: CreateTestRunInput): Promise<TestRun> {
   const [testRun] = await sql<TestRun[]>`
-    INSERT INTO test_runs (name, description, network_mode, status, state, started_at)
+    INSERT INTO test_runs (name, description, network_mode, status, config_hash, state, started_at)
     VALUES (
       ${input.name},
       ${input.description || null},
       ${input.networkMode},
       'running',
+      ${input.configHash || null},
       ${JSON.stringify(input.state)},
       NOW()
     )
@@ -134,9 +155,12 @@ export async function createTestRun(input: CreateTestRunInput): Promise<TestRun>
       description,
       network_mode as "networkMode",
       status,
+      config_hash as "configHash",
       state,
+      contract_ids as "contractIds",
       started_at as "startedAt",
       completed_at as "completedAt",
+      paused_at as "pausedAt",
       error,
       created_at as "createdAt",
       updated_at as "updatedAt"
@@ -155,9 +179,12 @@ export async function getAllTestRuns(limit = 20): Promise<TestRun[]> {
       description,
       network_mode as "networkMode",
       status,
+      config_hash as "configHash",
       state,
+      contract_ids as "contractIds",
       started_at as "startedAt",
       completed_at as "completedAt",
+      paused_at as "pausedAt",
       error,
       created_at as "createdAt",
       updated_at as "updatedAt"
@@ -178,9 +205,12 @@ export async function getTestRun(id: number): Promise<TestRun | null> {
       description,
       network_mode as "networkMode",
       status,
+      config_hash as "configHash",
       state,
+      contract_ids as "contractIds",
       started_at as "startedAt",
       completed_at as "completedAt",
+      paused_at as "pausedAt",
       error,
       created_at as "createdAt",
       updated_at as "updatedAt"
@@ -201,9 +231,12 @@ export async function getLatestTestRun(): Promise<TestRun | null> {
       description,
       network_mode as "networkMode",
       status,
+      config_hash as "configHash",
       state,
+      contract_ids as "contractIds",
       started_at as "startedAt",
       completed_at as "completedAt",
+      paused_at as "pausedAt",
       error,
       created_at as "createdAt",
       updated_at as "updatedAt"
@@ -219,11 +252,15 @@ export async function getLatestTestRun(): Promise<TestRun | null> {
  */
 export async function updateTestRunState(
   id: number,
-  state: TestRunState
+  state: TestRunState,
+  contractIds?: number[]
 ): Promise<TestRun | null> {
   const [testRun] = await sql<TestRun[]>`
     UPDATE test_runs
-    SET state = ${JSON.stringify(state)}, updated_at = NOW()
+    SET
+      state = ${JSON.stringify(state)},
+      contract_ids = COALESCE(${contractIds || null}, contract_ids),
+      updated_at = NOW()
     WHERE id = ${id}
     RETURNING
       id,
@@ -231,9 +268,76 @@ export async function updateTestRunState(
       description,
       network_mode as "networkMode",
       status,
+      config_hash as "configHash",
       state,
+      contract_ids as "contractIds",
       started_at as "startedAt",
       completed_at as "completedAt",
+      paused_at as "pausedAt",
+      error,
+      created_at as "createdAt",
+      updated_at as "updatedAt"
+  `
+  return testRun || null
+}
+
+/**
+ * Pause test run at a breakpoint
+ */
+export async function pauseTestRun(
+  id: number,
+  state: TestRunState
+): Promise<TestRun | null> {
+  const [testRun] = await sql<TestRun[]>`
+    UPDATE test_runs
+    SET
+      state = ${JSON.stringify(state)},
+      status = 'pending',
+      paused_at = NOW(),
+      updated_at = NOW()
+    WHERE id = ${id}
+    RETURNING
+      id,
+      name,
+      description,
+      network_mode as "networkMode",
+      status,
+      config_hash as "configHash",
+      state,
+      contract_ids as "contractIds",
+      started_at as "startedAt",
+      completed_at as "completedAt",
+      paused_at as "pausedAt",
+      error,
+      created_at as "createdAt",
+      updated_at as "updatedAt"
+  `
+  return testRun || null
+}
+
+/**
+ * Resume a paused test run
+ */
+export async function resumeTestRun(id: number): Promise<TestRun | null> {
+  const [testRun] = await sql<TestRun[]>`
+    UPDATE test_runs
+    SET
+      status = 'running',
+      paused_at = NULL,
+      updated_at = NOW()
+    WHERE id = ${id}
+    RETURNING
+      id,
+      name,
+      description,
+      network_mode as "networkMode",
+      status,
+      config_hash as "configHash",
+      state,
+      contract_ids as "contractIds",
+      started_at as "startedAt",
+      completed_at as "completedAt",
+      paused_at as "pausedAt",
       error,
       created_at as "createdAt",
       updated_at as "updatedAt"
@@ -254,6 +358,7 @@ export async function completeTestRun(
     SET
       status = ${status},
       completed_at = NOW(),
+      paused_at = NULL,
       error = ${error || null},
       updated_at = NOW()
     WHERE id = ${id}
@@ -263,9 +368,12 @@ export async function completeTestRun(
       description,
       network_mode as "networkMode",
       status,
+      config_hash as "configHash",
       state,
+      contract_ids as "contractIds",
       started_at as "startedAt",
       completed_at as "completedAt",
+      paused_at as "pausedAt",
       error,
       created_at as "createdAt",
       updated_at as "updatedAt"
@@ -302,9 +410,12 @@ export async function initTestRunsTable(): Promise<void> {
       description TEXT,
       network_mode VARCHAR(20) NOT NULL DEFAULT 'emulator',
       status VARCHAR(20) NOT NULL DEFAULT 'pending',
+      config_hash VARCHAR(64),
       state JSONB NOT NULL,
+      contract_ids INTEGER[] DEFAULT '{}',
       started_at TIMESTAMP WITH TIME ZONE,
       completed_at TIMESTAMP WITH TIME ZONE,
+      paused_at TIMESTAMP WITH TIME ZONE,
       error TEXT,
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -317,5 +428,8 @@ export async function initTestRunsTable(): Promise<void> {
   `
   await sql`
     CREATE INDEX IF NOT EXISTS idx_test_runs_network_mode ON test_runs(network_mode)
+  `
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_test_runs_config_hash ON test_runs(config_hash)
   `
 }

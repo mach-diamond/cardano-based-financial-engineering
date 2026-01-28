@@ -383,8 +383,14 @@ export async function fullTestCleanup(): Promise<void> {
 }
 
 // =============================================================================
-// Test Run API - persist test state to database
+// Test Run API - persist test state to database (pipeline runner model)
 // =============================================================================
+
+export interface Breakpoint {
+    phaseId: number
+    enabled: boolean
+    pauseAfter: boolean  // true = pause after phase, false = pause before
+}
 
 export interface TestRunState {
     phases: any[]
@@ -394,6 +400,7 @@ export interface TestRunState {
     currentPhase: number
     completedSteps: number
     totalSteps: number
+    breakpoints?: Breakpoint[]
 }
 
 export interface TestRun {
@@ -401,10 +408,13 @@ export interface TestRun {
     name: string
     description: string | null
     networkMode: 'emulator' | 'preview'
-    status: 'pending' | 'running' | 'passed' | 'failed'
+    status: 'pending' | 'running' | 'passed' | 'failed' | 'skipped'
+    configHash: string | null
     state: TestRunState
+    contractIds: number[]
     startedAt: string
     completedAt: string | null
+    pausedAt: string | null
     error: string | null
     createdAt: string
     updatedAt: string

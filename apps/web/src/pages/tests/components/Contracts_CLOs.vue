@@ -23,16 +23,81 @@
         <span class="collapse-icon">{{ expanded ? '▲' : '▼' }}</span>
       </div>
     </div>
-    <div v-show="expanded" class="card-body">
+    <div v-show="expanded" class="card-body p-0">
+      <!-- Portfolio and Tranche Visualization -->
+      <div class="row m-0 portfolio-section">
+        <div class="col-lg-8 p-3 border-right-subtle">
+          <h6 class="section-subtitle mb-3">
+            <i class="fas fa-briefcase mr-2"></i>
+            Loan Portfolio ({{ loanPortfolio.length }} Loans)
+            <span class="badge badge-primary ml-2">{{ totalPrincipal.toLocaleString() }} ADA</span>
+          </h6>
+          <div class="loan-grid">
+            <div v-for="loan in loanPortfolio" :key="loan.id"
+                 class="loan-chip"
+                 :class="{ 'loan-defaulted': loan.defaulted, 'loan-active': loan.active }">
+              <div class="loan-chip-header">
+                <span class="loan-number">#{{ loan.id }}</span>
+                <span class="loan-status-dot" :class="loan.defaulted ? 'bg-danger' : loan.active ? 'bg-success' : 'bg-secondary'"></span>
+              </div>
+              <div class="loan-amount">{{ loan.principal }} ADA</div>
+              <div class="loan-apr">{{ loan.apr }}% APR</div>
+              <div class="loan-progress">
+                <div class="progress" style="height: 3px;">
+                  <div class="progress-bar" :class="loan.defaulted ? 'bg-danger' : 'bg-success'"
+                       :style="{ width: `${(loan.payments / loan.totalPayments) * 100}%` }"></div>
+                </div>
+                <small class="text-muted">{{ loan.payments }}/{{ loan.totalPayments }}</small>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-4 p-3">
+          <h6 class="section-subtitle mb-3">
+            <i class="fas fa-layer-group mr-2"></i>
+            CLO Tranche Structure
+          </h6>
+          <div class="tranche-stack">
+            <div class="tranche tranche-senior">
+              <div class="tranche-label">Senior</div>
+              <div class="tranche-allocation">70%</div>
+              <div class="tranche-value">{{ seniorValue.toFixed(1) }} ADA</div>
+              <div class="tranche-tokens">700 tokens</div>
+            </div>
+            <div class="tranche tranche-mezzanine">
+              <div class="tranche-label">Mezzanine</div>
+              <div class="tranche-allocation">20%</div>
+              <div class="tranche-value">{{ mezzValue.toFixed(1) }} ADA</div>
+              <div class="tranche-tokens">200 tokens</div>
+            </div>
+            <div class="tranche tranche-junior">
+              <div class="tranche-label">Junior</div>
+              <div class="tranche-allocation">10%</div>
+              <div class="tranche-value">{{ juniorValue.toFixed(1) }} ADA</div>
+              <div class="tranche-tokens">100 tokens</div>
+            </div>
+          </div>
+          <div class="waterfall-info mt-3">
+            <small class="text-muted">
+              <strong>Waterfall:</strong> Payments flow Senior → Mezz → Junior<br>
+              <strong>Losses:</strong> Absorbed Junior → Mezz → Senior
+            </small>
+          </div>
+        </div>
+      </div>
+
+      <hr class="m-0 section-divider">
+
       <!-- Empty State -->
       <div v-if="contracts.length === 0" class="empty-state">
         <i class="fas fa-layer-group"></i>
         <p>No CLO bond contracts initialized</p>
-        <small>Run "Initialize CLO Bonds" phase to populate</small>
+        <small>Run "CLO Bundle & Distribution" phase to create</small>
       </div>
 
       <!-- Contract List -->
-      <div v-else class="contracts-list">
+      <div v-else class="contracts-list p-3">
         <div v-for="contract in contracts" :key="contract.id" class="contract-row">
           <!-- Icon -->
           <div class="contract-type-icon">
@@ -99,6 +164,18 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 
+export interface Loan {
+  id: number
+  principal: number
+  apr: number
+  payments: number
+  totalPayments: number
+  active: boolean
+  defaulted: boolean
+  asset: string
+  borrower: string
+}
+
 export interface CLOContract {
   id: string
   alias?: string
@@ -116,6 +193,8 @@ export interface CLOContract {
 
 const props = defineProps<{
   contracts: CLOContract[]
+  loanPortfolio: Loan[]
+  totalLoanValue: number
 }>()
 
 defineEmits<{
@@ -131,6 +210,14 @@ const allPassed = computed(() => props.contracts.length > 0 && props.contracts.e
 const hasFailed = computed(() => props.contracts.some(c => c.status === 'failed'))
 const hasRunning = computed(() => props.contracts.some(c => c.status === 'running'))
 
+const totalPrincipal = computed(() =>
+  props.loanPortfolio.reduce((sum, loan) => sum + loan.principal, 0)
+)
+
+const seniorValue = computed(() => props.totalLoanValue * 0.7)
+const mezzValue = computed(() => props.totalLoanValue * 0.2)
+const juniorValue = computed(() => props.totalLoanValue * 0.1)
+
 function formatAda(lovelace?: number): string {
   if (!lovelace) return '0'
   return (lovelace / 1_000_000).toLocaleString()
@@ -138,6 +225,155 @@ function formatAda(lovelace?: number): string {
 </script>
 
 <style scoped>
+/* Portfolio section */
+.portfolio-section {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.border-right-subtle {
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.section-subtitle {
+  color: #94a3b8;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+}
+
+.section-divider {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Loan grid */
+.loan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 0.75rem;
+}
+
+.loan-chip {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  transition: all 0.2s ease;
+}
+
+.loan-chip:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.loan-chip.loan-active {
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.loan-chip.loan-defaulted {
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.loan-chip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.loan-number {
+  font-size: 0.7rem;
+  color: #94a3b8;
+}
+
+.loan-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.loan-amount {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.loan-apr {
+  font-size: 0.7rem;
+  color: #94a3b8;
+  margin-bottom: 0.5rem;
+}
+
+.loan-progress small {
+  font-size: 0.65rem;
+}
+
+/* Tranche stack */
+.tranche-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tranche {
+  padding: 0.75rem;
+  border-radius: 0.375rem;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  grid-template-rows: auto auto;
+  gap: 0.25rem 1rem;
+  align-items: center;
+}
+
+.tranche-label {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.tranche-allocation {
+  font-weight: 700;
+  font-size: 1rem;
+  text-align: right;
+}
+
+.tranche-value {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.7);
+  grid-column: 1;
+}
+
+.tranche-tokens {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.5);
+  text-align: right;
+  grid-column: 2 / -1;
+}
+
+.tranche-senior {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(16, 185, 129, 0.1) 100%);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #10b981;
+}
+
+.tranche-mezzanine {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(245, 158, 11, 0.1) 100%);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #f59e0b;
+}
+
+.tranche-junior {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(239, 68, 68, 0.1) 100%);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+.waterfall-info {
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 0.375rem;
+}
+
 /* Empty state */
 .empty-state {
   display: flex;
