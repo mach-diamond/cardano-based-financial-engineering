@@ -4,3 +4,4 @@
 [submodule "packages/loan-contract"]
 	path = packages/loan-contract
 	url = git@github.com:MintMatrix/asset-transfer.git
+	branch = V2

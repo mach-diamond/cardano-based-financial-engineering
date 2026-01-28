@@ -68,7 +68,28 @@
             </div>
           </div>
 
-          <!-- Status -->
+          <!-- State Info (NEW) -->
+          <div class="contract-state-section">
+            <!-- Contract Status Badge -->
+            <div class="state-badge mb-1">
+              <span v-if="contract.state?.isActive && !contract.state?.isPaidOff" class="badge badge-success badge-sm">Active</span>
+              <span v-else-if="contract.state?.isPaidOff" class="badge badge-info badge-sm">Paid Off</span>
+              <span v-else-if="contract.state?.isDefaulted" class="badge badge-danger badge-sm">Defaulted</span>
+              <span v-else class="badge badge-warning badge-sm">Pending</span>
+            </div>
+            <!-- Progress Bar -->
+            <div class="progress-mini" v-if="contract.state">
+              <div class="progress-bar bg-success" :style="{ width: `${getProgressPercent(contract)}%` }"></div>
+            </div>
+            <div class="state-info">
+              <span v-if="contract.state" class="text-muted small">
+                {{ getProgressPercent(contract).toFixed(0) }}% | {{ getCurrentInstallment(contract) }}/{{ contract.installments || 12 }}
+              </span>
+              <span v-else class="text-muted small">--</span>
+            </div>
+          </div>
+
+          <!-- Test Status -->
           <div class="contract-status-section">
             <i v-if="contract.status === 'passed'" class="fas fa-check-circle text-success"></i>
             <i v-else-if="contract.status === 'running'" class="fas fa-spinner fa-spin text-warning"></i>
@@ -96,6 +117,19 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 
+export interface LoanContractState {
+  isActive: boolean
+  isPaidOff: boolean
+  isDefaulted: boolean
+  balance: number
+  startTime?: number
+  lastPayment?: {
+    amount: number
+    timestamp: number
+    installmentNumber: number
+  }
+}
+
 export interface LoanContract {
   id: string
   alias?: string
@@ -106,11 +140,16 @@ export interface LoanContract {
     policyId: string
   }
   principal: number
-  apr: number
+  apr: number // basis points
+  installments?: number
+  frequency?: number // payments per year
   termLength?: string
   status: 'pending' | 'running' | 'passed' | 'failed'
   borrower?: string
   originator?: string
+  contractAddress?: string
+  policyId?: string
+  state?: LoanContractState
 }
 
 const props = defineProps<{
@@ -138,7 +177,21 @@ function formatPolicy(policyId?: string): string {
 
 function formatAda(lovelace?: number): string {
   if (!lovelace) return '0'
-  return (lovelace / 1_000_000).toLocaleString()
+  return (lovelace / 1_000_000).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })
+}
+
+function getProgressPercent(contract: LoanContract): number {
+  const principal = contract.principal || 1
+  const balance = contract.state?.balance ?? contract.principal
+  return ((principal - balance) / principal) * 100
+}
+
+function getCurrentInstallment(contract: LoanContract): number {
+  if (!contract.state?.lastPayment) return 0
+  return contract.state.lastPayment.installmentNumber || 0
 }
 </script>
 
@@ -174,6 +227,15 @@ function formatAda(lovelace?: number): string {
   flex-direction: column;
 }
 
+.contract-row {
+  display: grid;
+  grid-template-columns: 40px 1.5fr 2fr 1fr 40px auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.75rem 0.5rem;
+  position: relative;
+}
+
 .contract-divider {
   position: absolute;
   bottom: 0;
@@ -185,6 +247,18 @@ function formatAda(lovelace?: number): string {
 
 .contract-row:last-child .contract-divider {
   display: none;
+}
+
+/* Icon */
+.contract-type-icon {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(23, 162, 184, 0.2);
+  border-radius: 0.5rem;
+  color: #17a2b8;
 }
 
 /* Typography */
@@ -217,7 +291,56 @@ function formatAda(lovelace?: number): string {
   color: #fbbf24;
 }
 
+/* State section (NEW) */
+.contract-state-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 80px;
+}
+
+.state-badge .badge-sm {
+  font-size: 0.65rem;
+  padding: 0.2rem 0.5rem;
+}
+
+.progress-mini {
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-mini .progress-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.state-info {
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+/* Status icon */
+.contract-status-section {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.contract-status-section i {
+  font-size: 1.25rem;
+}
+
 /* Action buttons */
+.contract-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
 .contract-actions .btn {
   height: 32px;
   display: flex;
@@ -228,5 +351,18 @@ function formatAda(lovelace?: number): string {
 .contract-actions .btn-outline-success {
   width: 32px;
   padding: 0;
+}
+
+/* Responsive */
+@media (max-width: 992px) {
+  .contract-row {
+    grid-template-columns: 36px 1fr auto auto;
+    gap: 0.75rem;
+  }
+
+  .contract-asset-section,
+  .contract-state-section {
+    display: none;
+  }
 }
 </style>

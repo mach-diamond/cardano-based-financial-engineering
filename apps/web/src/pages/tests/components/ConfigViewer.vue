@@ -16,6 +16,7 @@
         <span class="badge badge-secondary ml-2">{{ walletCount }} wallets</span>
         <span class="badge badge-success ml-2">{{ contractCount }} contracts</span>
         <span class="badge badge-info ml-2">{{ phaseCount }} phases</span>
+        <span class="badge badge-warning ml-2">{{ assetCount }} assets</span>
       </div>
       <div class="d-flex align-items-center" @click.stop>
         <button
@@ -70,6 +71,16 @@
           <li class="nav-item">
             <a
               class="nav-link"
+              :class="{ active: activeTab === 'assets' }"
+              @click="activeTab = 'assets'"
+            >
+              <i class="fas fa-gem mr-1"></i>
+              Assets
+            </a>
+          </li>
+          <li class="nav-item">
+            <a
+              class="nav-link"
               :class="{ active: activeTab === 'contracts' }"
               @click="activeTab = 'contracts'"
             >
@@ -106,6 +117,11 @@
             <pre class="config-json"><code>{{ formattedWallets }}</code></pre>
           </div>
 
+          <!-- Assets Tab -->
+          <div v-if="activeTab === 'assets'" class="config-json-wrapper">
+            <pre class="config-json"><code>{{ formattedAssets }}</code></pre>
+          </div>
+
           <!-- Contracts Tab -->
           <div v-if="activeTab === 'contracts'" class="config-json-wrapper">
             <pre class="config-json"><code>{{ formattedContracts }}</code></pre>
@@ -136,6 +152,15 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+
+// Initial assets to mint (from test-setup.ts)
+const initialAssets = [
+  { policyId: 'policy_diamond', assetName: 'Diamond', quantity: 2, mintTo: 'MachDiamond Jewelry' },
+  { policyId: 'policy_airplane', assetName: 'Airplane', quantity: 10, mintTo: 'Airplane Manufacturing LLC' },
+  { policyId: 'policy_home', assetName: 'Home', quantity: 1, mintTo: 'Bob Smith' },
+  { policyId: 'policy_realestate', assetName: 'RealEstate', quantity: 10, mintTo: 'Premier Asset Holdings' },
+  { policyId: 'policy_boat', assetName: 'Boat', quantity: 3, mintTo: 'Yacht Makers Corp' },
+]
 
 // Contract parameter definitions for the test suite
 const defaultContractParams = {
@@ -283,13 +308,14 @@ const emit = defineEmits<{
 }>()
 
 const isExpanded = ref(false)
-const activeTab = ref<'wallets' | 'contracts' | 'phases' | 'full'>('wallets')
+const activeTab = ref<'wallets' | 'assets' | 'contracts' | 'phases' | 'full'>('wallets')
 const showCopySuccess = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 
 const walletCount = computed(() => props.config?.wallets?.length || props.identities?.length || 0)
 const contractCount = computed(() => (props.contracts || defaultContractParams).loanContracts.length)
 const phaseCount = computed(() => props.phases?.length || 0)
+const assetCount = computed(() => initialAssets.length)
 
 const formattedWallets = computed(() => {
   const wallets = props.config?.wallets || props.identities?.map(i => ({
@@ -297,7 +323,12 @@ const formattedWallets = computed(() => {
     role: i.role,
     address: i.address
   })) || []
+
   return JSON.stringify(wallets, bigIntReplacer, 2)
+})
+
+const formattedAssets = computed(() => {
+  return JSON.stringify(initialAssets, bigIntReplacer, 2)
 })
 
 const formattedPhases = computed(() => {
@@ -347,6 +378,9 @@ function copyToClipboard() {
   switch (activeTab.value) {
     case 'wallets':
       text = formattedWallets.value
+      break
+    case 'assets':
+      text = formattedAssets.value
       break
     case 'contracts':
       text = formattedContracts.value

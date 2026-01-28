@@ -35,11 +35,22 @@
         <button
           @click="$emit('runTests', networkMode)"
           class="btn btn-success btn-lg btn-run-full-test"
-          :disabled="isRunning"
+          :disabled="isRunning || isCleaning"
         >
           <span v-if="isRunning" class="spinner-border spinner-border-sm mr-2" role="status"></span>
           <i v-else class="fas fa-play mr-2"></i>
           {{ isRunning ? 'Running...' : 'Run Full Test' }}
+        </button>
+
+        <!-- Clean Up Button -->
+        <button
+          @click="$emit('cleanup')"
+          class="btn btn-outline-danger btn-lg btn-cleanup"
+          :disabled="isRunning || isCleaning"
+        >
+          <span v-if="isCleaning" class="spinner-border spinner-border-sm mr-2" role="status"></span>
+          <i v-else class="fas fa-trash-alt mr-2"></i>
+          {{ isCleaning ? 'Cleaning...' : 'Clean Up' }}
         </button>
       </div>
     </div>
@@ -64,11 +75,13 @@ import { ref } from 'vue'
 
 defineProps<{
   isRunning: boolean
+  isCleaning?: boolean
 }>()
 
 const emit = defineEmits<{
   runTests: [mode: 'emulator' | 'preview']
   'update:networkMode': [mode: 'emulator' | 'preview']
+  cleanup: []
 }>()
 
 const networkMode = ref<'emulator' | 'preview'>('emulator')
@@ -179,5 +192,22 @@ function setNetwork(mode: 'emulator' | 'preview') {
 
 .gap-3 {
   gap: 1rem;
+}
+
+.btn-cleanup {
+  padding: 0.6rem 1.25rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  height: calc(0.6rem * 2 + 1.5rem + 4px);
+  display: inline-flex;
+  align-items: center;
+  border-width: 2px;
+  transition: all 0.2s ease;
+}
+
+.btn-cleanup:hover:not(:disabled) {
+  background: rgba(220, 53, 69, 0.15);
+  border-color: #dc3545;
+  color: #dc3545;
 }
 </style>

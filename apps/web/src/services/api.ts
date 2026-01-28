@@ -344,3 +344,167 @@ export async function collectLoanPayment(
     })
     return res.json()
 }
+
+/**
+ * Get all stored contracts
+ */
+export async function getAllContracts(): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/api/loan/contracts`)
+    const data = await res.json()
+    return data.contracts || []
+}
+
+/**
+ * Get a specific contract by address
+ */
+export async function getContract(address: string): Promise<any | null> {
+    const res = await fetch(`${API_BASE}/api/loan/contracts/${encodeURIComponent(address)}`)
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.contract
+}
+
+/**
+ * Clear all contracts (test reset)
+ */
+export async function clearContracts(): Promise<void> {
+    await fetch(`${API_BASE}/api/loan/clear`, { method: 'POST' })
+}
+
+/**
+ * Full test cleanup - reset emulator, clear contracts, delete wallets
+ */
+export async function fullTestCleanup(): Promise<void> {
+    await Promise.all([
+        resetEmulator(),
+        clearContracts(),
+        deleteAllWallets()
+    ])
+}
+
+// =============================================================================
+// Test Run API - persist test state to database
+// =============================================================================
+
+export interface TestRunState {
+    phases: any[]
+    identities: any[]
+    loanContracts: any[]
+    cloContracts: any[]
+    currentPhase: number
+    completedSteps: number
+    totalSteps: number
+}
+
+export interface TestRun {
+    id: number
+    name: string
+    description: string | null
+    networkMode: 'emulator' | 'preview'
+    status: 'pending' | 'running' | 'passed' | 'failed'
+    state: TestRunState
+    startedAt: string
+    completedAt: string | null
+    error: string | null
+    createdAt: string
+    updatedAt: string
+}
+
+/**
+ * Get all test runs
+ */
+export async function getTestRuns(limit = 20): Promise<TestRun[]> {
+    const res = await fetch(`${API_BASE}/api/test/runs?limit=${limit}`)
+    const data = await res.json()
+    return data.runs || []
+}
+
+/**
+ * Get the latest test run
+ */
+export async function getLatestTestRun(): Promise<TestRun | null> {
+    const res = await fetch(`${API_BASE}/api/test/runs/latest`)
+    const data = await res.json()
+    return data.run || null
+}
+
+/**
+ * Get a test run by ID
+ */
+export async function getTestRun(id: number): Promise<TestRun | null> {
+    const res = await fetch(`${API_BASE}/api/test/runs/${id}`)
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.run || null
+}
+
+/**
+ * Create a new test run
+ */
+export async function createTestRun(params: {
+    name: string
+    description?: string
+    networkMode: 'emulator' | 'preview'
+    state: TestRunState
+}): Promise<TestRun> {
+    const res = await fetch(`${API_BASE}/api/test/runs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params)
+    })
+    if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || 'Failed to create test run')
+    }
+    const data = await res.json()
+    return data.run
+}
+
+/**
+ * Update test run state
+ */
+export async function updateTestRunState(id: number, state: TestRunState): Promise<TestRun | null> {
+    const res = await fetch(`${API_BASE}/api/test/runs/${id}/state`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state })
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.run || null
+}
+
+/**
+ * Complete a test run
+ */
+export async function completeTestRun(
+    id: number,
+    status: 'passed' | 'failed',
+    error?: string
+): Promise<TestRun | null> {
+    const res = await fetch(`${API_BASE}/api/test/runs/${id}/complete`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, error })
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.run || null
+}
+
+/**
+ * Delete a test run
+ */
+export async function deleteTestRun(id: number): Promise<boolean> {
+    const res = await fetch(`${API_BASE}/api/test/runs/${id}`, {
+        method: 'DELETE'
+    })
+    return res.ok
+}
+
+/**
+ * Delete all test runs
+ */
+export async function deleteAllTestRuns(): Promise<void> {
+    await fetch(`${API_BASE}/api/test/runs`, { method: 'DELETE' })
+}

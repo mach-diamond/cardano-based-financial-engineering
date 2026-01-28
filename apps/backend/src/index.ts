@@ -5,6 +5,9 @@ import sql from './db'
 import wallets from './routes/wallets'
 import emulator from './routes/emulator'
 import loan from './routes/loan'
+import test from './routes/test'
+import { initContractsTable } from './services/contract.service'
+import { initTestRunsTable } from './services/test.service'
 
 const app = new Hono()
 
@@ -33,6 +36,19 @@ app.get('/health', async (c) => {
 app.route('/api/wallets', wallets)
 app.route('/api/emulator', emulator)
 app.route('/api/loan', loan)
+app.route('/api/test', test)
+
+// Initialize database tables
+async function initTables() {
+  try {
+    await initContractsTable()
+    await initTestRunsTable()
+    console.log('📦 Database tables initialized')
+  } catch (err) {
+    console.error('Failed to initialize tables:', err)
+  }
+}
+initTables()
 
 // 404 handler
 app.notFound((c) => {

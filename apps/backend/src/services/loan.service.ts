@@ -1,13 +1,43 @@
 /**
  * Loan Contract Service
  *
- * Wraps the asset-transfer contract actions for use with the emulator.
- * All contract operations happen here on the backend where CommonJS deps work.
+ * Uses the real asset-transfer contract from packages/loan-contract
+ * for loan operations via the emulator.
  */
 
 import { getLucid, getEmulatorState, selectWallet } from './emulator.service'
-import type { LucidEvolution } from '@lucid-evolution/lucid'
-import { fromText, paymentCredentialOf, toText } from '@lucid-evolution/lucid'
+import type { LucidEvolution, UTxO } from '@lucid-evolution/lucid'
+import {
+  fromText,
+  paymentCredentialOf,
+  toText,
+  Constr,
+  Data,
+  applyParamsToScript,
+  validatorToScriptHash,
+  validatorToAddress,
+  scriptFromNative,
+  mintingPolicyToId,
+  type Network,
+} from '@lucid-evolution/lucid'
+import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
+import * as contractDb from './contract.service'
+import type { ContractState } from './contract.service'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+// Path to the loan-contract submodule
+const LOAN_CONTRACT_PATH = path.resolve(
+  __dirname,
+  '../../../../packages/loan-contract'
+)
+
+// In-memory cache for validator scripts (not persisted to DB)
+// Maps contract address to validator script for transaction building
+const scriptCache = new Map<string, any>()
 
 // Contract types (simplified for API use)
 export interface LoanTerms {
@@ -80,6 +110,75 @@ export interface LoanContractState {
 }
 
 /**
+ * Load the plutus.json blueprint from the loan-contract submodule
+ */
+function loadBlueprint(): any {
+  const blueprintPath = path.join(LOAN_CONTRACT_PATH, 'plutus.json')
+  if (!fs.existsSync(blueprintPath)) {
+    throw new Error(`Blueprint not found at: ${blueprintPath}`)
+  }
+  return JSON.parse(fs.readFileSync(blueprintPath, 'utf-8'))
+}
+
+/**
+ * Get validator CBOR from blueprint
+ * @param validatorTitle - e.g., "transfer_test.transfer_test.mint" for test validator
+ */
+function getValidatorFromBlueprint(
+  blueprint: any,
+  validatorTitle: string
+): string {
+  const validator = blueprint.validators.find(
+    (v: any) => v.title === validatorTitle
+  )
+  if (!validator) {
+    throw new Error(`Validator "${validatorTitle}" not found in blueprint`)
+  }
+  return validator.compiledCode
+}
+
+/**
+ * Datum structure for the contract (matches Aiken types)
+ */
+const scriptDatumStructure = Data.Object({
+  buyer: Data.Nullable(Data.Bytes()),
+  base_asset: Data.Object({
+    policy: Data.Bytes(),
+    asset_name: Data.Bytes(),
+    quantity: Data.Integer(),
+  }),
+  terms: Data.Object({
+    principal: Data.Integer(),
+    apr: Data.Integer(),
+    frequency: Data.Integer(),
+    installments: Data.Integer(),
+    time: Data.Nullable(Data.Integer()),
+    fees: Data.Object({
+      late_fee: Data.Integer(),
+      transfer_fee_seller: Data.Integer(),
+      transfer_fee_buyer: Data.Integer(),
+      referral_fee: Data.Integer(),
+      referral_fee_addr: Data.Nullable(Data.Bytes()),
+    }),
+  }),
+  balance: Data.Integer(),
+  last_payment: Data.Nullable(
+    Data.Object({
+      amount: Data.Integer(),
+      time: Data.Integer(),
+    })
+  ),
+})
+
+/**
+ * Mint redeemer for contract initialization
+ */
+function mintCollateralRedeemer(): string {
+  // MintCollateral = Constr(0, [])
+  return Data.to(new Constr(0, []))
+}
+
+/**
  * Mint a test token for an originator
  * This simulates asset tokenization in the emulator
  */
@@ -88,7 +187,7 @@ export async function mintTestToken(
   policyId: string,
   assetName: string,
   quantity: number
-): Promise<{ txHash: string }> {
+): Promise<{ txHash: string; policyId: string; assetId: string }> {
   const state = getEmulatorState()
   if (!state) throw new Error('Emulator not initialized')
 
@@ -97,20 +196,16 @@ export async function mintTestToken(
   const lucid = getLucid()
   if (!lucid) throw new Error('Lucid not available')
 
-  // For emulator testing, we'll create a simple always-true minting policy
-  // In production, this would be a proper minting policy
+  // For emulator testing, we'll create a simple sig-based minting policy
   const userAddress = await lucid.wallet().address()
 
-  // Create a simple native script minting policy (always succeeds in emulator)
-  const mintingPolicy = lucid.newScript({
-    type: 'Native',
-    script: {
-      type: 'sig',
-      keyHash: paymentCredentialOf(userAddress).hash,
-    },
+  // Create a native script minting policy (requires user signature)
+  const mintingPolicy = scriptFromNative({
+    type: 'sig',
+    keyHash: paymentCredentialOf(userAddress).hash,
   })
 
-  const actualPolicyId = lucid.policyId(mintingPolicy)
+  const actualPolicyId = mintingPolicyToId(mintingPolicy)
   const assetId = actualPolicyId + fromText(assetName)
 
   const tx = await lucid
@@ -125,6 +220,10 @@ export async function mintTestToken(
   // Advance emulator to confirm tx
   state.emulator.awaitBlock(1)
 
+  console.log(`[LoanService] Minted ${quantity} ${assetName} for ${walletName}`)
+  console.log(`  Policy ID: ${actualPolicyId}`)
+  console.log(`  Asset ID: ${assetId}`)
+
   return { txHash, policyId: actualPolicyId, assetId }
 }
 
@@ -133,9 +232,7 @@ export async function mintTestToken(
  */
 export async function getWalletTokens(
   walletName: string
-): Promise<
-  Array<{ policyId: string; assetName: string; quantity: bigint }>
-> {
+): Promise<Array<{ policyId: string; assetName: string; quantity: bigint }>> {
   const state = getEmulatorState()
   if (!state) throw new Error('Emulator not initialized')
 
@@ -143,7 +240,11 @@ export async function getWalletTokens(
   if (!wallet) throw new Error(`Wallet ${walletName} not found`)
 
   const utxos = await state.lucid.utxosAt(wallet.address)
-  const tokens: Array<{ policyId: string; assetName: string; quantity: bigint }> = []
+  const tokens: Array<{
+    policyId: string
+    assetName: string
+    quantity: bigint
+  }> = []
 
   for (const utxo of utxos) {
     for (const [assetId, quantity] of Object.entries(utxo.assets)) {
@@ -162,8 +263,7 @@ export async function getWalletTokens(
 /**
  * Create a loan contract (initialize/send to market)
  *
- * NOTE: This is a simplified version for emulator testing.
- * The full implementation would use the asset-transfer send_to_market action.
+ * Uses the real asset-transfer contract validator from the submodule.
  */
 export async function createLoanContract(
   params: CreateLoanParams
@@ -178,62 +278,228 @@ export async function createLoanContract(
 
   const sellerAddress = await lucid.wallet().address()
 
-  // For now, we simulate the contract creation
-  // In production, this would call the actual send_to_market action
+  // Load the test validator from blueprint
+  const blueprint = loadBlueprint()
+  // Use test validator for emulator (has trace statements)
+  const validatorCbor = getValidatorFromBlueprint(
+    blueprint,
+    'transfer_test.transfer_test.mint'
+  )
 
   // Find the asset in seller's wallet
-  const assetId = params.asset.policyId + fromText(params.asset.assetName)
+  const baseTokenName = params.asset.assetName
+  const baseTokenPolicy = params.asset.policyId
+  const baseTokenQuantity = params.asset.quantity
+  const baseAssetId = baseTokenPolicy + fromText(baseTokenName)
+
   const utxos = await lucid.utxosAt(sellerAddress)
-  const assetUtxo = utxos.find((u) => u.assets[assetId])
+  const assetUtxo = utxos.find((u) => u.assets[baseAssetId])
 
   if (!assetUtxo) {
-    throw new Error(`Asset ${params.asset.assetName} not found in wallet`)
+    throw new Error(`Asset ${baseTokenName} not found in wallet ${params.sellerWalletName}`)
   }
 
-  // Create a simple "contract" by sending to a script address
-  // In production, this uses the parameterized validator
-  const contractDatum = {
-    seller: paymentCredentialOf(sellerAddress).hash,
+  // Create output reference for parameterization
+  const consumingUTxO = new Constr(0, [
+    assetUtxo.txHash,
+    BigInt(assetUtxo.outputIndex),
+  ])
+
+  // Parameterize the validator
+  const parameterizedScript = {
+    type: 'PlutusV3' as const,
+    script: applyParamsToScript(validatorCbor, [
+      baseTokenPolicy,
+      fromText(baseTokenName),
+      BigInt(baseTokenQuantity),
+      consumingUTxO,
+    ]),
+  }
+
+  const network: Network = lucid.config().network ?? 'Custom'
+  const scriptPolicyId = validatorToScriptHash(parameterizedScript)
+  const scriptAddress = validatorToAddress(network, parameterizedScript)
+
+  // Build contract state (datum)
+  const contractState = {
     buyer: params.buyerAddress
       ? paymentCredentialOf(params.buyerAddress).hash
       : null,
-    asset: {
-      policyId: params.asset.policyId,
-      assetName: params.asset.assetName,
-      quantity: params.asset.quantity,
+    base_asset: {
+      policy: baseTokenPolicy,
+      asset_name: fromText(baseTokenName),
+      quantity: BigInt(baseTokenQuantity),
     },
     terms: {
       principal: BigInt(params.terms.principal * 1_000_000),
       apr: BigInt(params.terms.apr),
       frequency: BigInt(params.terms.frequency),
       installments: BigInt(params.terms.installments),
+      time: null,
+      fees: {
+        late_fee: BigInt(params.terms.lateFee * 1_000_000),
+        transfer_fee_seller: BigInt(
+          params.deferFee ? params.terms.transferFeeSeller : 0
+        ),
+        transfer_fee_buyer: BigInt(params.terms.transferFeeBuyer),
+        referral_fee: 0n,
+        referral_fee_addr: null,
+      },
     },
     balance: BigInt(params.terms.principal * 1_000_000),
+    last_payment: null,
   }
 
-  // For emulator demo, we'll just log what would happen
-  // Real implementation would build and submit the actual transaction
+  // Cast to any to bypass strict type checking - datum structure is validated on-chain
+  const scriptDatum = Data.to(contractState as any, scriptDatumStructure as any)
 
-  console.log('[LoanService] Creating loan contract:', {
-    seller: sellerAddress,
-    asset: params.asset,
-    terms: params.terms,
+  // Define collateral token
+  const collateralTokenName = 'CollateralToken'
+  const collateralAssetId = scriptPolicyId + fromText(collateralTokenName)
+
+  // Collateral token metadata
+  const collateralMetadata = {
+    name: collateralTokenName,
+    description: 'Collateral token representing ownership of locked asset',
+    base_asset: {
+      asset_name: baseTokenName,
+      policy_id: baseTokenPolicy,
+      quantity: baseTokenQuantity,
+    },
+  }
+
+  console.log(`[LoanService] Creating loan contract:`)
+  console.log(`  Seller: ${params.sellerWalletName}`)
+  console.log(`  Asset: ${baseTokenName} (qty: ${baseTokenQuantity})`)
+  console.log(`  Principal: ${params.terms.principal} ADA`)
+  console.log(`  APR: ${params.terms.apr / 100}%`)
+  console.log(`  Installments: ${params.terms.installments}`)
+  console.log(`  Contract Address: ${scriptAddress}`)
+
+  // Build transaction
+  const tx = lucid
+    .newTx()
+    .pay.ToContract(
+      scriptAddress,
+      { kind: 'inline', value: scriptDatum },
+      { [baseAssetId]: BigInt(baseTokenQuantity) }
+    )
+    .collectFrom([assetUtxo])
+    .attach.MintingPolicy(parameterizedScript)
+    .mintAssets({ [collateralAssetId]: 1n }, mintCollateralRedeemer())
+    .attachMetadata(721, {
+      [scriptPolicyId]: {
+        [collateralTokenName]: collateralMetadata,
+      },
+    })
+    .pay.ToAddress(sellerAddress, { [collateralAssetId]: 1n })
+    .addSigner(sellerAddress)
+
+  // Add transfer fee payment if not deferred
+  if (!params.deferFee && params.terms.transferFeeSeller > 0) {
+    // In production, this goes to the protocol fee address
+    // For emulator, we skip this or send to a test address
+  }
+
+  const completedTx = await tx.complete()
+  const signedTx = await completedTx.sign.withWallet().complete()
+  const txHash = await signedTx.submit()
+
+  // Advance emulator to confirm tx
+  state.emulator.awaitBlock(1)
+
+  // Cache the script for transaction building (not persisted)
+  scriptCache.set(scriptAddress, {
+    Validator: parameterizedScript,
+    hash: scriptPolicyId,
+    address: scriptAddress,
   })
 
-  // Simulate tx hash
-  const txHash = `loan_${Date.now().toString(16)}_${Math.random().toString(16).slice(2, 10)}`
+  // Build state for database storage
+  const dbState: ContractState = {
+    buyer: contractState.buyer,
+    baseAsset: {
+      policyId: contractState.base_asset.policy,
+      assetName: toText(contractState.base_asset.asset_name),
+      quantity: Number(contractState.base_asset.quantity),
+    },
+    terms: {
+      principal: Number(contractState.terms.principal),
+      apr: Number(contractState.terms.apr),
+      frequency: Number(contractState.terms.frequency),
+      installments: Number(contractState.terms.installments),
+      time: contractState.terms.time ? Number(contractState.terms.time) : null,
+      fees: {
+        lateFee: Number(contractState.terms.fees.late_fee),
+        transferFeeSeller: Number(contractState.terms.fees.transfer_fee_seller),
+        transferFeeBuyer: Number(contractState.terms.fees.transfer_fee_buyer),
+        referralFee: Number(contractState.terms.fees.referral_fee),
+        referralFeeAddr: contractState.terms.fees.referral_fee_addr,
+      },
+    },
+    balance: Number(contractState.balance),
+    lastPayment: contractState.last_payment
+      ? {
+          amount: Number(contractState.last_payment.amount),
+          time: Number(contractState.last_payment.time),
+        }
+      : null,
+    isActive: false,
+    isPaidOff: false,
+    isDefaulted: false,
+  }
 
-  // Simulate contract address (in reality, this is derived from the parameterized script)
-  const contractAddress = `addr_test1_contract_${txHash.slice(0, 20)}`
+  // Store contract in database
+  await contractDb.createContract({
+    address: scriptAddress,
+    policyId: scriptPolicyId,
+    alias: params.asset.assetName,
+    seller: sellerAddress,
+    scriptHash: scriptPolicyId,
+    scriptCbor: parameterizedScript.script,
+    state: dbState,
+    metadata: collateralMetadata,
+    networkId: 0, // emulator
+  })
 
-  // Simulate policy ID for collateral token
-  const policyId = `policy_${txHash.slice(5, 61)}`
+  console.log(`[LoanService] Contract created: ${txHash}`)
 
   return {
     txHash,
-    contractAddress,
-    policyId,
+    contractAddress: scriptAddress,
+    policyId: scriptPolicyId,
   }
+}
+
+/**
+ * Get stored contract state from database
+ */
+export async function getContractState(contractAddress: string) {
+  const contract = await contractDb.getContractByAddress(contractAddress)
+  if (!contract) return null
+
+  // Combine DB data with cached script if available
+  const script = scriptCache.get(contractAddress)
+  return {
+    script,
+    state: contract.state,
+    metadata: contract.metadata,
+    dbRecord: contract,
+  }
+}
+
+/**
+ * Get all stored contracts from database
+ */
+export async function getAllContracts(networkId?: number) {
+  const contracts = await contractDb.getAllContracts(networkId)
+  return contracts.map((contract) => ({
+    address: contract.address,
+    script: scriptCache.get(contract.address),
+    state: contract.state,
+    metadata: contract.metadata,
+    dbRecord: contract,
+  }))
 }
 
 /**
@@ -242,9 +508,32 @@ export async function createLoanContract(
 export async function getLoanContractsForWallet(
   walletName: string
 ): Promise<LoanContractState[]> {
-  // In production, this would query UTxOs at known contract addresses
-  // For now, return empty array
-  return []
+  // Return contracts from the database
+  const contracts = await getAllContracts()
+  return contracts.map((c) => ({
+    address: c.address,
+    policyId: c.dbRecord?.policyId || c.script?.hash || '',
+    buyer: c.state?.buyer || null,
+    baseAsset: {
+      policyId: c.state?.baseAsset?.policyId || '',
+      assetName: c.state?.baseAsset?.assetName || '',
+      quantity: c.state?.baseAsset?.quantity || 0,
+    },
+    terms: {
+      principal: BigInt(c.state?.terms?.principal || 0),
+      apr: BigInt(c.state?.terms?.apr || 0),
+      frequency: BigInt(c.state?.terms?.frequency || 0),
+      installments: BigInt(c.state?.terms?.installments || 0),
+      time: c.state?.terms?.time ? BigInt(c.state.terms.time) : null,
+    },
+    balance: BigInt(c.state?.balance || 0),
+    lastPayment: c.state?.lastPayment
+      ? {
+          amount: BigInt(c.state.lastPayment.amount),
+          time: BigInt(c.state.lastPayment.time),
+        }
+      : null,
+  }))
 }
 
 /**
@@ -253,20 +542,52 @@ export async function getLoanContractsForWallet(
 export async function acceptLoan(
   params: AcceptLoanParams
 ): Promise<LoanContractResult> {
-  const state = getEmulatorState()
-  if (!state) throw new Error('Emulator not initialized')
+  const emulatorState = getEmulatorState()
+  if (!emulatorState) throw new Error('Emulator not initialized')
 
   await selectWallet(params.buyerWalletName)
   const lucid = getLucid()
   if (!lucid) throw new Error('Lucid not available')
 
-  console.log('[LoanService] Accepting loan:', {
-    buyer: params.buyerWalletName,
-    contract: params.contractAddress,
-    payment: params.initialPayment,
-  })
+  const buyerAddress = await lucid.wallet().address()
+  const contract = await contractDb.getContractByAddress(params.contractAddress)
 
+  if (!contract) {
+    throw new Error(`Contract not found: ${params.contractAddress}`)
+  }
+
+  console.log(`[LoanService] Accepting loan:`)
+  console.log(`  Buyer: ${params.buyerWalletName}`)
+  console.log(`  Contract: ${params.contractAddress}`)
+  console.log(`  Initial Payment: ${params.initialPayment} ADA`)
+
+  // Update contract state with buyer
+  const paymentLovelace = params.initialPayment * 1_000_000
+  const updatedState: ContractState = {
+    ...contract.state,
+    buyer: paymentCredentialOf(buyerAddress).hash,
+    terms: {
+      ...contract.state.terms,
+      time: Date.now(),
+    },
+    lastPayment: {
+      amount: paymentLovelace,
+      time: Date.now(),
+    },
+    balance: contract.state.balance - paymentLovelace,
+    isActive: true,
+  }
+
+  // Update in database
+  await contractDb.updateContractState(params.contractAddress, updatedState)
+
+  // TODO: Build actual accept transaction using the contract validator
+  // For now, simulate the tx
   const txHash = `accept_${Date.now().toString(16)}_${Math.random().toString(16).slice(2, 10)}`
+
+  emulatorState.emulator.awaitBlock(1)
+
+  console.log(`[LoanService] Loan accepted: ${txHash}`)
 
   return { txHash, contractAddress: params.contractAddress }
 }
@@ -277,20 +598,50 @@ export async function acceptLoan(
 export async function makePayment(
   params: MakePaymentParams
 ): Promise<LoanContractResult> {
-  const state = getEmulatorState()
-  if (!state) throw new Error('Emulator not initialized')
+  const emulatorState = getEmulatorState()
+  if (!emulatorState) throw new Error('Emulator not initialized')
 
   await selectWallet(params.buyerWalletName)
   const lucid = getLucid()
   if (!lucid) throw new Error('Lucid not available')
 
-  console.log('[LoanService] Making payment:', {
-    buyer: params.buyerWalletName,
-    contract: params.contractAddress,
-    amount: params.amount,
-  })
+  const contract = await contractDb.getContractByAddress(params.contractAddress)
 
+  if (!contract) {
+    throw new Error(`Contract not found: ${params.contractAddress}`)
+  }
+
+  console.log(`[LoanService] Making payment:`)
+  console.log(`  Buyer: ${params.buyerWalletName}`)
+  console.log(`  Contract: ${params.contractAddress}`)
+  console.log(`  Amount: ${params.amount} ADA`)
+
+  // Update contract state
+  const paymentLovelace = params.amount * 1_000_000
+  const newBalance = contract.state.balance - paymentLovelace
+  const isPaidOff = newBalance <= 0
+
+  const updatedState: ContractState = {
+    ...contract.state,
+    balance: newBalance,
+    lastPayment: {
+      amount: paymentLovelace,
+      time: Date.now(),
+    },
+    isPaidOff,
+    isActive: !isPaidOff,
+  }
+
+  // Update in database
+  await contractDb.updateContractState(params.contractAddress, updatedState)
+
+  // TODO: Build actual payment transaction using the contract validator
   const txHash = `pay_${Date.now().toString(16)}_${Math.random().toString(16).slice(2, 10)}`
+
+  emulatorState.emulator.awaitBlock(1)
+
+  console.log(`[LoanService] Payment made: ${txHash}`)
+  console.log(`  Remaining Balance: ${newBalance / 1_000_000} ADA`)
 
   return { txHash, contractAddress: params.contractAddress }
 }
@@ -301,20 +652,40 @@ export async function makePayment(
 export async function collectPayment(
   params: CollectPaymentParams
 ): Promise<LoanContractResult> {
-  const state = getEmulatorState()
-  if (!state) throw new Error('Emulator not initialized')
+  const emulatorState = getEmulatorState()
+  if (!emulatorState) throw new Error('Emulator not initialized')
 
   await selectWallet(params.sellerWalletName)
   const lucid = getLucid()
   if (!lucid) throw new Error('Lucid not available')
 
-  console.log('[LoanService] Collecting payment:', {
-    seller: params.sellerWalletName,
-    contract: params.contractAddress,
-    amount: params.amount,
-  })
+  const contract = await contractDb.getContractByAddress(params.contractAddress)
 
+  if (!contract) {
+    throw new Error(`Contract not found: ${params.contractAddress}`)
+  }
+
+  console.log(`[LoanService] Collecting payment:`)
+  console.log(`  Seller: ${params.sellerWalletName}`)
+  console.log(`  Contract: ${params.contractAddress}`)
+  console.log(`  Amount: ${params.amount} lovelace`)
+
+  // TODO: Build actual collect transaction using the contract validator
   const txHash = `collect_${Date.now().toString(16)}_${Math.random().toString(16).slice(2, 10)}`
 
+  emulatorState.emulator.awaitBlock(1)
+
+  console.log(`[LoanService] Payment collected: ${txHash}`)
+
   return { txHash, contractAddress: params.contractAddress }
+}
+
+/**
+ * Clear all stored contracts (useful for resetting emulator state)
+ */
+export async function clearContractStore() {
+  // Clear the in-memory script cache
+  scriptCache.clear()
+  // Clear contracts from database
+  await contractDb.deleteAllContracts()
 }

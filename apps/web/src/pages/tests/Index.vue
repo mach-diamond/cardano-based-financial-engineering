@@ -10,7 +10,12 @@
     />
 
     <!-- Header -->
-    <TestHeader :is-running="isRunning" @run-tests="handleRunTests" />
+    <TestHeader
+      :is-running="isRunning"
+      :is-cleaning="isCleaning"
+      @run-tests="handleRunTests"
+      @cleanup="handleCleanup"
+    />
 
     <!-- Config Viewer (collapsible) -->
     <ConfigViewer
@@ -89,6 +94,7 @@ import {
   generateMockAddress,
   generateMockPaymentKeyHash,
   generateMockPrivateKey,
+  fullTestCleanup,
   type WalletFromDB,
   type TestSetupConfig
 } from '@/services/api'
@@ -117,6 +123,7 @@ const router = useRouter()
 
 // State
 const isRunning = ref(false)
+const isCleaning = ref(false)
 const currentPhase = ref(1)
 const currentStepName = ref('Initializing...')
 const networkMode = ref<'emulator' | 'preview'>('emulator')
@@ -464,9 +471,52 @@ function clearConsole() {
   consoleLines.value = []
 }
 
+// Clean up all test state
+async function handleCleanup() {
+  isCleaning.value = true
+  try {
+    log('Starting cleanup...', 'info')
+
+    // Reset backend state
+    await fullTestCleanup()
+    log('Backend state cleared (emulator, contracts, wallets)', 'success')
+
+    // Reset UI state
+    identities.value = []
+    loanContracts.value = []
+    cloContracts.value = []
+    loanPortfolio.value = loanPortfolio.value.map(loan => ({
+      ...loan,
+      payments: 0,
+      active: false,
+      defaulted: false
+    }))
+
+    // Reset phases to pending
+    phases.value.forEach(phase => {
+      phase.status = 'pending'
+      phase.steps.forEach(step => {
+        step.status = 'pending'
+      })
+    })
+
+    log('UI state reset complete', 'success')
+    log('Ready for a fresh test run', 'info')
+  } catch (err) {
+    log('Cleanup error: ' + (err as Error).message, 'error')
+    console.error(err)
+  } finally {
+    isCleaning.value = false
+  }
+}
+
 // Loan Contract handlers
 function viewLoanContract(contract: LoanContract) {
-  router.push(`/tests/loan/${contract.id}`)
+  // Pass contract data via route state for viewing
+  router.push({
+    path: `/tests/loan/${contract.id}`,
+    state: { contract }
+  })
 }
 
 function executeLoanContract(contract: LoanContract) {

@@ -9,6 +9,7 @@ import {
   generateSeedPhrase,
   paymentCredentialOf,
   type LucidEvolution,
+  type EmulatorAccount,
   type UTxO,
 } from '@lucid-evolution/lucid'
 
@@ -42,7 +43,7 @@ export async function initializeEmulator(
   const tempLucid = await Lucid(tempEmulator, 'Preview')
 
   const wallets: EmulatorWallet[] = []
-  const utxos: UTxO[] = []
+  const accounts: EmulatorAccount[] = []
 
   for (let i = 0; i < walletConfigs.length; i++) {
     const config = walletConfigs[i]
@@ -62,20 +63,17 @@ export async function initializeEmulator(
       balance,
     })
 
-    // Create UTxO for this wallet
-    utxos.push({
-      txHash: `${'0'.repeat(62)}${i.toString().padStart(2, '0')}`,
-      outputIndex: 0,
+    // Create EmulatorAccount for this wallet
+    // Type cast needed as Lucid Evolution types may vary between versions
+    accounts.push({
+      seedPhrase: seed,
       address,
       assets: { lovelace: balance },
-      datum: null,
-      datumHash: null,
-      scriptRef: null,
-    })
+    } as unknown as EmulatorAccount)
   }
 
-  // Create emulator with funded wallets
-  const emulator = new Emulator(utxos)
+  // Create emulator with funded accounts
+  const emulator = new Emulator(accounts as EmulatorAccount[])
   const lucid = await Lucid(emulator, 'Preview')
 
   emulatorState = {

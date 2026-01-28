@@ -12,6 +12,9 @@ import {
   acceptLoan,
   makePayment,
   collectPayment,
+  clearContractStore,
+  getAllContracts,
+  getContractState,
   type CreateLoanParams,
   type AcceptLoanParams,
   type MakePaymentParams,
@@ -161,6 +164,63 @@ loan.post('/collect', async (c) => {
     })
   } catch (err) {
     console.error('Collect error:', err)
+    return c.json({ error: String(err) }, 500)
+  }
+})
+
+/**
+ * GET /contracts - Get all contracts
+ */
+loan.get('/contracts', async (c) => {
+  try {
+    const contracts = await getAllContracts()
+    return c.json({
+      success: true,
+      contracts: contracts.map((contract) => ({
+        address: contract.address,
+        policyId: contract.dbRecord?.policyId || contract.script?.hash,
+        state: contract.state,
+        metadata: contract.metadata,
+      })),
+    })
+  } catch (err) {
+    console.error('Get contracts error:', err)
+    return c.json({ error: String(err) }, 500)
+  }
+})
+
+/**
+ * GET /contracts/:address - Get a specific contract
+ */
+loan.get('/contracts/:address', async (c) => {
+  try {
+    const address = c.req.param('address')
+    const contract = await getContractState(address)
+    if (!contract) {
+      return c.json({ error: 'Contract not found' }, 404)
+    }
+    return c.json({
+      success: true,
+      contract: {
+        address,
+        ...contract,
+      },
+    })
+  } catch (err) {
+    console.error('Get contract error:', err)
+    return c.json({ error: String(err) }, 500)
+  }
+})
+
+/**
+ * POST /clear - Clear all contracts (for test reset)
+ */
+loan.post('/clear', async (c) => {
+  try {
+    await clearContractStore()
+    return c.json({ success: true, message: 'Contracts cleared' })
+  } catch (err) {
+    console.error('Clear contracts error:', err)
     return c.json({ error: String(err) }, 500)
   }
 })

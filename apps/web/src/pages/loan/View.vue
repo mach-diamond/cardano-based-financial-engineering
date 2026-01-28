@@ -313,11 +313,17 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useWalletStore } from '@/stores/wallet'
 import { formatDuration, formatTimeSince, formatTimeUntil } from '@/composables/useLoanCalculations'
+import { getContract } from '@/services/api'
 import type { LoanContract } from '@/types'
 
 // Components
 import LoanStatusBadge from '@/components/loan/LoanStatusBadge.vue'
 import ActionCard from '@/components/loan/ActionCard.vue'
+
+// Props
+const props = defineProps<{
+  isTestMode?: boolean
+}>()
 
 const route = useRoute()
 const wallet = useWalletStore()
@@ -344,16 +350,132 @@ onUnmounted(() => {
 async function loadLoan() {
   isLoading.value = true
   try {
-    // TODO: Fetch from blockchain using SDK
-    // const loanId = route.params.id as string
-    // loan.value = await sdk.loan.getLoan(loanId)
+    const loanId = route.params.id as string
 
-    // Mock data for now
-    loan.value = null
+    // First, check if contract data was passed via route state (from test suite)
+    const routeState = window.history.state
+    if (routeState?.contract) {
+      loan.value = convertTestContract(routeState.contract, loanId)
+      return
+    }
+
+    if (props.isTestMode) {
+      // In test mode, try to fetch from backend API
+      // The ID could be a contract address
+      const contract = await getContract(loanId)
+
+      if (contract) {
+        // Convert backend contract format to frontend LoanContract type
+        loan.value = convertBackendContract(contract, loanId)
+      } else {
+        // No backend contract found - might be a mock test ID
+        loan.value = null
+      }
+    } else {
+      // In production mode, fetch from blockchain using SDK
+      // TODO: Implement blockchain fetch
+      // loan.value = await sdk.loan.getLoan(loanId)
+      loan.value = null
+    }
   } catch (error) {
     console.error('Failed to load loan:', error)
+    loan.value = null
   } finally {
     isLoading.value = false
+  }
+}
+
+// Convert test contract format (from test suite) to frontend LoanContract type
+function convertTestContract(testContract: any, id: string): LoanContract {
+  const principal = BigInt(testContract.principal || 0)
+  const balance = testContract.state?.balance
+    ? BigInt(testContract.state.balance)
+    : principal
+
+  return {
+    id,
+    address: testContract.contractAddress || `test_addr_${id}`,
+    policyId: testContract.policyId || `test_policy_${id}`,
+    alias: testContract.alias || `Loan ${id}`,
+    seller: testContract.originator || 'Unknown Seller',
+    buyer: testContract.borrower || null,
+    baseAsset: {
+      policyId: testContract.collateral?.policyId || '',
+      assetName: testContract.collateral?.assetName || '',
+      quantity: BigInt(testContract.collateral?.quantity || 1),
+    },
+    terms: {
+      principal,
+      apr: testContract.apr || 500, // Default 5%
+      frequency: testContract.frequency || 12, // Monthly
+      installments: testContract.installments || 12,
+      lateFee: BigInt((testContract.lateFee || 0) * 1_000_000),
+      transferFee: 0n,
+    },
+    state: {
+      balance,
+      lastPayment: testContract.state?.lastPayment ? {
+        amount: BigInt(testContract.state.lastPayment.amount || 0),
+        timestamp: testContract.state.lastPayment.timestamp || Date.now(),
+        installmentNumber: testContract.state.lastPayment.installmentNumber || 1,
+      } : null,
+      startTime: testContract.state?.startTime || null,
+      isActive: testContract.state?.isActive ?? !!testContract.borrower,
+      isDefaulted: testContract.state?.isDefaulted ?? false,
+      isPaidOff: testContract.state?.isPaidOff ?? false,
+    },
+    createdAt: new Date(),
+  }
+}
+
+// Convert backend contract format to frontend LoanContract type
+function convertBackendContract(contract: any, id: string): LoanContract {
+  const state = contract.state || {}
+  const terms = state.terms || {}
+  const fees = terms.fees || {}
+
+  // Parse balance, handling both BigInt strings and numbers
+  const balance = typeof state.balance === 'string'
+    ? BigInt(state.balance)
+    : BigInt(state.balance || terms.principal || 0)
+
+  const principal = typeof terms.principal === 'string'
+    ? BigInt(terms.principal)
+    : BigInt(terms.principal || 0)
+
+  return {
+    id,
+    address: contract.address || id,
+    policyId: contract.policyId || contract.script?.hash || '',
+    alias: contract.metadata?.name || `Loan ${id}`,
+    seller: state.originator || 'Unknown', // The seller who originated the loan
+    buyer: state.buyer || null, // The buyer (null = open to market)
+    baseAsset: {
+      policyId: state.base_asset?.policy || '',
+      assetName: state.base_asset?.asset_name || '',
+      quantity: BigInt(state.base_asset?.quantity || 1),
+    },
+    terms: {
+      principal,
+      apr: Number(terms.apr || 0),
+      frequency: Number(terms.frequency || 12),
+      installments: Number(terms.installments || 12),
+      lateFee: BigInt(fees.late_fee || 0),
+      transferFee: BigInt(fees.transfer_fee_seller || 0) + BigInt(fees.transfer_fee_buyer || 0),
+    },
+    state: {
+      balance,
+      lastPayment: state.last_payment ? {
+        amount: BigInt(state.last_payment.amount || 0),
+        timestamp: Number(state.last_payment.time || Date.now()),
+        installmentNumber: state.last_payment.installmentNumber || 1,
+      } : null,
+      startTime: terms.time ? Number(terms.time) : null,
+      isActive: !!state.buyer && balance > 0n,
+      isDefaulted: false, // TODO: Calculate based on payment schedule
+      isPaidOff: balance <= 0n,
+    },
+    createdAt: new Date(),
   }
 }
 
