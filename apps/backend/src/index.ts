@@ -4,6 +4,7 @@ import { logger } from 'hono/logger'
 import sql from './db'
 import wallets from './routes/wallets'
 import emulator from './routes/emulator'
+import loan from './routes/loan'
 
 const app = new Hono()
 
@@ -31,6 +32,7 @@ app.get('/health', async (c) => {
 // API routes
 app.route('/api/wallets', wallets)
 app.route('/api/emulator', emulator)
+app.route('/api/loan', loan)
 
 // 404 handler
 app.notFound((c) => {

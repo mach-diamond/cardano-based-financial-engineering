@@ -14,6 +14,7 @@
         <i class="fas fa-cog text-info mr-2"></i>
         <span class="config-title">Test Configuration</span>
         <span class="badge badge-secondary ml-2">{{ walletCount }} wallets</span>
+        <span class="badge badge-success ml-2">{{ contractCount }} contracts</span>
         <span class="badge badge-info ml-2">{{ phaseCount }} phases</span>
       </div>
       <div class="d-flex align-items-center" @click.stop>
@@ -69,6 +70,16 @@
           <li class="nav-item">
             <a
               class="nav-link"
+              :class="{ active: activeTab === 'contracts' }"
+              @click="activeTab = 'contracts'"
+            >
+              <i class="fas fa-file-contract mr-1"></i>
+              Contracts
+            </a>
+          </li>
+          <li class="nav-item">
+            <a
+              class="nav-link"
               :class="{ active: activeTab === 'phases' }"
               @click="activeTab = 'phases'"
             >
@@ -93,6 +104,11 @@
           <!-- Wallets Tab -->
           <div v-if="activeTab === 'wallets'" class="config-json-wrapper">
             <pre class="config-json"><code>{{ formattedWallets }}</code></pre>
+          </div>
+
+          <!-- Contracts Tab -->
+          <div v-if="activeTab === 'contracts'" class="config-json-wrapper">
+            <pre class="config-json"><code>{{ formattedContracts }}</code></pre>
           </div>
 
           <!-- Phases Tab -->
@@ -121,6 +137,118 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 
+// Contract parameter definitions for the test suite
+const defaultContractParams = {
+  loanContracts: [
+    {
+      id: 'L1',
+      name: 'Alice Doe - Diamond Loan',
+      asset: { type: 'Diamond', quantity: 2 },
+      terms: {
+        principal: 15000,
+        apr: 600, // 6% in basis points
+        frequency: 12, // monthly
+        installments: 12,
+        lateFee: 50,
+        transferFeeSeller: 2_000_000,
+        transferFeeBuyer: 2_000_000,
+      },
+      originator: 'MachDiamond Jewelry',
+      borrower: 'Alice Doe',
+    },
+    {
+      id: 'L2',
+      name: 'Cardano Airlines - Airplane Loan',
+      asset: { type: 'Airplane', quantity: 5 },
+      terms: {
+        principal: 50000,
+        apr: 400, // 4%
+        frequency: 12,
+        installments: 60,
+        lateFee: 500,
+        transferFeeSeller: 5_000_000,
+        transferFeeBuyer: 5_000_000,
+      },
+      originator: 'Airplane Manufacturing LLC',
+      borrower: 'Cardano Airlines LLC',
+    },
+    {
+      id: 'L3',
+      name: 'Superfast Cargo - Airplane Loan',
+      asset: { type: 'Airplane', quantity: 5 },
+      terms: {
+        principal: 50000,
+        apr: 400,
+        frequency: 12,
+        installments: 60,
+        lateFee: 500,
+        transferFeeSeller: 5_000_000,
+        transferFeeBuyer: 5_000_000,
+      },
+      originator: 'Airplane Manufacturing LLC',
+      borrower: 'Superfast Cargo Air',
+    },
+    {
+      id: 'L4',
+      name: 'Office Operator - RealEstate Loan',
+      asset: { type: 'RealEstate', quantity: 5 },
+      terms: {
+        principal: 2500,
+        apr: 500, // 5%
+        frequency: 12,
+        installments: 24,
+        lateFee: 25,
+        transferFeeSeller: 1_000_000,
+        transferFeeBuyer: 1_000_000,
+      },
+      originator: 'Premier Asset Holdings',
+      borrower: 'Office Operator LLC',
+    },
+    {
+      id: 'L5',
+      name: 'Luxury Apartments - RealEstate Loan',
+      asset: { type: 'RealEstate', quantity: 5 },
+      terms: {
+        principal: 2500,
+        apr: 550, // 5.5%
+        frequency: 12,
+        installments: 24,
+        lateFee: 25,
+        transferFeeSeller: 1_000_000,
+        transferFeeBuyer: 1_000_000,
+      },
+      originator: 'Premier Asset Holdings',
+      borrower: 'Luxury Apartments LLC',
+    },
+    {
+      id: 'L6',
+      name: 'Boat Operator - Yacht Loan',
+      asset: { type: 'Boat', quantity: 3 },
+      terms: {
+        principal: 8000,
+        apr: 700, // 7%
+        frequency: 12,
+        installments: 36,
+        lateFee: 80,
+        transferFeeSeller: 2_000_000,
+        transferFeeBuyer: 2_000_000,
+      },
+      originator: 'Yacht Makers Corp',
+      borrower: 'Boat Operator LLC',
+    },
+  ],
+  cdoConfig: {
+    name: 'MintMatrix CLO Series 1',
+    manager: 'Cardano Investment Bank',
+    tranches: [
+      { name: 'Senior', allocation: 60, yieldModifier: 0.8 },
+      { name: 'Mezzanine', allocation: 25, yieldModifier: 1.0 },
+      { name: 'Junior', allocation: 15, yieldModifier: 1.5 },
+    ],
+    collateralTokens: ['L1', 'L2', 'L3', 'L4', 'L5', 'L6'],
+  },
+}
+
 const props = defineProps<{
   config: {
     wallets: Array<{
@@ -147,6 +275,7 @@ const props = defineProps<{
     role: string
     address: string
   }>
+  contracts?: typeof defaultContractParams
 }>()
 
 const emit = defineEmits<{
@@ -154,11 +283,12 @@ const emit = defineEmits<{
 }>()
 
 const isExpanded = ref(false)
-const activeTab = ref<'wallets' | 'phases' | 'full'>('wallets')
+const activeTab = ref<'wallets' | 'contracts' | 'phases' | 'full'>('wallets')
 const showCopySuccess = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 
 const walletCount = computed(() => props.config?.wallets?.length || props.identities?.length || 0)
+const contractCount = computed(() => (props.contracts || defaultContractParams).loanContracts.length)
 const phaseCount = computed(() => props.phases?.length || 0)
 
 const formattedWallets = computed(() => {
@@ -167,7 +297,7 @@ const formattedWallets = computed(() => {
     role: i.role,
     address: i.address
   })) || []
-  return JSON.stringify(wallets, null, 2)
+  return JSON.stringify(wallets, bigIntReplacer, 2)
 })
 
 const formattedPhases = computed(() => {
@@ -182,8 +312,21 @@ const formattedPhases = computed(() => {
       status: s.status
     }))
   }))
-  return JSON.stringify(phaseSummary, null, 2)
+  return JSON.stringify(phaseSummary, bigIntReplacer, 2)
 })
+
+const formattedContracts = computed(() => {
+  const contracts = props.contracts || defaultContractParams
+  return JSON.stringify(contracts, bigIntReplacer, 2)
+})
+
+// BigInt-safe JSON serializer
+function bigIntReplacer(_key: string, value: unknown): unknown {
+  if (typeof value === 'bigint') {
+    return value.toString() + 'n'
+  }
+  return value
+}
 
 const formattedFullConfig = computed(() => {
   const fullConfig = {
@@ -196,15 +339,24 @@ const formattedFullConfig = computed(() => {
     })),
     identities: props.identities
   }
-  return JSON.stringify(fullConfig, null, 2)
+  return JSON.stringify(fullConfig, bigIntReplacer, 2)
 })
 
 function copyToClipboard() {
-  const text = activeTab.value === 'wallets'
-    ? formattedWallets.value
-    : activeTab.value === 'phases'
-    ? formattedPhases.value
-    : formattedFullConfig.value
+  let text: string
+  switch (activeTab.value) {
+    case 'wallets':
+      text = formattedWallets.value
+      break
+    case 'contracts':
+      text = formattedContracts.value
+      break
+    case 'phases':
+      text = formattedPhases.value
+      break
+    default:
+      text = formattedFullConfig.value
+  }
 
   navigator.clipboard.writeText(text).then(() => {
     showCopySuccess.value = true

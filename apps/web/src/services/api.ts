@@ -218,3 +218,129 @@ export async function advanceEmulatorTime(slots: number): Promise<void> {
         body: JSON.stringify({ slots })
     })
 }
+
+// =============================================================================
+// Loan Contract API - all contract operations happen on backend
+// =============================================================================
+
+export interface LoanTerms {
+    principal: number // in ADA
+    apr: number // basis points (e.g., 500 = 5%)
+    frequency: number // payments per year (12 = monthly)
+    installments: number // total number of payments
+    lateFee: number // in ADA
+    transferFeeSeller: number // in lovelace
+    transferFeeBuyer: number // in lovelace
+}
+
+export interface CreateLoanParams {
+    sellerWalletName: string
+    asset: {
+        policyId: string
+        assetName: string
+        quantity: number
+    }
+    terms: LoanTerms
+    buyerAddress?: string
+    deferFee?: boolean
+}
+
+export interface LoanContractResult {
+    success: boolean
+    txHash: string
+    contractAddress?: string
+    policyId?: string
+    error?: string
+}
+
+export interface WalletToken {
+    policyId: string
+    assetName: string
+    quantity: string
+}
+
+/**
+ * Mint test tokens for a wallet
+ */
+export async function mintTestToken(
+    walletName: string,
+    assetName: string,
+    quantity: number,
+    policyId?: string
+): Promise<LoanContractResult> {
+    const res = await fetch(`${API_BASE}/api/loan/mint`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ walletName, policyId, assetName, quantity })
+    })
+    return res.json()
+}
+
+/**
+ * Get tokens owned by a wallet
+ */
+export async function getWalletTokens(walletName: string): Promise<WalletToken[]> {
+    const res = await fetch(`${API_BASE}/api/loan/tokens/${encodeURIComponent(walletName)}`)
+    const data = await res.json()
+    return data.tokens || []
+}
+
+/**
+ * Create a new loan contract
+ */
+export async function createLoan(params: CreateLoanParams): Promise<LoanContractResult> {
+    const res = await fetch(`${API_BASE}/api/loan/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params)
+    })
+    return res.json()
+}
+
+/**
+ * Accept loan terms and make initial payment
+ */
+export async function acceptLoan(
+    buyerWalletName: string,
+    contractAddress: string,
+    initialPayment: number
+): Promise<LoanContractResult> {
+    const res = await fetch(`${API_BASE}/api/loan/accept`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ buyerWalletName, contractAddress, initialPayment })
+    })
+    return res.json()
+}
+
+/**
+ * Make a payment on a loan
+ */
+export async function makeLoanPayment(
+    buyerWalletName: string,
+    contractAddress: string,
+    amount: number
+): Promise<LoanContractResult> {
+    const res = await fetch(`${API_BASE}/api/loan/pay`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ buyerWalletName, contractAddress, amount })
+    })
+    return res.json()
+}
+
+/**
+ * Seller collects payments from contract
+ */
+export async function collectLoanPayment(
+    sellerWalletName: string,
+    contractAddress: string,
+    amount: number
+): Promise<LoanContractResult> {
+    const res = await fetch(`${API_BASE}/api/loan/collect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sellerWalletName, contractAddress, amount })
+    })
+    return res.json()
+}
