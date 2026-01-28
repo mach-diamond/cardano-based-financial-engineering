@@ -12,6 +12,14 @@
     <!-- Header -->
     <TestHeader :is-running="isRunning" @run-tests="handleRunTests" />
 
+    <!-- Config Viewer (collapsible) -->
+    <ConfigViewer
+      :config="testConfig"
+      :phases="phases"
+      :identities="identities"
+      @import-config="handleImportConfig"
+    />
+
     <!-- Stats Cards -->
     <StatsCards :stats="statsWithTotal" />
 
@@ -81,7 +89,8 @@ import {
   generateMockAddress,
   generateMockPaymentKeyHash,
   generateMockPrivateKey,
-  type WalletFromDB
+  type WalletFromDB,
+  type TestSetupConfig
 } from '@/services/api'
 
 // Components
@@ -95,6 +104,7 @@ import TrancheStructure from './components/TrancheStructure.vue'
 import Contracts_CLOs from './components/Contracts_CLOs.vue'
 import Contracts_Loans from './components/Contracts_Loans.vue'
 import ConsoleOutput from './components/ConsoleOutput.vue'
+import ConfigViewer from './components/ConfigViewer.vue'
 import type { ConsoleLine } from './components/ConsoleOutput.vue'
 import type { LoanContract } from './components/Contracts_Loans.vue'
 import type { CLOContract } from './components/Contracts_CLOs.vue'
@@ -117,6 +127,9 @@ const consoleLines = ref<ConsoleLine[]>([])
 
 // Identity State - starts empty, loaded from DB
 const identities = ref<Identity[]>([])
+
+// Test configuration from backend
+const testConfig = ref<TestSetupConfig | null>(null)
 
 // Map wallet name to identity ID (for consistent IDs between UI and DB)
 const nameToIdMap: Record<string, string> = {
@@ -168,9 +181,27 @@ async function loadWalletsFromDB() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  // Load test config
+  try {
+    testConfig.value = await getTestConfig()
+  } catch (err) {
+    console.warn('Could not load test config:', err)
+  }
+  // Load wallets
   loadWalletsFromDB()
 })
+
+// Handle importing a config file
+function handleImportConfig(config: any) {
+  if (config.config) {
+    testConfig.value = config.config
+  }
+  if (config.identities) {
+    identities.value = config.identities
+  }
+  log('Imported configuration from file', 'success')
+}
 
 // Generate test wallets and save to DB
 async function generateTestUsers() {
