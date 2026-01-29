@@ -125,6 +125,28 @@ export function generateMockPaymentKeyHash(): string {
     ).join('')
 }
 
+/**
+ * Generate a real Cardano wallet address via backend (uses Lucid)
+ * This creates valid addresses that can receive funds on Preview testnet
+ */
+export interface GeneratedWallet {
+    seedPhrase: string
+    address: string
+    paymentKeyHash: string
+}
+
+export async function generateRealWallet(): Promise<GeneratedWallet> {
+    const res = await fetch(`${API_BASE}/api/wallets/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || 'Failed to generate wallet')
+    }
+    return res.json()
+}
+
 // =============================================================================
 // Emulator API - all Lucid operations happen on backend
 // =============================================================================
@@ -648,4 +670,115 @@ export async function updateContractState(processId: string, updates: {
  */
 export async function deleteAllContractRecords(): Promise<void> {
     await fetch(`${API_BASE}/api/test/contracts`, { method: 'DELETE' })
+}
+
+// =============================================================================
+// Testnet API - Balance checking for Preview testnet via Blockfrost
+// =============================================================================
+
+export interface TestnetStatus {
+    configured: boolean
+    network: string
+}
+
+export interface TestnetBalance {
+    address: string
+    balance: string
+    balanceAda: number
+}
+
+export interface FundingNeed {
+    address: string
+    currentAda: number
+    requiredAda: number
+    needsFunding: boolean
+}
+
+export interface FundingCheckResult {
+    wallets: FundingNeed[]
+    summary: {
+        totalWallets: number
+        walletsNeedingFunding: number
+        totalAdaNeeded: number
+    }
+}
+
+/**
+ * Check if Blockfrost API is configured on backend
+ */
+export async function getTestnetStatus(): Promise<TestnetStatus> {
+    const res = await fetch(`${API_BASE}/api/testnet/status`)
+    return res.json()
+}
+
+/**
+ * Get balance for address on Preview testnet
+ */
+export async function getTestnetBalance(address: string): Promise<TestnetBalance> {
+    const res = await fetch(`${API_BASE}/api/testnet/balance/${encodeURIComponent(address)}`)
+    if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || 'Failed to get testnet balance')
+    }
+    return res.json()
+}
+
+/**
+ * Get UTxOs for address on Preview testnet
+ */
+export async function getTestnetUtxos(address: string): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/api/testnet/utxos/${encodeURIComponent(address)}`)
+    if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || 'Failed to get testnet UTxOs')
+    }
+    const data = await res.json()
+    return data.utxos || []
+}
+
+/**
+ * Get balances for multiple addresses on Preview testnet
+ */
+export async function getTestnetBalances(addresses: string[]): Promise<Record<string, TestnetBalance>> {
+    const res = await fetch(`${API_BASE}/api/testnet/balances`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ addresses })
+    })
+    if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || 'Failed to get testnet balances')
+    }
+    const data = await res.json()
+    return data.balances || {}
+}
+
+/**
+ * Check which wallets need funding on Preview testnet
+ */
+export async function checkTestnetFundingNeeds(
+    wallets: { address: string; requiredAda: number }[]
+): Promise<FundingCheckResult> {
+    const res = await fetch(`${API_BASE}/api/testnet/check-funding`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallets })
+    })
+    if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || 'Failed to check funding needs')
+    }
+    return res.json()
+}
+
+/**
+ * Get balance for an address (works for both emulator and testnet mode)
+ */
+export async function getWalletBalance(address: string, networkMode: 'emulator' | 'preview'): Promise<bigint> {
+    if (networkMode === 'emulator') {
+        return getEmulatorBalance(address)
+    } else {
+        const result = await getTestnetBalance(address)
+        return BigInt(result.balance)
+    }
 }

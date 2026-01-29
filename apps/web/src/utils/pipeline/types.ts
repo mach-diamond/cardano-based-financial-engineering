@@ -124,6 +124,8 @@ export interface WalletConfig {
   }[]
 }
 
+export type LifecycleCaseId = 'T1' | 'T2' | 'T3' | 'T4' | 'T5' | 'T6' | 'T7'
+
 export interface LoanConfig {
   borrowerId: string
   originatorId: string
@@ -133,6 +135,7 @@ export interface LoanConfig {
   apr: number
   termMonths: number
   reservedBuyer?: boolean // true = reserved for specific borrower, false = open market
+  lifecycleCase?: LifecycleCaseId // Test scenario: T1=Cancel, T2=Default, T3=Nominal(0%), T4=Nominal, T5=LateFee, T6=RejectGuard, T7=Reserved+Fees
 }
 
 export interface CLOConfig {

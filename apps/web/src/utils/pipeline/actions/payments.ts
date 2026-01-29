@@ -8,6 +8,7 @@ import type { Identity, Phase, LogFunction, ActionResult, LoanContract, CLOContr
 import { delay } from '../runner'
 
 export interface PaymentOptions {
+  mode?: 'emulator' | 'preview'
   identities: Ref<Identity[]>
   phases: Ref<Phase[]>
   currentStepName: Ref<string>
@@ -188,12 +189,36 @@ export async function executePaymentCycle(
 
 /**
  * Execute full payments phase
+ *
+ * EMULATOR: Processes mock payments and distributions
+ * PREVIEW: FAILS with clear message about what's needed
  */
 export async function executePaymentsPhase(options: PaymentOptions): Promise<ActionResult> {
-  const { log } = options
+  const { mode = 'emulator', log } = options
 
   log('Phase 5: Payment Processing', 'phase')
 
+  if (mode === 'preview') {
+    // Preview mode - explain what's needed
+    log(``, 'info')
+    log(`  PREVIEW MODE - Payment Processing Not Implemented`, 'error')
+    log(`  ─────────────────────────────────────────`, 'info')
+    log(`  Real payment processing on Preview testnet requires:`, 'info')
+    log(`  1. Active loan contracts on-chain`, 'info')
+    log(`  2. pay action from loan-contract package`, 'info')
+    log(`  3. Wallet with sufficient ADA`, 'info')
+    log(`  4. Signed transactions via Lucid Evolution`, 'info')
+    log(``, 'info')
+    log(`  This functionality is not yet wired up.`, 'warning')
+    log(`  Use EMULATOR mode for full pipeline testing.`, 'info')
+
+    return {
+      success: false,
+      message: 'Payment processing on Preview testnet not yet implemented. Use Emulator mode.',
+    }
+  }
+
+  // Emulator mode - process mock payments
   // Process 3 payment cycles as demonstration
   for (let i = 1; i <= 3; i++) {
     const result = await executePaymentCycle(i, options)

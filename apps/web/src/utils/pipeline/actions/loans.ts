@@ -46,6 +46,9 @@ export const DEFAULT_LOAN_DEFINITIONS: LoanDefinition[] = [
 
 /**
  * Create a single loan contract
+ *
+ * EMULATOR MODE: Creates mock loan contract in local state
+ * PREVIEW MODE: FAILS - Real loan creation requires loan-contract actions
  */
 export async function createLoan(
   loan: LoanDefinition,
@@ -66,6 +69,25 @@ export async function createLoan(
   const marketType = loan.reservedBuyer ? 'Reserved' : 'Open'
 
   currentStepName.value = `Loan: ${borrowerName} - ${loan.qty} ${loan.asset} from ${originator.name}`
+
+  // PREVIEW MODE - Cannot create contracts without real integration
+  if (mode === 'preview') {
+    log(`  Cannot create loan contract on Preview testnet`, 'error')
+    log(`    Loan: ${loan.qty} ${loan.asset} @ ${loan.principal} ADA`, 'info')
+    log(`    Originator: ${originator.name} (${originator.address})`, 'info')
+    log(`    Buyer: ${borrowerName}`, 'info')
+    log(``, 'info')
+    log(`  Real loan creation requires:`, 'info')
+    log(`  1. send_to_market action from loan-contract package`, 'info')
+    log(`  2. Collateral token locked at contract address`, 'info')
+    log(`  3. Signed transaction via Lucid Evolution`, 'info')
+    return {
+      success: false,
+      message: `Cannot create loan on Preview testnet - contract integration not implemented`,
+    }
+  }
+
+  // EMULATOR MODE - Mock contract creation
   log(`  Creating ${marketType} Loan: ${loan.qty} ${loan.asset} @ ${loan.principal} ADA`, 'info')
   log(`    Originator: ${originator.name}`, 'info')
   log(`    Buyer: ${borrowerName}${loan.reservedBuyer ? ' (Reserved)' : ' (Open to anyone)'}`, 'info')
@@ -291,15 +313,39 @@ export async function makePayment(
 
 /**
  * Execute full loan creation phase
+ *
+ * EMULATOR: Creates mock loan contracts
+ * PREVIEW: FAILS with clear message about what's needed
  */
 export async function executeLoanPhase(
   options: LoanOptions,
   loanDefs: LoanDefinition[] = DEFAULT_LOAN_DEFINITIONS
 ): Promise<ActionResult> {
-  const { log } = options
+  const { mode, log } = options
 
   log('Phase 3: Initialize Loan Contracts', 'phase')
 
+  if (mode === 'preview') {
+    // Preview mode - explain what's needed
+    log(``, 'info')
+    log(`  PREVIEW MODE - Loan Contract Creation Not Implemented`, 'error')
+    log(`  ─────────────────────────────────────────`, 'info')
+    log(`  Real loan contract creation on Preview testnet requires:`, 'info')
+    log(`  1. send_to_market action from loan-contract package`, 'info')
+    log(`  2. Collateral tokens minted and available`, 'info')
+    log(`  3. Contract validator script deployed`, 'info')
+    log(`  4. Signed transactions via Lucid Evolution`, 'info')
+    log(``, 'info')
+    log(`  This functionality is not yet wired up.`, 'warning')
+    log(`  Use EMULATOR mode for full pipeline testing.`, 'info')
+
+    return {
+      success: false,
+      message: 'Loan contract creation on Preview testnet not yet implemented. Use Emulator mode.',
+    }
+  }
+
+  // Emulator mode - proceed with mock creation
   for (const loan of loanDefs) {
     const result = await createLoan(loan, options)
     if (!result.success) {

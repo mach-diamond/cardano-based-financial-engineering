@@ -39,17 +39,18 @@ export const DEFAULT_WALLETS: WalletConfig[] = [
 
 /**
  * Default loan configurations
+ * lifecycleCase determines test scenario: T1=Cancel, T2=Default, T3=Nominal(0%), T4=Nominal, T5=LateFee, T6=RejectGuard, T7=Reserved+Fees
  */
 export const DEFAULT_LOANS: LoanConfig[] = [
   // Reserved buyer loans
-  { borrowerId: 'bor-alice', originatorId: 'orig-jewelry', asset: 'Diamond', quantity: 2, principal: 500, apr: 6, termMonths: 12, reservedBuyer: true },
-  { borrowerId: 'bor-cardanoair', originatorId: 'orig-airplane', asset: 'Airplane', quantity: 5, principal: 2000, apr: 4, termMonths: 60, reservedBuyer: true },
-  { borrowerId: 'bor-officeop', originatorId: 'orig-realestate', asset: 'RealEstate', quantity: 5, principal: 500, apr: 5, termMonths: 24, reservedBuyer: true },
+  { borrowerId: 'bor-alice', originatorId: 'orig-jewelry', asset: 'Diamond', quantity: 2, principal: 500, apr: 6, termMonths: 12, reservedBuyer: true, lifecycleCase: 'T4' },
+  { borrowerId: 'bor-cardanoair', originatorId: 'orig-airplane', asset: 'Airplane', quantity: 5, principal: 2000, apr: 4, termMonths: 60, reservedBuyer: true, lifecycleCase: 'T4' },
+  { borrowerId: 'bor-officeop', originatorId: 'orig-realestate', asset: 'RealEstate', quantity: 5, principal: 500, apr: 5, termMonths: 24, reservedBuyer: true, lifecycleCase: 'T4' },
 
   // Open market loans
-  { borrowerId: null as any, originatorId: 'orig-airplane', asset: 'Airplane', quantity: 5, principal: 2000, apr: 4.5, termMonths: 60, reservedBuyer: false },
-  { borrowerId: null as any, originatorId: 'orig-realestate', asset: 'RealEstate', quantity: 5, principal: 500, apr: 5.5, termMonths: 24, reservedBuyer: false },
-  { borrowerId: null as any, originatorId: 'orig-yacht', asset: 'Boat', quantity: 3, principal: 800, apr: 7, termMonths: 36, reservedBuyer: false },
+  { borrowerId: null as any, originatorId: 'orig-airplane', asset: 'Airplane', quantity: 5, principal: 2000, apr: 4.5, termMonths: 60, reservedBuyer: false, lifecycleCase: 'T4' },
+  { borrowerId: null as any, originatorId: 'orig-realestate', asset: 'RealEstate', quantity: 5, principal: 500, apr: 5.5, termMonths: 24, reservedBuyer: false, lifecycleCase: 'T4' },
+  { borrowerId: null as any, originatorId: 'orig-yacht', asset: 'Boat', quantity: 3, principal: 800, apr: 7, termMonths: 36, reservedBuyer: false, lifecycleCase: 'T4' },
 ]
 
 /**

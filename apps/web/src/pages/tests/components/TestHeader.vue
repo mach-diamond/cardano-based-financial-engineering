@@ -9,7 +9,7 @@
 
       <!-- Test Run Selector - Top Right Corner -->
       <div class="test-run-selector" v-if="availableTestRuns && availableTestRuns.length > 0">
-        <div class="network-label">Load Test Run</div>
+        <div class="network-label">Load Test Run ({{ networkMode }})</div>
         <select
           class="form-control form-control-sm test-run-dropdown"
           :value="currentTestRunId || ''"
@@ -17,23 +17,47 @@
           :disabled="isRunning"
         >
           <option value="">New Run</option>
-          <option v-for="run in availableTestRuns" :key="run.id" :value="run.id">
+          <option v-for="run in filteredTestRuns" :key="run.id" :value="run.id">
             #{{ run.id }} - {{ formatRunName(run) }}
           </option>
         </select>
+        <div v-if="otherModeRunCount > 0" class="other-runs-hint">
+          {{ otherModeRunCount }} run(s) on {{ networkMode === 'emulator' ? 'preview' : 'emulator' }}
+        </div>
       </div>
     </div>
 
     <!-- Bottom Row: Controls -->
     <div class="d-flex justify-content-between align-items-end">
-      <!-- Simulated Time Display -->
-      <div class="time-display">
-        <div class="network-label">Simulated Time</div>
-        <div class="time-value">
-          <i class="fas fa-clock mr-2"></i>
-          <span>Slot {{ currentSlot.toLocaleString() }}</span>
-          <span class="time-separator">|</span>
-          <span class="elapsed-time">{{ formatElapsed(elapsedTime) }}</span>
+      <!-- Simulated Time Display with Controls -->
+      <div class="time-display-panel">
+        <div class="time-display" :class="{ 'preview-mode': networkMode === 'preview' }">
+          <div class="network-label">
+            {{ networkMode === 'emulator' ? 'Simulated Time' : 'Preview Testnet' }}
+          </div>
+          <div class="time-value">
+            <i class="fas fa-clock mr-2"></i>
+            <span>Slot {{ currentSlot.toLocaleString() }}</span>
+            <span class="time-separator">|</span>
+            <span class="elapsed-time">{{ formatElapsed(elapsedTime) }}</span>
+          </div>
+        </div>
+        <div v-if="networkMode === 'emulator'" class="time-controls">
+          <button class="btn btn-sm btn-time" @click="$emit('stepTime', 1)" title="Advance 1 slot" :disabled="isRunning">
+            <i class="fas fa-step-forward"></i> +1
+          </button>
+          <button class="btn btn-sm btn-time" @click="$emit('stepTime', 100)" title="Advance 100 slots" :disabled="isRunning">
+            <i class="fas fa-forward"></i> +100
+          </button>
+          <button class="btn btn-sm btn-time" @click="$emit('stepTime', 43200)" title="Advance 1 day (~43200 slots)" :disabled="isRunning">
+            <i class="fas fa-calendar-day"></i> +1d
+          </button>
+          <button class="btn btn-sm btn-time" @click="$emit('stepTime', 2592000)" title="Advance 30 days (~2.59M slots)" :disabled="isRunning">
+            <i class="fas fa-calendar-alt"></i> +30d
+          </button>
+          <button class="btn btn-sm btn-time-reset" @click="$emit('resetTime')" title="Reset to slot 0" :disabled="isRunning">
+            <i class="fas fa-undo"></i>
+          </button>
         </div>
       </div>
 
@@ -97,7 +121,8 @@
             <strong>Emulator Mode:</strong> Fast, local testing with pre-funded wallets. No real ADA required.
           </span>
           <span v-else>
-            <strong>Preview Testnet:</strong> Real blockchain testing. Wallets need funding from faucet.
+            <strong>Preview Testnet:</strong> Real blockchain testing. Wallets must be funded from faucet before proceeding.
+            <span class="preview-warning ml-2">(Contract operations require loan-contract/cdo-bond integration)</span>
           </span>
         </div>
         <div v-if="currentTestRunId" class="test-run-badge">
@@ -109,7 +134,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 
 interface TestRun {
   id: number
@@ -136,9 +161,23 @@ const emit = defineEmits<{
   'update:networkMode': [mode: 'emulator' | 'preview']
   cleanup: []
   loadTestRun: [runId: number]
+  stepTime: [slots: number]
+  resetTime: []
 }>()
 
 const networkMode = ref<'emulator' | 'preview'>('emulator')
+
+// Filter test runs by current network mode
+const filteredTestRuns = computed(() => {
+  if (!props.availableTestRuns) return []
+  return props.availableTestRuns.filter(run => run.networkMode === networkMode.value)
+})
+
+// Count runs on the other network mode
+const otherModeRunCount = computed(() => {
+  if (!props.availableTestRuns) return 0
+  return props.availableTestRuns.filter(run => run.networkMode !== networkMode.value).length
+})
 
 function setNetwork(mode: 'emulator' | 'preview') {
   networkMode.value = mode
@@ -191,19 +230,29 @@ function formatElapsed(ms: number): string {
   align-items: flex-end;
 }
 
-.time-display {
+.time-display-panel {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
 }
 
-.time-value {
+.time-display {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   background: rgba(0, 0, 0, 0.3);
   padding: 0.5rem 1rem;
   border-radius: 0.375rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(14, 165, 233, 0.3);
+}
+
+.time-display.preview-mode {
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+.time-value {
+  display: flex;
+  align-items: center;
   font-family: monospace;
   font-size: 0.95rem;
   color: #22d3ee;
@@ -216,6 +265,52 @@ function formatElapsed(ms: number): string {
 
 .elapsed-time {
   color: #a5b4fc;
+}
+
+.time-controls {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+}
+
+.btn-time {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+  background: rgba(14, 165, 233, 0.1);
+  border: 1px solid rgba(14, 165, 233, 0.3);
+  color: #7dd3fc;
+  transition: all 0.2s ease;
+}
+
+.btn-time:hover:not(:disabled) {
+  background: rgba(14, 165, 233, 0.2);
+  border-color: rgba(14, 165, 233, 0.5);
+  color: #22d3ee;
+}
+
+.btn-time:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-time-reset {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+  background: rgba(107, 114, 128, 0.1);
+  border: 1px solid rgba(107, 114, 128, 0.3);
+  color: #9ca3af;
+  transition: all 0.2s ease;
+}
+
+.btn-time-reset:hover:not(:disabled) {
+  background: rgba(107, 114, 128, 0.2);
+  border-color: rgba(107, 114, 128, 0.5);
+  color: #d1d5db;
+}
+
+.btn-time-reset:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .test-run-dropdown {
@@ -239,6 +334,13 @@ function formatElapsed(ms: number): string {
 .test-run-dropdown option {
   background: #1e293b;
   color: #e2e8f0;
+}
+
+.other-runs-hint {
+  font-size: 0.7rem;
+  color: #64748b;
+  margin-top: 0.25rem;
+  font-style: italic;
 }
 
 .test-run-badge .badge {
@@ -334,6 +436,12 @@ function formatElapsed(ms: number): string {
   background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(124, 58, 237, 0.1) 100%);
   border: 1px solid rgba(139, 92, 246, 0.3);
   color: #c4b5fd;
+}
+
+.preview-warning {
+  color: #fbbf24;
+  font-size: 0.75rem;
+  opacity: 0.9;
 }
 
 .gap-3 {

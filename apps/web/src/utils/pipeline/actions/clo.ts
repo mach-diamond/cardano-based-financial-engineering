@@ -198,15 +198,40 @@ export async function distributeTranches(options: CLOOptions): Promise<ActionRes
 
 /**
  * Execute full CLO phase
+ *
+ * EMULATOR: Creates mock CLO with tranche distribution
+ * PREVIEW: FAILS with clear message about what's needed
  */
 export async function executeCLOPhase(
   options: CLOOptions,
   config: CLODefinition = DEFAULT_CLO_CONFIG
 ): Promise<ActionResult> {
-  const { log } = options
+  const { mode, log } = options
 
   log('Phase 4: Collateral Bundle & CLO', 'phase')
 
+  if (mode === 'preview') {
+    // Preview mode - explain what's needed
+    log(``, 'info')
+    log(`  PREVIEW MODE - CLO Contract Creation Not Implemented`, 'error')
+    log(`  ─────────────────────────────────────────`, 'info')
+    log(`  Real CLO creation on Preview testnet requires:`, 'info')
+    log(`  1. Active loan contracts with collateral tokens`, 'info')
+    log(`  2. CDO-bond create action from cdo-bond package`, 'info')
+    log(`  3. Tranche token minting policy`, 'info')
+    log(`  4. Waterfall distribution validator`, 'info')
+    log(`  5. Signed transactions via Lucid Evolution`, 'info')
+    log(``, 'info')
+    log(`  This functionality is not yet wired up.`, 'warning')
+    log(`  Use EMULATOR mode for full pipeline testing.`, 'info')
+
+    return {
+      success: false,
+      message: 'CLO creation on Preview testnet not yet implemented. Use Emulator mode.',
+    }
+  }
+
+  // Emulator mode - proceed with mock CLO
   // Step 1: Bundle collateral
   const bundleResult = await bundleCollateral(options)
   if (!bundleResult.success) {

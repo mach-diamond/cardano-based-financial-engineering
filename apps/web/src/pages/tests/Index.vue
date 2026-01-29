@@ -20,6 +20,8 @@
       @run-tests="handleRunTests"
       @cleanup="handleCleanup"
       @load-test-run="loadTestRunById"
+      @step-time="handleStepTime"
+      @reset-time="handleResetTime"
     />
 
     <!-- Config Viewer (with built-in config selector) -->
@@ -57,7 +59,9 @@
       :identities="identities"
       :is-running="isRunning"
       :is-generating="isGenerating"
+      :is-refreshing="isRefreshing"
       @generate-test-users="generateTestUsers"
+      @refresh-balances="refreshBalances"
     />
 
     <!-- Individual Test Suites -->
@@ -100,6 +104,7 @@ import {
   generateMockAddress,
   generateMockPaymentKeyHash,
   generateMockPrivateKey,
+  generateRealWallet,
   fullTestCleanup,
   getTestRuns,
   getTestRun,
@@ -109,6 +114,8 @@ import {
   completeTestRun,
   deleteAllTestRuns,
   deleteAllContractRecords,
+  getTestnetBalance,
+  getTestnetStatus,
   type WalletFromDB,
   type TestSetupConfig,
   type TestRunState,
@@ -151,6 +158,7 @@ const currentPhase = ref(1)
 const currentStepName = ref('Initializing...')
 const networkMode = ref<'emulator' | 'preview'>('emulator')
 const isGenerating = ref(false)
+const isRefreshing = ref(false)
 
 // Config state
 const selectedConfigId = ref('default')
@@ -191,6 +199,29 @@ function stopTimeTracking() {
     clearInterval(timeInterval)
     timeInterval = null
   }
+}
+
+// Manual time control for emulator mode
+function handleStepTime(slots: number) {
+  // Only allow manual time stepping when not running
+  if (isRunning.value) return
+
+  currentSlot.value += slots
+  // Update elapsed time to match (1 slot ≈ 1 second)
+  elapsedTime.value += slots * 1000
+
+  log(`Advanced time by ${slots.toLocaleString()} slots (now at slot ${currentSlot.value.toLocaleString()})`, 'info')
+}
+
+function handleResetTime() {
+  // Only allow reset when not running
+  if (isRunning.value) return
+
+  currentSlot.value = 0
+  elapsedTime.value = 0
+  startTime.value = null
+
+  log('Reset simulated time to slot 0', 'info')
 }
 
 // Console output
@@ -713,6 +744,7 @@ function updatePhasesFromConfig(config: PipelineConfig) {
 }
 
 // Generate test wallets and save to DB
+// Uses real Cardano addresses via Lucid (can receive funds on Preview testnet)
 async function generateTestUsers() {
   isGenerating.value = true
   try {
@@ -725,37 +757,129 @@ async function generateTestUsers() {
     log('Fetching wallet configuration...', 'info')
     const config = await getTestConfig()
 
-    // Create each wallet
+    // Create each wallet with real Cardano addresses
     const newIdentities: Identity[] = []
     for (const walletConfig of config.wallets) {
       log(`Creating wallet: ${walletConfig.name}...`, 'info')
 
-      const address = generateMockAddress()
-      const paymentKeyHash = generateMockPaymentKeyHash()
-      const privateKey = generateMockPrivateKey()
+      // Generate real Cardano wallet via backend (uses Lucid)
+      const generated = await generateRealWallet()
 
-      // Save to DB
+      // Save to DB (use seed phrase as private key for recovery)
       const savedWallet = await createWallet({
         name: walletConfig.name,
         role: walletConfig.role,
-        address,
-        paymentKeyHash,
-        privateKey
+        address: generated.address,
+        paymentKeyHash: generated.paymentKeyHash,
+        privateKey: generated.seedPhrase
       })
 
       // Convert to Identity format
       newIdentities.push(walletToIdentity(savedWallet))
 
-      await new Promise(r => setTimeout(r, 30)) // Small delay for UI feedback
+      await new Promise(r => setTimeout(r, 50)) // Small delay for UI feedback
     }
 
     identities.value = newIdentities
-    log(`Generated ${newIdentities.length} wallets and saved to database`, 'success')
+    log(`Generated ${newIdentities.length} wallets with real Cardano addresses`, 'success')
+    log('You can now fund these addresses on Preview testnet and refresh balances', 'info')
   } catch (err) {
     log('Error generating wallets: ' + (err as Error).message, 'error')
     console.error(err)
   } finally {
     isGenerating.value = false
+  }
+}
+
+// Refresh wallet balances from blockchain (Preview testnet via Blockfrost)
+async function refreshBalances() {
+  if (identities.value.length === 0) {
+    log('No wallets to refresh', 'warning')
+    return
+  }
+
+  isRefreshing.value = true
+  try {
+    // Check if Blockfrost is configured
+    const status = await getTestnetStatus()
+    if (!status.configured) {
+      log('Blockfrost API not configured. Set BLOCKFROST_API_KEY in backend .env file.', 'error')
+      return
+    }
+
+    log('Fetching real blockchain balances via Blockfrost...', 'info')
+
+    // Debug: Show first address being queried
+    const firstAddr = identities.value[0]?.address
+    if (firstAddr) {
+      log(`First address: ${firstAddr.slice(0, 40)}...`, 'info')
+    }
+
+    let updated = 0
+    let totalAda = 0n
+
+    // Create updated identities array to trigger Vue reactivity
+    const updatedIdentities = [...identities.value]
+
+    for (let i = 0; i < updatedIdentities.length; i++) {
+      const identity = updatedIdentities[i]
+      if (!identity.address) continue
+
+      try {
+        const result = await getTestnetBalance(identity.address)
+        console.log(`Balance result for ${identity.name}:`, result)
+        const balance = BigInt(result.balance)
+
+        // Create new wallet object with updated balance (for Vue reactivity)
+        if (identity.wallets[0]) {
+          updatedIdentities[i] = {
+            ...identity,
+            wallets: [
+              {
+                ...identity.wallets[0],
+                balance
+              },
+              ...identity.wallets.slice(1)
+            ]
+          }
+        }
+
+        totalAda += balance
+        updated++
+
+        if (balance > 0n) {
+          log(`  ${identity.name}: ${(Number(balance) / 1_000_000).toFixed(2)} ADA`, 'success')
+        } else {
+          log(`  ${identity.name}: 0 ADA (not funded)`, 'info')
+        }
+      } catch (err) {
+        // Address might not exist on chain yet (0 balance)
+        if (identity.wallets[0]) {
+          updatedIdentities[i] = {
+            ...identity,
+            wallets: [
+              {
+                ...identity.wallets[0],
+                balance: 0n
+              },
+              ...identity.wallets.slice(1)
+            ]
+          }
+        }
+        console.error(`Balance error for ${identity.name}:`, err)
+        log(`  ${identity.name}: 0 ADA (${(err as Error).message})`, 'warning')
+      }
+    }
+
+    // Reassign to trigger Vue reactivity
+    identities.value = updatedIdentities
+
+    log(`Refreshed ${updated} wallet balances. Total: ${(Number(totalAda) / 1_000_000).toFixed(2)} ADA`, 'success')
+  } catch (err) {
+    log('Error refreshing balances: ' + (err as Error).message, 'error')
+    console.error(err)
+  } finally {
+    isRefreshing.value = false
   }
 }
 

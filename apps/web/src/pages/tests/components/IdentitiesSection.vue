@@ -15,6 +15,11 @@
           <input type="checkbox" class="custom-control-input" id="columnViewSwitch" v-model="columnView">
           <label class="custom-control-label text-muted small" for="columnViewSwitch">Column View</label>
         </div>
+        <button @click.stop="$emit('refreshBalances')" class="btn btn-sm btn-outline-info mr-2" :disabled="isRefreshing || identities.length === 0" title="Fetch real balances from Preview testnet via Blockfrost">
+          <span v-if="isRefreshing" class="spinner-border spinner-border-sm mr-1"></span>
+          <i v-else class="fas fa-sync-alt mr-1"></i>
+          {{ isRefreshing ? 'Refreshing...' : 'Refresh Balances' }}
+        </button>
         <button @click.stop="$emit('generateTestUsers')" class="btn btn-sm btn-outline-primary mr-3" :disabled="isGenerating">
           <span v-if="isGenerating" class="spinner-border spinner-border-sm mr-1"></span>
           {{ isGenerating ? 'Generating...' : 'Generate Test Users' }}
@@ -101,10 +106,12 @@ const props = defineProps<{
   identities: Identity[]
   isRunning: boolean
   isGenerating: boolean
+  isRefreshing?: boolean
 }>()
 
 defineEmits<{
   generateTestUsers: []
+  refreshBalances: []
 }>()
 
 const columnView = ref(true)

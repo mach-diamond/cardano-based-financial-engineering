@@ -10,13 +10,15 @@
         <span class="ada-balance">₳ {{ formattedBalance }}</span>
       </div>
 
-      <!-- Row 2: Address (clickable) -->
-      <div class="address-row" @click="toggleAddress" :title="addressExpanded ? 'Click to collapse' : 'Click to copy'">
-        <span class="address-text" :class="{ 'expanded': addressExpanded }">
-          {{ displayAddress }}
-        </span>
-        <i v-if="!addressExpanded" class="ni ni-single-copy-04 copy-icon"></i>
-        <i v-else class="ni ni-check-bold copy-icon text-success"></i>
+      <!-- Row 2: Full Address with Copy Button -->
+      <div class="address-row">
+        <div class="address-full" :title="identity.address">
+          {{ identity.address }}
+        </div>
+        <button class="copy-btn" @click="copyAddress" :class="{ 'copied': addressCopied }">
+          <i v-if="!addressCopied" class="fas fa-copy"></i>
+          <i v-else class="fas fa-check"></i>
+        </button>
       </div>
 
       <!-- Row 3: Assets -->
@@ -26,13 +28,10 @@
           :key="asset.assetName"
           class="asset-chip"
           :title="asset.policyId"
-          @click="togglePolicy(asset.policyId)"
+          @click="copyPolicy(asset.policyId)"
         >
           <span class="asset-icon">{{ getAssetEmoji(asset.assetName) }}</span>
           <span class="asset-name">{{ asset.assetName }}</span>
-          <span class="asset-policy" :class="{ 'expanded': expandedPolicies.has(asset.policyId) }">
-            {{ expandedPolicies.has(asset.policyId) ? asset.policyId : formatPolicy(asset.policyId) }}
-          </span>
           <span class="asset-qty">×{{ asset.quantity }}</span>
         </div>
         <div v-if="wallet.assets.length === 0" class="no-assets">No assets</div>
@@ -42,7 +41,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive } from 'vue'
+import { ref, computed } from 'vue'
 import type { Identity, SimulatedWallet, IdentityRole } from '@/types'
 
 const props = defineProps<{
@@ -51,48 +50,22 @@ const props = defineProps<{
 }>()
 
 const wallet = computed<SimulatedWallet>(() => props.identity.wallets[0])
-const addressExpanded = ref(false)
-const expandedPolicies = reactive(new Set<string>())
+const addressCopied = ref(false)
 
 const formattedBalance = computed(() => {
   return (Number(wallet.value.balance) / 1_000_000).toLocaleString()
 })
 
-const displayAddress = computed(() => {
-  const addr = props.identity.address
-  if (addressExpanded.value) {
-    return addr
-  }
-  return `addr...${addr.slice(-8)}`
-})
-
-function toggleAddress() {
-  if (!addressExpanded.value) {
-    navigator.clipboard.writeText(props.identity.address)
-  }
-  addressExpanded.value = !addressExpanded.value
-  if (addressExpanded.value) {
-    setTimeout(() => {
-      addressExpanded.value = false
-    }, 3000)
-  }
+function copyAddress() {
+  navigator.clipboard.writeText(props.identity.address)
+  addressCopied.value = true
+  setTimeout(() => {
+    addressCopied.value = false
+  }, 2000)
 }
 
-function togglePolicy(policyId: string) {
-  if (expandedPolicies.has(policyId)) {
-    expandedPolicies.delete(policyId)
-  } else {
-    navigator.clipboard.writeText(policyId)
-    expandedPolicies.add(policyId)
-    setTimeout(() => {
-      expandedPolicies.delete(policyId)
-    }, 3000)
-  }
-}
-
-function formatPolicy(policyId: string): string {
-  if (policyId.length < 8) return policyId
-  return `${policyId.slice(0, 4)}...${policyId.slice(-4)}`
+function copyPolicy(policyId: string) {
+  navigator.clipboard.writeText(policyId)
 }
 
 const gradientClass = computed(() => {
@@ -124,9 +97,8 @@ function getAssetEmoji(assetName: string): string {
 
 <style scoped>
 .wallet-card {
-  height: 100px;
-  min-height: 100px;
-  max-height: 100px;
+  height: auto;
+  min-height: 95px;
   border-radius: 12px !important;
   transition: all 0.2s ease;
   color: #fff;
@@ -135,11 +107,10 @@ function getAssetEmoji(assetName: string): string {
 }
 
 .wallet-card .card-body {
-  height: 100%;
   padding: 0.5rem 0.75rem !important;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  gap: 0.35rem;
 }
 
 .wallet-card:hover {
@@ -166,34 +137,50 @@ function getAssetEmoji(assetName: string): string {
   white-space: nowrap;
 }
 
-/* Address Row */
+/* Address Row - Full Address Display */
 .address-row {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-  cursor: pointer;
-  padding: 0.15rem 0;
+  gap: 0.5rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+  margin: 0.15rem 0;
 }
 
-.address-row:hover .address-text {
+.address-full {
+  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+  font-size: 0.6rem;
+  color: rgba(255, 255, 255, 0.7);
+  word-break: break-all;
+  line-height: 1.4;
+  flex: 1;
+  user-select: all;
+}
+
+.copy-btn {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.copy-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
   color: #fff;
 }
 
-.address-text {
-  font-family: 'SF Mono', Monaco, monospace;
-  font-size: 0.65rem;
-  color: rgba(255, 255, 255, 0.6);
-  transition: color 0.2s;
-}
-
-.address-text.expanded {
-  font-size: 0.55rem;
-  word-break: break-all;
-}
-
-.copy-icon {
-  font-size: 0.65rem;
-  color: rgba(255, 255, 255, 0.4);
+.copy-btn.copied {
+  background: rgba(16, 185, 129, 0.3);
+  color: #34d399;
 }
 
 /* Assets Row */
@@ -212,14 +199,12 @@ function getAssetEmoji(assetName: string): string {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
   padding: 0.2rem 0.5rem;
-  flex: 1;
-  min-width: 0;
   cursor: pointer;
   transition: background 0.2s;
 }
 
 .asset-chip:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .asset-icon {
@@ -232,34 +217,12 @@ function getAssetEmoji(assetName: string): string {
   font-weight: 600;
   color: #fff;
   white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.asset-policy {
-  font-size: 0.5rem;
-  color: rgba(255, 255, 255, 0.4);
-  font-family: monospace;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  transition: color 0.2s;
-}
-
-.asset-policy.expanded {
-  font-size: 0.45rem;
-  color: rgba(255, 255, 255, 0.6);
-  word-break: break-all;
-  white-space: normal;
 }
 
 .asset-qty {
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   font-weight: 700;
   color: #10b981;
-  margin-left: auto;
-  flex-shrink: 0;
   background: rgba(16, 185, 129, 0.15);
   padding: 0.1rem 0.3rem;
   border-radius: 4px;

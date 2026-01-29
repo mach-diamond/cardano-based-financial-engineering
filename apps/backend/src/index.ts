@@ -4,6 +4,7 @@ import { logger } from 'hono/logger'
 import sql from './db'
 import wallets from './routes/wallets'
 import emulator from './routes/emulator'
+import testnet from './routes/testnet'
 import loan from './routes/loan'
 import test from './routes/test'
 import { initContractsTable } from './services/contract.service'
@@ -35,6 +36,7 @@ app.get('/health', async (c) => {
 // API routes
 app.route('/api/wallets', wallets)
 app.route('/api/emulator', emulator)
+app.route('/api/testnet', testnet)
 app.route('/api/loan', loan)
 app.route('/api/test', test)
 

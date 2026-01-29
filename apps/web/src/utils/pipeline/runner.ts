@@ -171,6 +171,7 @@ export async function runPipeline(options: PipelineOptions): Promise<void> {
   }
 
   const tokenOpts: TokenizationOptions = {
+    mode,
     identities,
     phases,
     currentStepName,
@@ -199,6 +200,7 @@ export async function runPipeline(options: PipelineOptions): Promise<void> {
   }
 
   const paymentOpts: PaymentOptions = {
+    mode,
     identities,
     phases,
     currentStepName,

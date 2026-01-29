@@ -70,6 +70,8 @@ export async function createWallets(options: SetupOptions): Promise<ActionResult
 
 /**
  * Execute wallet funding step
+ * For emulator: wallets are pre-funded automatically
+ * For preview: MUST check real blockchain balances and FAIL if insufficient
  */
 export async function fundWallets(options: SetupOptions): Promise<ActionResult> {
   const { mode, identities, phases, currentStepName, log } = options
@@ -110,42 +112,101 @@ export async function fundWallets(options: SetupOptions): Promise<ActionResult> 
       return { success: true, message: 'Wallets funded' }
     }
 
-    // Preview mode - check actual funding status
-    log(`  Checking funding status on preview testnet...`, 'info')
+    // =====================================================
+    // PREVIEW MODE - Check REAL blockchain balances
+    // =====================================================
+    log(`  Querying Preview testnet via Blockfrost...`, 'info')
 
     const state = ctx.getContextState()
-    if (state.wallets.length > 0) {
-      const fundingStatus = await ctx.checkWalletFunding(state.wallets)
+    if (state.wallets.length === 0) {
+      step.status = 'failed'
+      log(`  ERROR: No wallets configured`, 'error')
+      return { success: false, message: 'No wallets configured' }
+    }
 
-      if (fundingStatus.allFunded) {
-        log(`  All ${fundingStatus.fundedCount} wallets funded`, 'success')
-        step.status = 'passed'
-      } else {
-        log(`  ${fundingStatus.unfundedCount} wallets need funding:`, 'error')
-        for (const ws of fundingStatus.walletStatus.filter(w => !w.isFunded)) {
-          const needed = Number(ws.required - ws.balance) / 1_000_000
-          log(`    - ${ws.name}: needs ${needed.toFixed(2)} ADA`, 'info')
-        }
-        log(`  Use faucet: https://docs.cardano.org/cardano-testnet/tools/faucet`, 'info')
-        step.status = 'failed'
-        return { success: false, message: 'Some wallets need funding' }
+    // This actually calls Blockfrost API to check real on-chain balances
+    const fundingStatus = await ctx.checkWalletFunding(state.wallets)
+
+    // Update identity balances with REAL values
+    for (const identity of identities.value) {
+      const ws = fundingStatus.walletStatus.find(w => w.name === identity.name)
+      if (ws && identity.wallets[0]) {
+        identity.wallets[0].balance = ws.balance
       }
+    }
 
-      for (const identity of identities.value) {
-        if (identity.wallets[0]) {
-          const ctxWallet = state.wallets.find(w => w.name === identity.name)
-          identity.wallets[0].balance = ctxWallet?.balance || 0n
+    // Log summary
+    log(`  Total on-chain: ${fundingStatus.totalBalanceAda.toFixed(2)} ADA`, 'info')
+    log(`  Total required: ${fundingStatus.totalRequiredAda.toFixed(2)} ADA`, 'info')
+
+    if (fundingStatus.allFunded) {
+      log(`  All ${fundingStatus.fundedCount} wallets have sufficient funds`, 'success')
+      step.status = 'passed'
+      return { success: true, message: 'All wallets funded' }
+    }
+
+    // NOT ALL FUNDED - Show detailed breakdown
+    log(``, 'info')
+    log(`  FUNDING SHORTFALL DETECTED`, 'error')
+    log(`  ─────────────────────────────────────────`, 'info')
+
+    for (const ws of fundingStatus.walletStatus) {
+      const balanceAda = Number(ws.balance) / 1_000_000
+      const requiredAda = Number(ws.required) / 1_000_000
+      const shortfallAda = Number(ws.shortfall) / 1_000_000
+
+      if (ws.isFunded) {
+        log(`  ✓ ${ws.name}: ${balanceAda.toFixed(2)} ADA (OK)`, 'success')
+      } else {
+        log(`  ✗ ${ws.name}: ${balanceAda.toFixed(2)} / ${requiredAda.toFixed(2)} ADA (need ${shortfallAda.toFixed(2)} more)`, 'error')
+      }
+    }
+
+    log(``, 'info')
+
+    // Check if redistribution is possible
+    if (fundingStatus.canRedistribute && fundingStatus.redistributionSource) {
+      const source = fundingStatus.redistributionSource
+      const sourceAda = Number(source.balance) / 1_000_000
+      log(`  REDISTRIBUTION POSSIBLE`, 'warning')
+      log(`  Source wallet: ${source.name} (${sourceAda.toFixed(2)} ADA)`, 'info')
+      log(`  Address: ${source.address}`, 'info')
+      log(``, 'info')
+      log(`  To redistribute, fund from this wallet or use faucet first.`, 'info')
+
+      step.status = 'failed'
+      return {
+        success: false,
+        message: `Wallets need funding. Redistribution possible from ${source.name}.`,
+        data: {
+          canRedistribute: true,
+          source: fundingStatus.redistributionSource,
+          walletStatus: fundingStatus.walletStatus,
         }
       }
     }
 
-    step.status = 'passed'
-    log(`  Funded all wallets with testnet ADA`, 'success')
-    return { success: true, message: 'Wallets funded' }
+    // No redistribution possible - need faucet
+    log(`  NO WALLET HAS SUFFICIENT FUNDS FOR REDISTRIBUTION`, 'error')
+    log(``, 'info')
+    log(`  Options:`, 'info')
+    log(`  1. Fund a wallet from faucet: https://docs.cardano.org/cardano-testnet/tools/faucet`, 'info')
+    log(`  2. Copy a wallet address above and request ~10,000 tADA`, 'info')
+    log(`  3. Re-run this phase after funding`, 'info')
+
+    step.status = 'failed'
+    return {
+      success: false,
+      message: `${fundingStatus.unfundedCount} wallets need funding. Total shortfall: ${(fundingStatus.totalRequiredAda - fundingStatus.totalBalanceAda).toFixed(2)} ADA`,
+      data: {
+        canRedistribute: false,
+        walletStatus: fundingStatus.walletStatus,
+      }
+    }
   } catch (err) {
     step.status = 'failed'
     const error = err as Error
-    log(`  Failed to fund wallets: ${error.message}`, 'error')
+    log(`  Failed to check funding: ${error.message}`, 'error')
     return { success: false, message: error.message, error }
   }
 }

@@ -4,8 +4,39 @@
 
 import { Hono } from 'hono'
 import * as walletService from '../services/wallet.service'
+import {
+  Lucid,
+  Emulator,
+  generateSeedPhrase,
+  paymentCredentialOf,
+} from '@lucid-evolution/lucid'
 
 const wallets = new Hono()
+
+/**
+ * POST /wallets/generate - Generate a real Cardano wallet address
+ * Uses Lucid to create a proper address that works on Preview testnet
+ */
+wallets.post('/generate', async (c) => {
+  try {
+    // Create temporary Lucid instance to generate address
+    const tempEmulator = new Emulator([])
+    const lucid = await Lucid(tempEmulator, 'Preview')
+
+    const seedPhrase = generateSeedPhrase()
+    lucid.selectWallet.fromSeed(seedPhrase)
+    const address = await lucid.wallet().address()
+    const paymentKeyHash = paymentCredentialOf(address).hash
+
+    return c.json({
+      seedPhrase,
+      address,
+      paymentKeyHash,
+    })
+  } catch (err) {
+    return c.json({ error: String(err) }, 500)
+  }
+})
 
 /**
  * GET /wallets - Get all wallets

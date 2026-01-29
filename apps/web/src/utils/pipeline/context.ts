@@ -15,6 +15,8 @@ import {
   createWallet,
   deleteAllWallets,
   generateMockPrivateKey,
+  getTestnetBalance,
+  getTestnetStatus,
   type WalletFromDB,
   type WalletConfig,
   type TestSetupConfig,
@@ -236,34 +238,59 @@ export async function saveWalletsToDatabase(wallets: TestWallet[]): Promise<void
 }
 
 /**
- * Check wallet funding status (for preview mode)
+ * Check wallet funding status using REAL blockchain data via Blockfrost
+ * This is for preview testnet mode - actually checks on-chain balances
  */
 export async function checkWalletFunding(wallets: TestWallet[]): Promise<{
   allFunded: boolean
   fundedCount: number
   unfundedCount: number
+  totalBalanceAda: number
+  totalRequiredAda: number
+  canRedistribute: boolean
+  redistributionSource: { name: string; address: string; balance: bigint } | null
   walletStatus: {
     name: string
     address: string
     balance: bigint
     required: bigint
     isFunded: boolean
+    shortfall: bigint
   }[]
 }> {
+  // First check if Blockfrost is configured
+  const testnetStatus = await getTestnetStatus()
+  if (!testnetStatus.configured) {
+    throw new Error('Blockfrost API not configured. Set BLOCKFROST_API_KEY in backend .env file.')
+  }
+
   const walletStatus: {
     name: string
     address: string
     balance: bigint
     required: bigint
     isFunded: boolean
+    shortfall: bigint
   }[] = []
 
   let fundedCount = 0
   let unfundedCount = 0
+  let totalBalance = 0n
+  let totalRequired = 0n
 
+  // Check each wallet's ACTUAL on-chain balance
   for (const wallet of wallets) {
-    const balance = await getEmulatorBalance(wallet.address)
+    let balance = 0n
+    try {
+      const result = await getTestnetBalance(wallet.address)
+      balance = BigInt(result.balance)
+    } catch (err) {
+      // Address might not exist on chain yet (0 balance)
+      balance = 0n
+    }
+
     const isFunded = balance >= wallet.requiredBalance
+    const shortfall = isFunded ? 0n : wallet.requiredBalance - balance
 
     if (isFunded) {
       fundedCount++
@@ -271,19 +298,49 @@ export async function checkWalletFunding(wallets: TestWallet[]): Promise<{
       unfundedCount++
     }
 
+    totalBalance += balance
+    totalRequired += wallet.requiredBalance
+
     walletStatus.push({
       name: wallet.name,
       address: wallet.address,
       balance,
       required: wallet.requiredBalance,
       isFunded,
+      shortfall,
     })
+
+    // Update the context state wallet balance
+    const ctxWallet = contextState.wallets.find(w => w.address === wallet.address)
+    if (ctxWallet) {
+      ctxWallet.balance = balance
+      ctxWallet.isFunded = isFunded
+    }
   }
+
+  // Check if we can redistribute from a funded wallet
+  const fundedWallets = walletStatus.filter(w => w.balance > w.required)
+  const totalShortfall = walletStatus.reduce((sum, w) => sum + w.shortfall, 0n)
+
+  // Find a wallet that has enough excess to cover the shortfall
+  // Need to account for TX fees (~2 ADA per TX)
+  const txFeeBuffer = BigInt(walletStatus.length * 2) * 1_000_000n
+  const redistributionSource = fundedWallets.find(w =>
+    (w.balance - w.required) >= (totalShortfall + txFeeBuffer)
+  )
 
   return {
     allFunded: unfundedCount === 0,
     fundedCount,
     unfundedCount,
+    totalBalanceAda: Number(totalBalance) / 1_000_000,
+    totalRequiredAda: Number(totalRequired) / 1_000_000,
+    canRedistribute: redistributionSource !== null,
+    redistributionSource: redistributionSource ? {
+      name: redistributionSource.name,
+      address: redistributionSource.address,
+      balance: redistributionSource.balance,
+    } : null,
     walletStatus,
   }
 }
