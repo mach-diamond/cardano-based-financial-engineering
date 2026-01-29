@@ -20,7 +20,7 @@
           <i v-else class="fas fa-sync-alt mr-1"></i>
           {{ isRefreshing ? 'Refreshing...' : 'Refresh Balances' }}
         </button>
-        <button @click.stop="$emit('generateTestUsers')" class="btn btn-sm btn-outline-primary mr-3" :disabled="isGenerating">
+        <button @click.stop="showGenerateConfirm = true" class="btn btn-sm btn-outline-primary mr-3" :disabled="isGenerating">
           <span v-if="isGenerating" class="spinner-border spinner-border-sm mr-1"></span>
           {{ isGenerating ? 'Generating...' : 'Generate Test Users' }}
         </button>
@@ -94,6 +94,26 @@
         </div>
       </div>
     </div>
+
+    <!-- Confirmation Modal -->
+    <div v-if="showGenerateConfirm" class="confirm-modal-overlay" @click.self="showGenerateConfirm = false">
+      <div class="confirm-modal">
+        <div class="confirm-modal-header">
+          <i class="fas fa-exclamation-triangle text-warning mr-2"></i>
+          Regenerate Test Wallets?
+        </div>
+        <div class="confirm-modal-body">
+          <p>This will <strong>delete all existing wallets</strong> and create new ones based on the current configuration.</p>
+          <p class="text-muted mb-0">Any funded wallets will lose their balances. This action cannot be undone.</p>
+        </div>
+        <div class="confirm-modal-footer">
+          <button class="btn btn-sm btn-secondary" @click="showGenerateConfirm = false">Cancel</button>
+          <button class="btn btn-sm btn-danger" @click="confirmGenerate">
+            <i class="fas fa-trash-alt mr-1"></i> Delete & Regenerate
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -109,10 +129,17 @@ const props = defineProps<{
   isRefreshing?: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   generateTestUsers: []
   refreshBalances: []
 }>()
+
+const showGenerateConfirm = ref(false)
+
+function confirmGenerate() {
+  showGenerateConfirm.value = false
+  emit('generateTestUsers')
+}
 
 const columnView = ref(true)
 
@@ -145,3 +172,53 @@ const investorStats = computed(() => computeStats(investors.value))
 const totalAssets = computed(() => originatorStats.value.assets + borrowerStats.value.assets + analystStats.value.assets + investorStats.value.assets)
 const totalAda = computed(() => originatorStats.value.ada + borrowerStats.value.ada + analystStats.value.ada + investorStats.value.ada)
 </script>
+
+<style scoped>
+.confirm-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1050;
+}
+
+.confirm-modal {
+  background: #1e293b;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 0.5rem;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.confirm-modal-header {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  font-weight: 600;
+  font-size: 1rem;
+  color: #f1f5f9;
+}
+
+.confirm-modal-body {
+  padding: 1.25rem;
+  color: #cbd5e1;
+  font-size: 0.9rem;
+}
+
+.confirm-modal-body p {
+  margin-bottom: 0.75rem;
+}
+
+.confirm-modal-footer {
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+</style>
