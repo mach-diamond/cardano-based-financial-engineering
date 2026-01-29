@@ -90,11 +90,25 @@
               <i class="fas fa-times-circle"></i> Expected Rejection
             </span>
           </div>
-          <div v-if="action.balance !== undefined" class="action-balance">
-            <span class="balance-label">Bal:</span>
-            <span class="balance-value" :class="{ 'balance-zero': action.balance === 0 }">
-              {{ action.balance.toLocaleString() }}
-            </span>
+          <div class="action-balances">
+            <div v-if="action.loanBalance !== undefined" class="balance-col">
+              <span class="balance-label">Loan:</span>
+              <span class="balance-value" :class="{ 'balance-zero': action.loanBalance === 0 }">
+                {{ action.loanBalance.toFixed(2) }}
+              </span>
+            </div>
+            <div v-if="action.contractBalance !== undefined" class="balance-col">
+              <span class="balance-label">Contract:</span>
+              <span class="balance-value balance-contract">
+                {{ action.contractBalance.toFixed(2) }}
+              </span>
+            </div>
+            <div v-if="action.interestPaid !== undefined" class="balance-col">
+              <span class="balance-label">Int:</span>
+              <span class="balance-value balance-interest">
+                {{ action.interestPaid.toFixed(2) }}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -126,7 +140,9 @@ interface LoanAction {
   timing: string
   timingPeriod: number
   amount?: number
-  balance?: number
+  loanBalance?: number      // Remaining principal to be paid
+  contractBalance?: number  // Amount accumulated on contract (for Collect)
+  interestPaid?: number     // Cumulative interest paid
   expectedResult: 'success' | 'failure' | 'rejection'
   isLate?: boolean
   description?: string
@@ -441,28 +457,44 @@ function onAmountChange(actionId: string, event: Event) {
   color: #fca5a5;
 }
 
-.action-balance {
+.action-balances {
   margin-left: auto;
-  font-family: 'SF Mono', monospace;
-  font-size: 0.7rem;
   display: flex;
-  align-items: center;
-  gap: 0.25rem;
+  gap: 0.5rem;
   padding-left: 0.5rem;
   border-left: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.action-balance .balance-label {
-  color: #64748b;
+.balance-col {
+  font-family: 'SF Mono', monospace;
+  font-size: 0.65rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 50px;
 }
 
-.action-balance .balance-value {
+.balance-col .balance-label {
+  color: #475569;
+  font-size: 0.55rem;
+  text-transform: uppercase;
+}
+
+.balance-col .balance-value {
   color: #93c5fd;
   font-weight: 500;
 }
 
-.action-balance .balance-value.balance-zero {
+.balance-col .balance-value.balance-zero {
   color: #22c55e;
+}
+
+.balance-col .balance-value.balance-contract {
+  color: #fcd34d;
+}
+
+.balance-col .balance-value.balance-interest {
+  color: #a78bfa;
 }
 
 .loan-schedule-summary {

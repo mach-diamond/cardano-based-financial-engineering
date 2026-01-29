@@ -99,25 +99,61 @@
           <span class="badge badge-secondary ml-auto">{{ postInitActionCount }} actions</span>
         </div>
         <div v-show="!localCollapsed.phase4" class="phase-steps phase-steps-timed">
-          <div v-for="item in sortedPostInitActions" :key="item.action.id" class="phase-step-item"
-               :class="{
-                 'action-late': item.action.isLate,
-                 'action-rejection': item.action.expectedResult === 'rejection'
-               }">
-            <span class="action-type-badge" :class="'action-' + item.action.actionType">{{ item.action.label }}</span>
-            <span class="step-wallet" :class="'role-' + item.executorRole.toLowerCase()">{{ item.executorWallet }}</span>
-            <span class="step-arrow">-></span>
-            <span class="step-params">
-              <span v-if="item.action.amount" class="param-amount">{{ item.action.amount }} ADA</span>
-              <span v-if="item.action.actionType === 'complete'" class="param-token"><i class="fas fa-gem"></i> {{ item.loan.asset }}</span>
-              <span v-if="item.action.isLate" class="param-late"><i class="fas fa-clock"></i> Late</span>
-              <span v-if="item.action.expectedResult === 'rejection'" class="param-rejection"><i class="fas fa-times-circle"></i> Reject</span>
-              <span v-if="!item.action.amount && item.action.actionType !== 'complete' && !item.action.isLate && item.action.expectedResult !== 'rejection'" class="param-empty">-</span>
-            </span>
-            <span class="step-arrow">-></span>
-            <span class="step-contract">{{ item.contractRef }} ({{ item.loan.asset }})</span>
-            <span class="step-timing">{{ item.action.timing }}</span>
-          </div>
+          <template v-for="group in groupedPostInitActions" :key="group.timing">
+            <!-- Single action - no grouping needed -->
+            <template v-if="group.actions.length === 1">
+              <div class="phase-step-item"
+                   :class="{
+                     'action-late': group.actions[0].action.isLate,
+                     'action-rejection': group.actions[0].action.expectedResult === 'rejection'
+                   }">
+                <span class="action-type-badge" :class="'action-' + group.actions[0].action.actionType">{{ group.actions[0].action.label }}</span>
+                <span class="step-wallet" :class="'role-' + group.actions[0].executorRole.toLowerCase()">{{ group.actions[0].executorWallet }}</span>
+                <span class="step-arrow">-></span>
+                <span class="step-params">
+                  <span v-if="group.actions[0].action.amount" class="param-amount">{{ group.actions[0].action.amount.toFixed(2) }} ADA</span>
+                  <span v-if="group.actions[0].action.actionType === 'complete'" class="param-token"><i class="fas fa-gem"></i> {{ group.actions[0].loan.asset }}</span>
+                  <span v-if="group.actions[0].action.isLate" class="param-late"><i class="fas fa-clock"></i> Late</span>
+                  <span v-if="group.actions[0].action.expectedResult === 'rejection'" class="param-rejection"><i class="fas fa-times-circle"></i> Reject</span>
+                  <span v-if="!group.actions[0].action.amount && group.actions[0].action.actionType !== 'complete' && !group.actions[0].action.isLate && group.actions[0].action.expectedResult !== 'rejection'" class="param-empty">-</span>
+                </span>
+                <span class="step-arrow">-></span>
+                <span class="step-contract">{{ group.actions[0].contractRef }} ({{ group.actions[0].loan.asset }})</span>
+                <span class="step-timing">{{ group.actions[0].action.timing }}</span>
+              </div>
+            </template>
+            <!-- Multiple actions - collapsible group -->
+            <template v-else>
+              <div class="action-group" :class="{ 'group-collapsed': collapsedGroups[`group-${group.timing}`] !== false }">
+                <div class="action-group-header" @click="toggleGroup(group.timing)">
+                  <i class="fas group-chevron" :class="collapsedGroups[`group-${group.timing}`] !== false ? 'fa-chevron-right' : 'fa-chevron-down'"></i>
+                  <span class="group-summary">{{ group.summary }}</span>
+                  <span class="group-count badge badge-pill badge-secondary">{{ group.actions.length }}</span>
+                  <span class="step-timing">{{ group.timing }}</span>
+                </div>
+                <div v-show="collapsedGroups[`group-${group.timing}`] === false" class="action-group-items">
+                  <div v-for="item in group.actions" :key="item.action.id" class="phase-step-item"
+                       :class="{
+                         'action-late': item.action.isLate,
+                         'action-rejection': item.action.expectedResult === 'rejection'
+                       }">
+                    <span class="action-type-badge" :class="'action-' + item.action.actionType">{{ item.action.label }}</span>
+                    <span class="step-wallet" :class="'role-' + item.executorRole.toLowerCase()">{{ item.executorWallet }}</span>
+                    <span class="step-arrow">-></span>
+                    <span class="step-params">
+                      <span v-if="item.action.amount" class="param-amount">{{ item.action.amount.toFixed(2) }} ADA</span>
+                      <span v-if="item.action.actionType === 'complete'" class="param-token"><i class="fas fa-gem"></i> {{ item.loan.asset }}</span>
+                      <span v-if="item.action.isLate" class="param-late"><i class="fas fa-clock"></i> Late</span>
+                      <span v-if="item.action.expectedResult === 'rejection'" class="param-rejection"><i class="fas fa-times-circle"></i> Reject</span>
+                      <span v-if="!item.action.amount && item.action.actionType !== 'complete' && !item.action.isLate && item.action.expectedResult !== 'rejection'" class="param-empty">-</span>
+                    </span>
+                    <span class="step-arrow">-></span>
+                    <span class="step-contract">{{ item.contractRef }} ({{ item.loan.asset }})</span>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </template>
         </div>
       </div>
     </div>
@@ -200,7 +236,9 @@ interface LoanAction {
   timing: string
   timingPeriod: number
   amount?: number
-  balance?: number
+  loanBalance?: number      // Remaining principal to be paid
+  contractBalance?: number  // Amount accumulated on contract
+  interestPaid?: number     // Cumulative interest paid
   expectedResult: 'success' | 'failure' | 'rejection'
   isLate?: boolean
   description?: string
@@ -216,6 +254,14 @@ interface SortedAction {
   executorRole: string
   contractRef: string
   hasBuyer: boolean
+}
+
+interface ActionGroup {
+  timing: string
+  timingPeriod: number
+  actions: SortedAction[]
+  summary: string
+  isCollapsed: boolean
 }
 
 interface CollapsedSections {
@@ -248,6 +294,7 @@ const emit = defineEmits<{
 // Local state synced with props
 const localCollapsed = ref({ ...props.collapsedSections })
 const localCollapsedLoans = ref({ ...props.collapsedLoanSchedules })
+const collapsedGroups = ref<Record<string, boolean>>({})
 
 watch(() => props.collapsedSections, (val) => {
   localCollapsed.value = { ...val }
@@ -266,9 +313,16 @@ watch(localCollapsedLoans, (val) => {
 }, { deep: true })
 
 const frequencyOptions = [
-  { value: 12, label: 'Monthly' },
-  { value: 4, label: 'Quarterly' },
-  { value: 52, label: 'Weekly' },
+  { value: 12, label: 'mo', fullLabel: 'Monthly' },
+  { value: 4, label: 'qtr', fullLabel: 'Quarterly' },
+  { value: 2, label: 'semi', fullLabel: 'Bi-Annual' },
+  { value: 52, label: 'wk', fullLabel: 'Weekly' },
+  { value: 365, label: 'd', fullLabel: 'Daily' },
+  { value: 8760, label: 'hr', fullLabel: 'Hourly' },
+  { value: 17531, label: '30m', fullLabel: '30-min' },
+  { value: 35063, label: '15m', fullLabel: '15-min' },
+  { value: 52594, label: '10m', fullLabel: '10-min' },
+  { value: 105189, label: '5m', fullLabel: '5-min' },
 ]
 
 const walletCounts = computed(() => ({
@@ -330,10 +384,8 @@ function getBuyerName(borrowerId: string | null): string {
 
 function getFrequencyLabel(frequency?: number): string {
   const freq = frequencyOptions.find(f => f.value === (frequency || 12))
-  if (freq) return freq.label.replace('-', '')
-  if ((frequency || 12) === 12) return 'mo'
-  if (frequency === 4) return 'qtr'
-  return 'period'
+  if (freq) return freq.label
+  return 'p'
 }
 
 function calculateTermPayment(loan: { principal: number; apr: number; termMonths: number; frequency?: number }): number {
@@ -362,7 +414,13 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
   const buyerId = loan.borrowerId || null
   const buyerName = getBuyerName(buyerId)
   const principal = loan.principal
-  let runningBalance = principal
+  const apr = loan.apr / 100
+  const periodsPerYear = loan.frequency || 12
+  const periodRate = apr / periodsPerYear
+
+  let loanBalance = principal        // Remaining principal
+  let contractBalance = 0            // Cumulative payments on contract
+  let interestPaid = 0               // Cumulative interest
 
   actions.push({
     id: `${loanIndex}-init`,
@@ -371,7 +429,9 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
     label: 'Initialize',
     timing: 'T-0',
     timingPeriod: -1,
-    balance: runningBalance,
+    loanBalance,
+    contractBalance,
+    interestPaid,
     expectedResult: 'success',
     description: `Create loan contract with ${loan.asset} as collateral`
   })
@@ -400,8 +460,12 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
       })
       break
 
-    case 'T2':
-      runningBalance -= termPayment
+    case 'T2': {
+      const interest1 = loanBalance * periodRate
+      const principalPaid1 = termPayment - interest1
+      loanBalance -= principalPaid1
+      contractBalance += termPayment
+      interestPaid += interest1
       actions.push({
         id: `${loanIndex}-accept`,
         loanIndex,
@@ -410,7 +474,9 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         timing: 'T+0',
         timingPeriod: 0,
         amount: termPayment,
-        balance: runningBalance,
+        loanBalance,
+        contractBalance,
+        interestPaid,
         expectedResult: 'success',
         buyerId,
         buyerName,
@@ -423,16 +489,24 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         label: 'Claim Default',
         timing: `T+2${freqLabel}`,
         timingPeriod: 2,
-        balance: runningBalance,
+        loanBalance,
+        contractBalance,
+        interestPaid,
         expectedResult: 'success',
         description: 'Seller claims default after missed payments'
       })
       break
+    }
 
     case 'T3':
     case 'T4':
-    case 'T7':
-      runningBalance -= termPayment
+    case 'T7': {
+      // First payment (Accept)
+      const interest1 = lifecycleCase === 'T3' ? 0 : loanBalance * periodRate
+      const principalPaid1 = termPayment - interest1
+      loanBalance -= principalPaid1
+      contractBalance += termPayment
+      interestPaid += interest1
       actions.push({
         id: `${loanIndex}-accept`,
         loanIndex,
@@ -441,14 +515,21 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         timing: 'T+0',
         timingPeriod: 0,
         amount: termPayment,
-        balance: runningBalance,
+        loanBalance,
+        contractBalance,
+        interestPaid,
         expectedResult: 'success',
         buyerId,
         buyerName,
         description: `Buyer accepts and pays 1st of ${totalPayments} installments`
       })
+      // Remaining payments
       for (let i = 2; i <= totalPayments; i++) {
-        runningBalance -= termPayment
+        const interest = lifecycleCase === 'T3' ? 0 : loanBalance * periodRate
+        const principalPaid = termPayment - interest
+        loanBalance = Math.max(0, loanBalance - principalPaid)
+        contractBalance += termPayment
+        interestPaid += interest
         actions.push({
           id: `${loanIndex}-pay-${i}`,
           loanIndex,
@@ -457,7 +538,9 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
           timing: `T+${i-1}${freqLabel}`,
           timingPeriod: i - 1,
           amount: termPayment,
-          balance: Math.max(0, runningBalance),
+          loanBalance,
+          contractBalance,
+          interestPaid,
           expectedResult: 'success',
           description: `Installment ${i} of ${totalPayments}`
         })
@@ -469,7 +552,9 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         label: 'Complete',
         timing: `T+${totalPayments}${freqLabel}`,
         timingPeriod: totalPayments,
-        balance: 0,
+        loanBalance: 0,
+        contractBalance,
+        interestPaid,
         expectedResult: 'success',
         description: 'Transfer asset ownership to buyer'
       })
@@ -480,13 +565,22 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         label: 'Collect',
         timing: `T+${totalPayments}${freqLabel}`,
         timingPeriod: totalPayments,
+        loanBalance: 0,
+        contractBalance: 0,
+        interestPaid,
         expectedResult: 'success',
         description: 'Seller collects accumulated payments'
       })
       break
+    }
 
-    case 'T5':
-      runningBalance -= termPayment
+    case 'T5': {
+      // First payment (Accept)
+      const interest1 = loanBalance * periodRate
+      const principalPaid1 = termPayment - interest1
+      loanBalance -= principalPaid1
+      contractBalance += termPayment
+      interestPaid += interest1
       actions.push({
         id: `${loanIndex}-accept`,
         loanIndex,
@@ -495,13 +589,21 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         timing: 'T+0',
         timingPeriod: 0,
         amount: termPayment,
-        balance: runningBalance,
+        loanBalance,
+        contractBalance,
+        interestPaid,
         expectedResult: 'success',
         buyerId,
         buyerName,
         description: `Buyer accepts and pays 1st installment`
       })
-      runningBalance -= termPayment
+      // Late payment (includes late fee)
+      const lateFee = loan.lateFee || 10
+      const interest2 = loanBalance * periodRate
+      const principalPaid2 = termPayment - interest2
+      loanBalance = Math.max(0, loanBalance - principalPaid2)
+      contractBalance += termPayment + lateFee
+      interestPaid += interest2
       actions.push({
         id: `${loanIndex}-pay-2-late`,
         loanIndex,
@@ -509,14 +611,21 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         label: 'Pay #2 (Late)',
         timing: `T+1${freqLabel}+`,
         timingPeriod: 1.5,
-        amount: termPayment + (loan.lateFee || 10),
-        balance: runningBalance,
+        amount: termPayment + lateFee,
+        loanBalance,
+        contractBalance,
+        interestPaid,
         expectedResult: 'success',
         isLate: true,
-        description: `Late payment with ${loan.lateFee || 10} ADA fee`
+        description: `Late payment with ${lateFee} ADA fee`
       })
+      // Remaining payments
       for (let i = 3; i <= totalPayments; i++) {
-        runningBalance -= termPayment
+        const interest = loanBalance * periodRate
+        const principalPaid = termPayment - interest
+        loanBalance = Math.max(0, loanBalance - principalPaid)
+        contractBalance += termPayment
+        interestPaid += interest
         actions.push({
           id: `${loanIndex}-pay-${i}`,
           loanIndex,
@@ -525,7 +634,9 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
           timing: `T+${i-1}${freqLabel}`,
           timingPeriod: i - 1,
           amount: termPayment,
-          balance: Math.max(0, runningBalance),
+          loanBalance,
+          contractBalance,
+          interestPaid,
           expectedResult: 'success'
         })
       }
@@ -536,7 +647,9 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         label: 'Complete',
         timing: `T+${totalPayments}${freqLabel}`,
         timingPeriod: totalPayments,
-        balance: 0,
+        loanBalance: 0,
+        contractBalance,
+        interestPaid,
         expectedResult: 'success',
         description: 'Transfer asset ownership to buyer'
       })
@@ -547,10 +660,14 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         label: 'Collect',
         timing: `T+${totalPayments}${freqLabel}`,
         timingPeriod: totalPayments,
+        loanBalance: 0,
+        contractBalance: 0,
+        interestPaid,
         expectedResult: 'success',
         description: 'Seller collects accumulated payments'
       })
       break
+    }
 
     case 'T6':
       actions.push({
@@ -632,6 +749,59 @@ const sortedPostInitActions = computed((): SortedAction[] => {
     return a.loanIndex - b.loanIndex
   })
 })
+
+const groupedPostInitActions = computed((): ActionGroup[] => {
+  const groups: ActionGroup[] = []
+  let currentGroup: ActionGroup | null = null
+
+  for (const item of sortedPostInitActions.value) {
+    if (!currentGroup || currentGroup.timingPeriod !== item.action.timingPeriod) {
+      if (currentGroup) {
+        groups.push(currentGroup)
+      }
+      const groupKey = `group-${item.action.timing}`
+      currentGroup = {
+        timing: item.action.timing,
+        timingPeriod: item.action.timingPeriod,
+        actions: [item],
+        summary: '',
+        isCollapsed: collapsedGroups.value[groupKey] ?? true
+      }
+    } else {
+      currentGroup.actions.push(item)
+    }
+  }
+
+  if (currentGroup) {
+    groups.push(currentGroup)
+  }
+
+  // Generate summaries for groups
+  for (const group of groups) {
+    if (group.actions.length === 1) {
+      group.summary = ''
+    } else {
+      const typeCounts: Record<string, number> = {}
+      for (const item of group.actions) {
+        const type = item.action.actionType
+        typeCounts[type] = (typeCounts[type] || 0) + 1
+      }
+      const parts = Object.entries(typeCounts)
+        .map(([type, count]) => {
+          const label = type.charAt(0).toUpperCase() + type.slice(1)
+          return count > 1 ? `${label} x${count}` : label
+        })
+      group.summary = parts.join(', ')
+    }
+  }
+
+  return groups
+})
+
+function toggleGroup(timing: string) {
+  const key = `group-${timing}`
+  collapsedGroups.value[key] = !collapsedGroups.value[key]
+}
 
 function toggleLoanSchedule(uid: string) {
   localCollapsedLoans.value[uid] = !localCollapsedLoans.value[uid]
@@ -848,6 +1018,66 @@ function updateActionAmount(loanIndex: number, actionId: string, value: number) 
 .phase-steps-timed .phase-step-item.action-rejection {
   background: rgba(239, 68, 68, 0.05);
   border-left: 2px solid #ef4444;
+}
+
+/* Action Groups */
+.action-group {
+  background: rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 0.375rem;
+  margin: 0.25rem 0;
+  overflow: hidden;
+}
+
+.action-group.group-collapsed {
+  border-color: rgba(255, 255, 255, 0.04);
+}
+
+.action-group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease;
+}
+
+.action-group-header:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.group-chevron {
+  color: #64748b;
+  font-size: 0.65rem;
+  width: 10px;
+  flex-shrink: 0;
+}
+
+.group-summary {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #cbd5e1;
+  flex: 1;
+}
+
+.group-count {
+  font-size: 0.65rem;
+  background: rgba(100, 116, 139, 0.3);
+  color: #94a3b8;
+  padding: 0.1rem 0.4rem;
+}
+
+.action-group-items {
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-left: 1rem;
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.action-group-items .phase-step-item {
+  border-left: 2px solid rgba(100, 116, 139, 0.2);
+  margin-left: 0.25rem;
+  padding-left: 0.5rem;
 }
 
 .loan-action-schedules h5 {
