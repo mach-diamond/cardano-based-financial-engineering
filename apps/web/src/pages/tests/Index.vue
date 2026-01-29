@@ -373,14 +373,20 @@ async function loadTestRunById(runId: number) {
 
       currentTestRunId.value = run.id
 
-      // Restore phases state
+      // Restore phases state - match by phase ID, then step ID (not array index)
       if (run.state.phases && run.state.phases.length > 0) {
-        for (let i = 0; i < run.state.phases.length && i < phases.value.length; i++) {
-          phases.value[i].status = run.state.phases[i].status || 'pending'
-          phases.value[i].expanded = run.state.phases[i].expanded ?? phases.value[i].expanded
-          if (run.state.phases[i].steps) {
-            for (let j = 0; j < run.state.phases[i].steps.length && j < phases.value[i].steps.length; j++) {
-              phases.value[i].steps[j].status = run.state.phases[i].steps[j].status || 'pending'
+        for (const savedPhase of run.state.phases) {
+          const matchingPhase = phases.value.find(p => p.id === savedPhase.id)
+          if (matchingPhase) {
+            matchingPhase.status = savedPhase.status || 'pending'
+            matchingPhase.expanded = savedPhase.expanded ?? matchingPhase.expanded
+            if (savedPhase.steps) {
+              for (const savedStep of savedPhase.steps) {
+                const matchingStep = matchingPhase.steps.find((s: any) => s.id === savedStep.id)
+                if (matchingStep) {
+                  matchingStep.status = savedStep.status || 'pending'
+                }
+              }
             }
           }
         }
@@ -445,14 +451,20 @@ async function loadTestRunFromDB() {
     if (latestRun && latestRun.state) {
       currentTestRunId.value = latestRun.id
 
-      // Restore phases state
+      // Restore phases state - match by phase ID, then step ID (not array index)
       if (latestRun.state.phases && latestRun.state.phases.length > 0) {
-        for (let i = 0; i < latestRun.state.phases.length && i < phases.value.length; i++) {
-          phases.value[i].status = latestRun.state.phases[i].status || 'pending'
-          phases.value[i].expanded = latestRun.state.phases[i].expanded ?? phases.value[i].expanded
-          if (latestRun.state.phases[i].steps) {
-            for (let j = 0; j < latestRun.state.phases[i].steps.length && j < phases.value[i].steps.length; j++) {
-              phases.value[i].steps[j].status = latestRun.state.phases[i].steps[j].status || 'pending'
+        for (const savedPhase of latestRun.state.phases) {
+          const matchingPhase = phases.value.find(p => p.id === savedPhase.id)
+          if (matchingPhase) {
+            matchingPhase.status = savedPhase.status || 'pending'
+            matchingPhase.expanded = savedPhase.expanded ?? matchingPhase.expanded
+            if (savedPhase.steps) {
+              for (const savedStep of savedPhase.steps) {
+                const matchingStep = matchingPhase.steps.find((s: any) => s.id === savedStep.id)
+                if (matchingStep) {
+                  matchingStep.status = savedStep.status || 'pending'
+                }
+              }
             }
           }
         }
@@ -564,7 +576,7 @@ onMounted(async () => {
   const storedConfigs = JSON.parse(localStorage.getItem('mintmatrix-test-configs') || '[]')
   savedConfigs.value = storedConfigs.map((cfg: any) => ({ id: cfg.id, name: cfg.name }))
 
-  // Check for active config from config page
+  // Check for active config from config page (takes priority)
   const activeConfig = sessionStorage.getItem('mintmatrix-active-config')
   if (activeConfig) {
     try {
@@ -573,6 +585,17 @@ onMounted(async () => {
       sessionStorage.removeItem('mintmatrix-active-config') // Clear after loading
     } catch (e) {
       console.warn('Failed to load active config:', e)
+    }
+  } else {
+    // No active config from session, check for persisted selection in localStorage
+    const savedConfigId = localStorage.getItem('mintmatrix-selected-config-id')
+    if (savedConfigId && savedConfigId !== 'default') {
+      selectedConfigId.value = savedConfigId
+      const found = storedConfigs.find((cfg: any) => cfg.id === savedConfigId)
+      if (found && found.config) {
+        pipelineConfig.value = found.config
+        log(`Loaded saved configuration: ${found.name}`, 'info')
+      }
     }
   }
 

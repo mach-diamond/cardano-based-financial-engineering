@@ -333,7 +333,11 @@ const isExpanded = ref(false)
 const activeTab = ref<'wallets' | 'assets' | 'contracts' | 'phases' | 'full'>('wallets')
 const showCopySuccess = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
-const selectedConfigIdLocal = ref(props.selectedConfigId || 'default')
+
+// Load selected config from localStorage or use prop/default
+const STORAGE_KEY = 'mintmatrix-selected-config-id'
+const storedConfigId = localStorage.getItem(STORAGE_KEY)
+const selectedConfigIdLocal = ref(storedConfigId || props.selectedConfigId || 'default')
 
 const savedConfigs = computed(() => props.savedConfigs || [])
 
@@ -344,6 +348,9 @@ const phaseCount = computed(() => props.phases?.length || 0)
 const assetCount = computed(() => initialAssets.length)
 
 function onConfigChange() {
+  // Persist selection to localStorage
+  localStorage.setItem(STORAGE_KEY, selectedConfigIdLocal.value)
+  // Emit change to parent (auto-loads the config)
   emit('config-change', selectedConfigIdLocal.value)
 }
 

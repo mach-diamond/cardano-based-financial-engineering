@@ -28,16 +28,13 @@
     <!-- Config Selector -->
     <div class="card config-selector mb-4">
       <div class="card-body d-flex align-items-center gap-3">
-        <label class="text-muted mb-0">Load Configuration:</label>
-        <select v-model="selectedConfigId" class="form-control form-control-sm" style="max-width: 300px;">
+        <label class="text-muted mb-0">Configuration:</label>
+        <select v-model="selectedConfigId" class="form-control form-control-sm" style="max-width: 300px;" @change="onConfigSelect">
           <option :value="null">-- New Configuration --</option>
           <option v-for="cfg in savedConfigs" :key="cfg.id" :value="cfg.id">
             {{ cfg.name }} ({{ cfg.wallets }} wallets, {{ cfg.loans }} loans)
           </option>
         </select>
-        <button class="btn btn-sm btn-outline-info" @click="loadSelectedConfig" :disabled="!selectedConfigId">
-          <i class="fas fa-download mr-1"></i> Load
-        </button>
         <div class="ml-auto d-flex gap-2">
           <input
             v-model="configName"
@@ -141,18 +138,18 @@
             </table>
           </div>
 
-          <!-- Testnet Faucet Warning -->
-          <div v-if="localConfig.network === 'preview' && totalInitialAda > 9950" class="alert alert-warning faucet-warning mt-3 mb-0">
+          <!-- Testnet Distribution Warning -->
+          <div v-if="localConfig.network === 'preview' && totalInitialAda > 99950" class="alert alert-warning faucet-warning mt-3 mb-0">
             <div class="d-flex align-items-start">
               <i class="fas fa-exclamation-triangle mr-3 mt-1"></i>
               <div>
-                <strong>Testnet Faucet Limit Exceeded</strong>
+                <strong>Total Funding Limit Exceeded</strong>
                 <p class="mb-1">
-                  Total initial ADA: <strong>{{ totalInitialAda.toLocaleString() }} ADA</strong> exceeds the faucet limit of ~10,000 ADA.
+                  Total initial ADA: <strong>{{ totalInitialAda.toLocaleString() }} ADA</strong> exceeds 99,950 ADA distribution limit.
                 </p>
                 <small class="text-muted">
-                  The Preview testnet faucet provides ~10,000 ADA per request. You'll need to fund one wallet from the faucet,
-                  then redistribute to other wallets. Consider reducing initial funding amounts or running multiple faucet requests.
+                  You'll need to redistribute from a funded wallet. The faucet provides ~10,000 ADA per request.
+                  Consider reducing initial funding amounts or planning multiple distribution rounds.
                 </small>
               </div>
             </div>
@@ -164,7 +161,7 @@
               <i class="fas fa-info-circle mr-2"></i>
               <span>
                 Total initial ADA: <strong>{{ totalInitialAda.toLocaleString() }} ADA</strong>
-                <span class="text-muted ml-2">(within faucet limit of ~10,000 ADA)</span>
+                <span class="text-muted ml-2">(within 99,950 ADA distribution limit)</span>
               </span>
             </div>
           </div>
@@ -175,7 +172,7 @@
               <span class="stat-chip borrower">{{ walletCounts.borrowers }} Borrowers</span>
               <span class="stat-chip analyst">{{ walletCounts.analysts }} Analysts</span>
               <span class="stat-chip investor">{{ walletCounts.investors }} Investors</span>
-              <span class="stat-chip total-ada" :class="{ 'over-limit': localConfig.network === 'preview' && totalInitialAda > 9950 }">
+              <span class="stat-chip total-ada" :class="{ 'over-limit': localConfig.network === 'preview' && totalInitialAda > 99950 }">
                 {{ totalInitialAda.toLocaleString() }} ADA Total
               </span>
             </div>
@@ -1050,6 +1047,21 @@ function loadSelectedConfig() {
   }
 }
 
+// Handle config selection change - auto-loads and persists selection
+const CONFIG_STORAGE_KEY = 'mintmatrix-selected-config-id'
+function onConfigSelect() {
+  // Persist selection to localStorage
+  if (selectedConfigId.value) {
+    localStorage.setItem(CONFIG_STORAGE_KEY, selectedConfigId.value)
+  } else {
+    localStorage.removeItem(CONFIG_STORAGE_KEY)
+  }
+  // Auto-load the selected config
+  if (selectedConfigId.value) {
+    loadSelectedConfig()
+  }
+}
+
 // Toast notification state
 const toastMessage = ref('')
 const toastType = ref<'success' | 'error'>('success')
@@ -1141,20 +1153,29 @@ onMounted(() => {
   // Load saved configs list
   loadSavedConfigsList()
 
-  // Check if editing existing config
+  // Check if editing existing config from route
   if (route.params.id) {
     selectedConfigId.value = route.params.id as string
     loadSelectedConfig()
+    return
   }
 
-  // Check if there's an active config from session
+  // Check if there's an active config from session (e.g., after Save & Run)
   const activeConfig = sessionStorage.getItem('mintmatrix-active-config')
   if (activeConfig) {
     try {
       localConfig.value = JSON.parse(activeConfig)
+      return
     } catch (e) {
       console.warn('Failed to load active config:', e)
     }
+  }
+
+  // Load persisted config selection from localStorage
+  const savedConfigId = localStorage.getItem(CONFIG_STORAGE_KEY)
+  if (savedConfigId) {
+    selectedConfigId.value = savedConfigId
+    loadSelectedConfig()
   }
 })
 </script>
