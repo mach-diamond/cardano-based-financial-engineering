@@ -14,6 +14,8 @@ export interface Wallet {
     paymentKeyHash: string
     stakingKeyHash: string | null
     privateKey: string
+    balance: bigint
+    balanceSyncedAt: Date | null
     createdAt: Date
     updatedAt: Date
 }
@@ -69,6 +71,8 @@ export async function getAllWallets(): Promise<Wallet[]> {
             payment_key_hash as "paymentKeyHash",
             staking_key_hash as "stakingKeyHash",
             private_key as "privateKey",
+            balance,
+            balance_synced_at as "balanceSyncedAt",
             created_at as "createdAt",
             updated_at as "updatedAt"
         FROM wallets
@@ -89,6 +93,8 @@ export async function getWalletsByRole(role: WalletConfig['role']): Promise<Wall
             payment_key_hash as "paymentKeyHash",
             staking_key_hash as "stakingKeyHash",
             private_key as "privateKey",
+            balance,
+            balance_synced_at as "balanceSyncedAt",
             created_at as "createdAt",
             updated_at as "updatedAt"
         FROM wallets
@@ -110,6 +116,8 @@ export async function getWalletByAddress(address: string): Promise<Wallet | null
             payment_key_hash as "paymentKeyHash",
             staking_key_hash as "stakingKeyHash",
             private_key as "privateKey",
+            balance,
+            balance_synced_at as "balanceSyncedAt",
             created_at as "createdAt",
             updated_at as "updatedAt"
         FROM wallets
@@ -131,6 +139,8 @@ export async function getWalletByName(name: string): Promise<Wallet | null> {
             payment_key_hash as "paymentKeyHash",
             staking_key_hash as "stakingKeyHash",
             private_key as "privateKey",
+            balance,
+            balance_synced_at as "balanceSyncedAt",
             created_at as "createdAt",
             updated_at as "updatedAt"
         FROM wallets
@@ -185,6 +195,82 @@ export async function getWalletAssets(walletId: number): Promise<WalletAsset[]> 
         WHERE wallet_id = ${walletId}
         ORDER BY policy_id, asset_name
     `
+}
+
+/**
+ * Update wallet balance
+ */
+export async function updateWalletBalance(walletId: number, balance: bigint): Promise<void> {
+    await sql`
+        UPDATE wallets
+        SET balance = ${balance.toString()}, balance_synced_at = NOW()
+        WHERE id = ${walletId}
+    `
+}
+
+/**
+ * Update wallet balance by address
+ */
+export async function updateWalletBalanceByAddress(address: string, balance: bigint): Promise<void> {
+    await sql`
+        UPDATE wallets
+        SET balance = ${balance.toString()}, balance_synced_at = NOW()
+        WHERE address = ${address}
+    `
+}
+
+/**
+ * Bulk update wallet balances
+ */
+export async function updateWalletBalances(updates: { address: string; balance: bigint }[]): Promise<void> {
+    for (const update of updates) {
+        await updateWalletBalanceByAddress(update.address, update.balance)
+    }
+}
+
+/**
+ * Set wallet asset (upsert - replaces existing quantity)
+ */
+export async function setWalletAsset(
+    walletId: number,
+    policyId: string,
+    assetName: string,
+    quantity: number
+): Promise<WalletAsset> {
+    const [asset] = await sql<WalletAsset[]>`
+        INSERT INTO wallet_assets (wallet_id, policy_id, asset_name, quantity)
+        VALUES (${walletId}, ${policyId}, ${assetName}, ${quantity})
+        ON CONFLICT (wallet_id, policy_id, asset_name)
+        DO UPDATE SET quantity = ${quantity}
+        RETURNING
+            id,
+            wallet_id as "walletId",
+            policy_id as "policyId",
+            asset_name as "assetName",
+            quantity
+    `
+    return asset
+}
+
+/**
+ * Clear all assets for a wallet
+ */
+export async function clearWalletAssets(walletId: number): Promise<void> {
+    await sql`DELETE FROM wallet_assets WHERE wallet_id = ${walletId}`
+}
+
+/**
+ * Sync wallet assets from blockchain data
+ */
+export async function syncWalletAssets(
+    walletId: number,
+    assets: { policyId: string; assetName: string; quantity: number }[]
+): Promise<void> {
+    // Clear existing assets and replace with new ones
+    await clearWalletAssets(walletId)
+    for (const asset of assets) {
+        await setWalletAsset(walletId, asset.policyId, asset.assetName, asset.quantity)
+    }
 }
 
 /**

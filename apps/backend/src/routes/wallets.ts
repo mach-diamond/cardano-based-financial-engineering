@@ -177,6 +177,93 @@ wallets.post('/:id/assets', async (c) => {
 })
 
 /**
+ * PUT /wallets/:id/balance - Update wallet balance
+ */
+wallets.put('/:id/balance', async (c) => {
+    const id = parseInt(c.req.param('id'))
+
+    if (isNaN(id)) {
+        return c.json({ error: 'Invalid wallet ID' }, 400)
+    }
+
+    try {
+        const { balance } = await c.req.json()
+
+        if (balance === undefined) {
+            return c.json({ error: 'Balance required' }, 400)
+        }
+
+        await walletService.updateWalletBalance(id, BigInt(balance))
+        return c.json({ success: true, walletId: id, balance: balance.toString() })
+    } catch (err) {
+        return c.json({ error: String(err) }, 500)
+    }
+})
+
+/**
+ * POST /wallets/sync-balances - Bulk update wallet balances
+ * Body: { balances: [{ address: string, balance: string, assets?: [...] }] }
+ */
+wallets.post('/sync-balances', async (c) => {
+    try {
+        const { balances } = await c.req.json()
+
+        if (!balances || !Array.isArray(balances)) {
+            return c.json({ error: 'balances array required' }, 400)
+        }
+
+        let updated = 0
+        for (const item of balances) {
+            if (!item.address || item.balance === undefined) continue
+
+            try {
+                // Update balance
+                await walletService.updateWalletBalanceByAddress(item.address, BigInt(item.balance))
+                updated++
+
+                // If assets provided, sync them too
+                if (item.assets && Array.isArray(item.assets)) {
+                    const wallet = await walletService.getWalletByAddress(item.address)
+                    if (wallet) {
+                        await walletService.syncWalletAssets(wallet.id, item.assets)
+                    }
+                }
+            } catch (err) {
+                console.error(`Failed to sync wallet ${item.address}:`, err)
+            }
+        }
+
+        return c.json({ success: true, updated, total: balances.length })
+    } catch (err) {
+        return c.json({ error: String(err) }, 500)
+    }
+})
+
+/**
+ * PUT /wallets/:id/assets - Sync wallet assets (replace all)
+ */
+wallets.put('/:id/assets', async (c) => {
+    const id = parseInt(c.req.param('id'))
+
+    if (isNaN(id)) {
+        return c.json({ error: 'Invalid wallet ID' }, 400)
+    }
+
+    try {
+        const { assets } = await c.req.json()
+
+        if (!assets || !Array.isArray(assets)) {
+            return c.json({ error: 'assets array required' }, 400)
+        }
+
+        await walletService.syncWalletAssets(id, assets)
+        return c.json({ success: true, walletId: id, assetsCount: assets.length })
+    } catch (err) {
+        return c.json({ error: String(err) }, 500)
+    }
+})
+
+/**
  * DELETE /wallets - Delete all wallets (test reset)
  */
 wallets.delete('/', async (c) => {

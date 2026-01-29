@@ -10,6 +10,10 @@ CREATE TABLE IF NOT EXISTS wallets (
     staking_key_hash TEXT,
     -- Encrypted/encoded private keys (for test environment only!)
     private_key TEXT NOT NULL,
+    -- ADA balance in lovelace (fetched from blockchain)
+    balance BIGINT NOT NULL DEFAULT 0,
+    -- Last time balance was synced from blockchain
+    balance_synced_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

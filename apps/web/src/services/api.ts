@@ -11,8 +11,18 @@ export interface WalletFromDB {
     address: string
     paymentKeyHash: string
     stakingKeyHash: string | null
+    balance: string // lovelace as string (bigint serialized)
+    balanceSyncedAt: string | null
     createdAt: string
     updatedAt: string
+}
+
+export interface WalletAssetFromDB {
+    id: number
+    walletId: number
+    policyId: string
+    assetName: string
+    quantity: number
 }
 
 export interface WalletConfig {
@@ -95,6 +105,60 @@ export async function deleteAllWallets(): Promise<void> {
     if (!res.ok) {
         throw new Error('Failed to delete wallets')
     }
+}
+
+/**
+ * Update wallet balance
+ */
+export async function updateWalletBalance(walletId: number, balance: bigint): Promise<void> {
+    const res = await fetch(`${API_BASE}/api/wallets/${walletId}/balance`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ balance: balance.toString() })
+    })
+    if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || 'Failed to update wallet balance')
+    }
+}
+
+/**
+ * Sync multiple wallet balances to database
+ */
+export interface WalletBalanceUpdate {
+    address: string
+    balance: string // lovelace as string
+    assets?: Array<{
+        policyId: string
+        assetName: string
+        quantity: number
+    }>
+}
+
+export async function syncWalletBalances(balances: WalletBalanceUpdate[]): Promise<{
+    success: boolean
+    updated: number
+    total: number
+}> {
+    const res = await fetch(`${API_BASE}/api/wallets/sync-balances`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ balances })
+    })
+    if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || 'Failed to sync wallet balances')
+    }
+    return res.json()
+}
+
+/**
+ * Get assets for a wallet
+ */
+export async function getWalletAssets(walletId: number): Promise<WalletAssetFromDB[]> {
+    const res = await fetch(`${API_BASE}/api/wallets/${walletId}/assets`)
+    const data = await res.json()
+    return data.assets || []
 }
 
 /**

@@ -116,6 +116,7 @@ import {
   deleteAllContractRecords,
   getTestnetBalance,
   getTestnetStatus,
+  syncWalletBalances,
   type WalletFromDB,
   type TestSetupConfig,
   type TestRunState,
@@ -236,6 +237,9 @@ const testConfig = ref<TestSetupConfig | null>(null)
 
 // Convert DB wallet to Identity format
 function walletToIdentity(wallet: WalletFromDB): Identity {
+  // Use stored balance from database if available, otherwise 0
+  const storedBalance = wallet.balance ? BigInt(wallet.balance) : 0n
+
   return {
     id: NAME_TO_ID_MAP[wallet.name] || `wallet-${wallet.name.toLowerCase().replace(/\s+/g, '-')}`,
     name: wallet.name,
@@ -245,7 +249,7 @@ function walletToIdentity(wallet: WalletFromDB): Identity {
       id: `w${wallet.id}`,
       name: 'Main',
       address: wallet.address,
-      balance: 0n,
+      balance: storedBalance,
       assets: []
     }]
   }
@@ -792,6 +796,7 @@ async function generateTestUsers() {
 }
 
 // Refresh wallet balances from blockchain (Preview testnet via Blockfrost)
+// Also persists balances to database for next page load
 async function refreshBalances() {
   if (identities.value.length === 0) {
     log('No wallets to refresh', 'warning')
@@ -800,14 +805,14 @@ async function refreshBalances() {
 
   isRefreshing.value = true
   try {
-    // Check if Blockfrost is configured
+    // Check if provider is configured
     const status = await getTestnetStatus()
     if (!status.configured) {
-      log('Blockfrost API not configured. Set BLOCKFROST_API_KEY in backend .env file.', 'error')
+      log('No blockchain provider configured. Set BLOCKFROST_PREVIEW or MAESTRO_PREVIEW in backend .env file.', 'error')
       return
     }
 
-    log('Fetching real blockchain balances via Blockfrost...', 'info')
+    log('Fetching real blockchain balances...', 'info')
 
     // Debug: Show first address being queried
     const firstAddr = identities.value[0]?.address
@@ -820,6 +825,9 @@ async function refreshBalances() {
 
     // Create updated identities array to trigger Vue reactivity
     const updatedIdentities = [...identities.value]
+
+    // Collect balance updates for DB sync
+    const balanceUpdates: { address: string; balance: string }[] = []
 
     for (let i = 0; i < updatedIdentities.length; i++) {
       const identity = updatedIdentities[i]
@@ -844,6 +852,12 @@ async function refreshBalances() {
           }
         }
 
+        // Add to balance updates for DB sync
+        balanceUpdates.push({
+          address: identity.address,
+          balance: balance.toString()
+        })
+
         totalAda += balance
         updated++
 
@@ -866,6 +880,11 @@ async function refreshBalances() {
             ]
           }
         }
+        // Still add to updates with 0 balance
+        balanceUpdates.push({
+          address: identity.address,
+          balance: '0'
+        })
         console.error(`Balance error for ${identity.name}:`, err)
         log(`  ${identity.name}: 0 ADA (${(err as Error).message})`, 'warning')
       }
@@ -873,6 +892,17 @@ async function refreshBalances() {
 
     // Reassign to trigger Vue reactivity
     identities.value = updatedIdentities
+
+    // Persist balances to database
+    if (balanceUpdates.length > 0) {
+      try {
+        const syncResult = await syncWalletBalances(balanceUpdates)
+        log(`Saved ${syncResult.updated} wallet balances to database`, 'info')
+      } catch (syncErr) {
+        console.error('Failed to sync balances to DB:', syncErr)
+        log('Warning: Could not save balances to database', 'warning')
+      }
+    }
 
     log(`Refreshed ${updated} wallet balances. Total: ${(Number(totalAda) / 1_000_000).toFixed(2)} ADA`, 'success')
   } catch (err) {
