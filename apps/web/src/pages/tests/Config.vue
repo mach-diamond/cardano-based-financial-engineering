@@ -518,146 +518,126 @@
             <p class="text-muted mb-0">Configure the execution sequence and scheduled actions for each loan</p>
           </div>
 
-          <!-- Pipeline Overview (Collapsible) -->
-          <div class="collapsible-section" :class="{ 'collapsed': collapsedSections.pipelineOverview }">
-            <div class="collapsible-header" @click="collapsedSections.pipelineOverview = !collapsedSections.pipelineOverview">
-              <i class="fas" :class="collapsedSections.pipelineOverview ? 'fa-chevron-right' : 'fa-chevron-down'"></i>
-              <h5 class="mb-0">Pipeline Phases</h5>
-              <span class="badge badge-secondary ml-auto">4 phases</span>
+          <!-- Pipeline Phases (Each Collapsible) -->
+          <div class="pipeline-phases">
+            <!-- Phase 1: Setup & Identities -->
+            <div class="phase-block collapsible-phase" :class="{ 'collapsed': collapsedSections.phase1 }">
+              <div class="phase-header-collapsible" @click="collapsedSections.phase1 = !collapsedSections.phase1">
+                <i class="fas phase-chevron" :class="collapsedSections.phase1 ? 'fa-chevron-right' : 'fa-chevron-down'"></i>
+                <div class="phase-number">1</div>
+                <div class="phase-info">
+                  <div class="phase-title">Setup & Identities</div>
+                  <div class="phase-description">Create and fund wallets for all participants</div>
+                </div>
+                <span class="badge badge-secondary ml-auto">{{ localConfig.wallets.length }} wallets</span>
+              </div>
+              <div v-show="!collapsedSections.phase1" class="phase-steps">
+                <div class="phase-step-item">
+                  <span class="action-type-badge action-create">Create</span>
+                  <span class="step-wallet role-system">System</span>
+                  <span class="step-arrow">→</span>
+                  <span class="step-params">{{ localConfig.wallets.length }} wallets ({{ walletRoleSummary }})</span>
+                  <span class="step-arrow">→</span>
+                  <span class="step-contract">Wallets</span>
+                </div>
+                <div class="phase-step-item">
+                  <span class="action-type-badge action-fund">Fund</span>
+                  <span class="step-wallet role-system">Faucet</span>
+                  <span class="step-arrow">→</span>
+                  <span class="step-params">{{ totalInitialAda.toLocaleString() }} ADA</span>
+                  <span class="step-arrow">→</span>
+                  <span class="step-contract">{{ localConfig.wallets.length }} Wallets</span>
+                </div>
+                <div class="phase-step-item step-disabled">
+                  <span class="action-type-badge action-mint action-disabled">Mint</span>
+                  <span class="step-wallet text-muted">—</span>
+                  <span class="step-arrow">→</span>
+                  <span class="step-params text-muted">Credentials <span class="step-disabled-reason">(Coming soon)</span></span>
+                  <span class="step-arrow">→</span>
+                  <span class="step-contract text-muted">—</span>
+                </div>
+              </div>
             </div>
-            <div v-show="!collapsedSections.pipelineOverview" class="collapsible-content">
-              <div class="pipeline-preview">
-                <div class="phase-timeline">
-                  <!-- Phase 1: Setup & Identities -->
-                  <div class="phase-block">
-                <div class="phase-header d-flex align-items-center justify-content-between">
-                  <div class="d-flex align-items-center">
-                    <div class="phase-number">1</div>
-                    <div class="phase-info">
-                      <div class="phase-title">Setup & Identities</div>
-                      <div class="phase-description">Create and fund wallets for all participants</div>
-                    </div>
-                  </div>
-                  <div class="d-flex align-items-center gap-2">
-                    <span class="badge badge-secondary">{{ localConfig.wallets.length }} wallets</span>
-                  </div>
+
+            <!-- Phase 2: Asset Tokenization -->
+            <div class="phase-block collapsible-phase" :class="{ 'collapsed': collapsedSections.phase2 }">
+              <div class="phase-header-collapsible" @click="collapsedSections.phase2 = !collapsedSections.phase2">
+                <i class="fas phase-chevron" :class="collapsedSections.phase2 ? 'fa-chevron-right' : 'fa-chevron-down'"></i>
+                <div class="phase-number">2</div>
+                <div class="phase-info">
+                  <div class="phase-title">Asset Tokenization</div>
+                  <div class="phase-description">Originators mint tokenized real-world assets</div>
                 </div>
-                <div class="phase-steps">
-                  <div class="phase-step-item">
-                    <div class="d-flex align-items-center">
-                      <div class="step-status-icon"><i class="far fa-circle text-muted"></i></div>
-                      <span class="step-action-bubble action-create">Create</span>
-                      <span class="step-entity-text">{{ localConfig.wallets.length }} wallets ({{ walletRoleSummary }})</span>
-                    </div>
-                  </div>
-                  <div class="phase-step-item">
-                    <div class="d-flex align-items-center">
-                      <div class="step-status-icon"><i class="far fa-circle text-muted"></i></div>
-                      <span class="step-action-bubble action-fund">Fund</span>
-                      <span class="step-entity-text">{{ localConfig.wallets.length }} wallets with initial ADA</span>
-                    </div>
-                  </div>
-                  <div class="phase-step-item step-disabled">
-                    <div class="d-flex align-items-center">
-                      <div class="step-status-icon"><i class="fas fa-ban text-secondary"></i></div>
-                      <span class="step-action-bubble action-mint action-disabled">Mint</span>
-                      <span class="step-entity-text text-muted">Credentials <span class="step-disabled-reason">(Coming soon)</span></span>
-                    </div>
-                  </div>
+                <span class="badge badge-secondary ml-auto">{{ totalAssets }} assets</span>
+              </div>
+              <div v-show="!collapsedSections.phase2" class="phase-steps">
+                <div v-for="(wallet, wi) in originatorWallets" :key="'mint-' + wi" class="phase-step-item">
+                  <span class="action-type-badge action-mint">Mint</span>
+                  <span class="step-wallet role-originator">{{ wallet.name }}</span>
+                  <span class="step-arrow">→</span>
+                  <span class="step-params">
+                    <span v-for="(asset, ai) in wallet.assets" :key="ai">
+                      {{ asset.quantity }}x {{ asset.name }}<span v-if="ai < (wallet.assets?.length || 0) - 1">, </span>
+                    </span>
+                  </span>
+                  <span class="step-arrow">→</span>
+                  <span class="step-contract">Minting Policy</span>
                 </div>
               </div>
+            </div>
 
-              <!-- Phase 2: Asset Tokenization -->
-              <div class="phase-block">
-                <div class="phase-header d-flex align-items-center justify-content-between">
-                  <div class="d-flex align-items-center">
-                    <div class="phase-number">2</div>
-                    <div class="phase-info">
-                      <div class="phase-title">Asset Tokenization</div>
-                      <div class="phase-description">Originators mint tokenized real-world assets</div>
-                    </div>
-                  </div>
-                  <div class="d-flex align-items-center gap-2">
-                    <span class="badge badge-secondary">{{ totalAssets }} assets</span>
-                  </div>
+            <!-- Phase 3: Initialize Loans -->
+            <div class="phase-block collapsible-phase" :class="{ 'collapsed': collapsedSections.phase3 }">
+              <div class="phase-header-collapsible" @click="collapsedSections.phase3 = !collapsedSections.phase3">
+                <i class="fas phase-chevron" :class="collapsedSections.phase3 ? 'fa-chevron-right' : 'fa-chevron-down'"></i>
+                <div class="phase-number">3</div>
+                <div class="phase-info">
+                  <div class="phase-title">Initialize Loan Contracts</div>
+                  <div class="phase-description">Create loans using tokenized assets as collateral</div>
                 </div>
-                <div class="phase-steps">
-                  <div v-for="(wallet, wi) in originatorWallets" :key="'mint-' + wi" class="phase-step-item">
-                    <div class="d-flex align-items-center">
-                      <div class="step-status-icon"><i class="far fa-circle text-muted"></i></div>
-                      <span class="step-action-bubble action-mint">Mint</span>
-                      <span class="step-entity-text">
-                        <span v-for="(asset, ai) in wallet.assets" :key="ai">
-                          {{ asset.quantity }}x {{ asset.name }}<span v-if="ai < (wallet.assets?.length || 0) - 1">, </span>
-                        </span>
-                        <span class="text-muted ml-1">({{ wallet.name }})</span>
-                      </span>
-                    </div>
-                  </div>
+                <span class="badge badge-secondary ml-auto">{{ localConfig.loans.length }} loans</span>
+              </div>
+              <div v-show="!collapsedSections.phase3" class="phase-steps">
+                <div v-for="(loan, li) in localConfig.loans" :key="'init-' + li" class="phase-step-item">
+                  <span class="action-type-badge action-init">Initialize</span>
+                  <span class="step-wallet role-originator">{{ getOriginatorName(loan.originatorId) }}</span>
+                  <span class="step-arrow">→</span>
+                  <span class="step-params">
+                    {{ loan.asset }} ({{ loan.principal.toLocaleString() }} ADA)
+                    <span class="lifecycle-badge ml-1" :class="'lc-' + (loan.lifecycleCase || 'T4')">{{ loan.lifecycleCase || 'T4' }}</span>
+                  </span>
+                  <span class="step-arrow">→</span>
+                  <span class="step-contract">Loan #{{ li + 1 }}</span>
                 </div>
               </div>
+            </div>
 
-              <!-- Phase 3: Initialize Loans -->
-              <div class="phase-block">
-                <div class="phase-header d-flex align-items-center justify-content-between">
-                  <div class="d-flex align-items-center">
-                    <div class="phase-number">3</div>
-                    <div class="phase-info">
-                      <div class="phase-title">Initialize Loan Contracts</div>
-                      <div class="phase-description">Create loans using tokenized assets as collateral</div>
-                    </div>
-                  </div>
-                  <div class="d-flex align-items-center gap-2">
-                    <span class="badge badge-secondary">{{ localConfig.loans.length }} loans</span>
-                  </div>
+            <!-- Phase 4: Run Contracts -->
+            <div class="phase-block collapsible-phase" :class="{ 'collapsed': collapsedSections.phase4 }">
+              <div class="phase-header-collapsible" @click="collapsedSections.phase4 = !collapsedSections.phase4">
+                <i class="fas phase-chevron" :class="collapsedSections.phase4 ? 'fa-chevron-right' : 'fa-chevron-down'"></i>
+                <div class="phase-number">4</div>
+                <div class="phase-info">
+                  <div class="phase-title">Run Contracts</div>
+                  <div class="phase-description">Execute loan lifecycle actions (accept, pay, collect, complete)</div>
                 </div>
-                <div class="phase-steps">
-                  <div v-for="(loan, li) in localConfig.loans" :key="'init-' + li" class="phase-step-item">
-                    <div class="d-flex align-items-center">
-                      <div class="step-status-icon"><i class="far fa-circle text-muted"></i></div>
-                      <span class="step-action-bubble action-init">Initialize</span>
-                      <span class="step-entity-text">
-                        {{ getBorrowerName(loan.borrowerId) || 'Open Market' }} ← {{ loan.asset }}
-                        <span class="text-muted">({{ loan.reservedBuyer ? 'Reserved' : 'Open' }})</span>
-                        <span class="lifecycle-badge ml-2" :class="'lc-' + (loan.lifecycleCase || 'T4')">{{ loan.lifecycleCase || 'T4' }}</span>
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                <span class="badge badge-secondary ml-auto">{{ postInitActionCount }} actions</span>
               </div>
-
-              <!-- Phase 4: Run Contracts -->
-              <div class="phase-block">
-                <div class="phase-header d-flex align-items-center justify-content-between">
-                  <div class="d-flex align-items-center">
-                    <div class="phase-number">4</div>
-                    <div class="phase-info">
-                      <div class="phase-title">Run Contracts</div>
-                      <div class="phase-description">Execute loan lifecycle actions (accept, pay, collect, complete)</div>
-                    </div>
-                  </div>
-                  <div class="d-flex align-items-center gap-2">
-                    <span class="badge badge-secondary">{{ postInitActionCount }} actions</span>
-                  </div>
-                </div>
-                <div class="phase-steps">
-                  <div v-for="schedule in loanActionSchedules" :key="'run-' + schedule.loanIndex">
-                    <div v-for="action in schedule.actions.filter(a => a.actionType !== 'init')" :key="action.id" class="phase-step-item">
-                      <div class="d-flex align-items-center">
-                        <div class="step-status-icon"><i class="far fa-circle text-muted"></i></div>
-                        <span class="step-action-bubble" :class="'action-' + action.actionType">{{ action.label }}</span>
-                        <span class="step-entity-text">
-                          Loan #{{ schedule.loanIndex + 1 }} ({{ schedule.loan.asset }})
-                          <span class="text-muted ml-1">{{ action.timing }}</span>
-                          <span v-if="action.amount" class="text-info ml-1">{{ action.amount }} ADA</span>
-                          <span v-if="action.buyerName && action.actionType === 'accept'" class="text-success ml-1">→ {{ action.buyerName }}</span>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
+              <div v-show="!collapsedSections.phase4" class="phase-steps phase-steps-timed">
+                <div v-for="item in sortedPostInitActions" :key="item.action.id" class="phase-step-item"
+                     :class="{ 'action-late': item.action.isLate, 'action-rejection': item.action.expectedResult === 'rejection' }">
+                  <span class="action-type-badge" :class="'action-' + item.action.actionType">{{ item.action.label }}</span>
+                  <span class="step-wallet" :class="'role-' + item.executorRole.toLowerCase()">{{ item.executorWallet }}</span>
+                  <span class="step-arrow">→</span>
+                  <span class="step-params">
+                    <span v-if="item.action.amount" class="param-amount">{{ item.action.amount }} ADA</span>
+                    <span v-if="item.action.isLate" class="param-late"><i class="fas fa-clock"></i> Late</span>
+                    <span v-if="item.action.expectedResult === 'rejection'" class="param-rejection"><i class="fas fa-times-circle"></i> Reject</span>
+                    <span v-if="!item.action.amount && !item.action.isLate && item.action.expectedResult !== 'rejection'" class="param-empty">—</span>
+                  </span>
+                  <span class="step-arrow">→</span>
+                  <span class="step-contract">{{ item.contractRef }} ({{ item.loan.asset }})</span>
+                  <span class="step-timing">{{ item.action.timing }}</span>
                 </div>
               </div>
             </div>
@@ -673,9 +653,12 @@
             </div>
             <div v-show="!collapsedSections.loanSchedules" class="collapsible-content">
               <div class="loan-schedules-grid">
-              <div v-for="schedule in loanActionSchedules" :key="schedule.loanIndex" class="loan-schedule-card" :class="['lc-border-' + (schedule.loan.lifecycleCase || 'T4'), { 'no-buyer': !hasValidBuyer(schedule.loan) && !['T1'].includes(schedule.loan.lifecycleCase || 'T4') }]">
-                <!-- Loan Header -->
-                <div class="loan-schedule-header">
+              <div v-for="schedule in loanActionSchedules" :key="schedule.loan._uid || `loan-${schedule.loanIndex}`"
+                   class="loan-schedule-card"
+                   :class="['lc-border-' + (schedule.loan.lifecycleCase || 'T4'), { 'no-buyer': !hasValidBuyer(schedule.loan) && !['T1'].includes(schedule.loan.lifecycleCase || 'T4'), 'collapsed': collapsedLoanSchedules[schedule.loan._uid || `loan-${schedule.loanIndex}`] }]">
+                <!-- Loan Header (clickable to collapse) -->
+                <div class="loan-schedule-header" @click="toggleLoanSchedule(schedule.loan._uid || `loan-${schedule.loanIndex}`)">
+                  <i class="fas loan-chevron" :class="collapsedLoanSchedules[schedule.loan._uid || `loan-${schedule.loanIndex}`] ? 'fa-chevron-right' : 'fa-chevron-down'"></i>
                   <div class="loan-schedule-index">#{{ schedule.loanIndex + 1 }}</div>
                   <div class="loan-schedule-info">
                     <span class="loan-schedule-asset">{{ schedule.loan.asset }}</span>
@@ -684,7 +667,8 @@
                   <!-- Lifecycle Case Selector -->
                   <select
                     :value="schedule.loan.lifecycleCase || 'T4'"
-                    @change="updateLoanLifecycleCase(schedule.loanIndex, ($event.target as HTMLSelectElement).value)"
+                    @change.stop="updateLoanLifecycleCase(schedule.loanIndex, ($event.target as HTMLSelectElement).value)"
+                    @click.stop
                     class="lifecycle-select"
                     :class="'lc-' + (schedule.loan.lifecycleCase || 'T4')"
                   >
@@ -694,14 +678,16 @@
                   </select>
                 </div>
 
-                <!-- No Buyer Warning (for non-T1 loans without buyer) -->
-                <div v-if="!hasValidBuyer(schedule.loan) && !['T1'].includes(schedule.loan.lifecycleCase || 'T4')" class="no-buyer-warning">
-                  <i class="fas fa-exclamation-triangle"></i>
-                  No buyer assigned - select a buyer in Accept action to enable payment schedule
-                </div>
+                <!-- Collapsible Content -->
+                <div v-show="!collapsedLoanSchedules[schedule.loan._uid || `loan-${schedule.loanIndex}`]">
+                  <!-- No Buyer Warning (for non-T1 loans without buyer) -->
+                  <div v-if="!hasValidBuyer(schedule.loan) && !['T1'].includes(schedule.loan.lifecycleCase || 'T4')" class="no-buyer-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    No buyer assigned - select a buyer in Accept action to enable payment schedule
+                  </div>
 
-                <!-- Action Timeline -->
-                <div class="loan-action-timeline">
+                  <!-- Action Timeline -->
+                  <div class="loan-action-timeline">
                   <div v-for="action in schedule.actions" :key="action.id"
                        class="action-item"
                        :class="{
@@ -755,15 +741,17 @@
                 </div>
 
                 <!-- Summary -->
-                <div class="loan-schedule-summary">
-                  <span class="summary-item">
-                    <i class="fas fa-list-ol"></i>
-                    {{ schedule.actions.length }} actions
-                  </span>
-                  <span class="summary-item">
-                    <i class="fas fa-coins"></i>
-                    {{ calculateTotalValue(schedule.loan).toFixed(0) }} ADA total
-                  </span>
+                  <!-- Summary -->
+                  <div class="loan-schedule-summary">
+                    <span class="summary-item">
+                      <i class="fas fa-list-ol"></i>
+                      {{ schedule.actions.length }} actions
+                    </span>
+                    <span class="summary-item">
+                      <i class="fas fa-coins"></i>
+                      {{ calculateTotalValue(schedule.loan).toFixed(0) }} ADA total
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1137,11 +1125,23 @@ const activeTab = ref('wallets')
 
 // Collapsible section states
 const collapsedSections = ref({
-  pipelineOverview: false,
+  // Pipeline phases
+  phase1: false,
+  phase2: false,
+  phase3: false,
+  phase4: false,
+  // Other sections
   loanSchedules: false,
   cloOperations: false,
   contractReference: false,
 })
+
+// Collapsed loan schedule cards (by _uid)
+const collapsedLoanSchedules = ref<Record<string, boolean>>({})
+
+function toggleLoanSchedule(uid: string) {
+  collapsedLoanSchedules.value[uid] = !collapsedLoanSchedules.value[uid]
+}
 
 // Contract Reference tabs
 const contractRefTab = ref<'loan' | 'clo'>('loan')
@@ -1721,6 +1721,14 @@ function getBuyerName(borrowerId: string | null): string {
   return entry ? entry[0] : borrowerId
 }
 
+// Get originator name from originatorId
+function getOriginatorName(originatorId: string | null): string {
+  if (!originatorId) return 'Unknown'
+  // Find wallet name from ID
+  const entry = Object.entries(NAME_TO_ID_MAP).find(([_, id]) => id === originatorId)
+  return entry ? entry[0] : originatorId.replace('orig-', '').replace(/-/g, ' ')
+}
+
 // Generate action schedule for a loan based on its lifecycle case
 function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
   const actions: LoanAction[] = []
@@ -1943,6 +1951,61 @@ const postInitActionCount = computed(() => {
   }, 0)
 })
 
+// Computed: All post-init actions sorted by time for Phase 4
+interface SortedAction {
+  action: LoanAction
+  loan: any
+  loanIndex: number
+  executorWallet: string
+  executorRole: string
+  contractRef: string
+}
+
+const sortedPostInitActions = computed((): SortedAction[] => {
+  const allActions: SortedAction[] = []
+
+  for (const schedule of loanActionSchedules.value) {
+    for (const action of schedule.actions) {
+      if (action.actionType === 'init') continue
+
+      // Determine executor based on action type
+      let executorWallet = ''
+      let executorRole = ''
+
+      if (['accept', 'pay', 'complete'].includes(action.actionType)) {
+        // Buyer/Borrower actions
+        executorWallet = action.buyerName || getBuyerName(schedule.loan.borrowerId) || 'Open Market'
+        executorRole = 'Borrower'
+      } else if (['collect', 'default', 'update', 'cancel'].includes(action.actionType)) {
+        // Seller/Originator actions
+        const originator = localConfig.value.wallets.find(w =>
+          NAME_TO_ID_MAP[w.name] === schedule.loan.originatorId ||
+          w.name.toLowerCase().includes(schedule.loan.originatorId?.replace('orig-', '').replace(/-/g, ' '))
+        )
+        executorWallet = originator?.name || schedule.loan.originatorId || 'Unknown'
+        executorRole = 'Originator'
+      }
+
+      allActions.push({
+        action,
+        loan: schedule.loan,
+        loanIndex: schedule.loanIndex,
+        executorWallet,
+        executorRole,
+        contractRef: `Loan #${schedule.loanIndex + 1}`
+      })
+    }
+  }
+
+  // Sort by timing period, then by loan index for stability
+  return allActions.sort((a, b) => {
+    if (a.action.timingPeriod !== b.action.timingPeriod) {
+      return a.action.timingPeriod - b.action.timingPeriod
+    }
+    return a.loanIndex - b.loanIndex
+  })
+})
+
 // Update a loan action amount
 function updateActionAmount(loanIndex: number, actionId: string, newAmount: number) {
   const schedule = loanActionSchedules.value.find(s => s.loanIndex === loanIndex)
@@ -1973,16 +2036,6 @@ function updateLoanLifecycleCase(loanIndex: number, newCase: string) {
 // Check if a loan has a buyer assigned (reserved or selected)
 function hasValidBuyer(loan: any): boolean {
   return !!loan.borrowerId
-}
-
-// Get borrower name from ID
-function getBorrowerName(borrowerId: string | null): string | null {
-  if (!borrowerId) return null
-  const wallet = localConfig.value.wallets.find(w => {
-    const wid = NAME_TO_ID_MAP[w.name] || `bor-${w.name.toLowerCase().replace(/\s+/g, '-')}`
-    return wid === borrowerId
-  })
-  return wallet?.name || borrowerId
 }
 
 const validationErrors = computed(() => {
@@ -4083,5 +4136,194 @@ tr.drag-over {
 .action-clo {
   background: rgba(20, 184, 166, 0.2) !important;
   color: #5eead4 !important;
+}
+
+/* Collapsible Phase Blocks */
+.pipeline-phases {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.collapsible-phase {
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.collapsible-phase.collapsed {
+  border-color: rgba(255, 255, 255, 0.05);
+}
+
+.phase-header-collapsible {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease;
+}
+
+.phase-header-collapsible:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.phase-chevron {
+  color: #64748b;
+  font-size: 0.7rem;
+  width: 12px;
+}
+
+.collapsible-phase .phase-steps {
+  padding: 0 0.5rem 0.75rem 0.5rem;
+}
+
+/* Phase Step Items - New Format */
+.phase-steps .phase-step-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.25rem;
+  margin: 0.15rem 0;
+  transition: background 0.15s ease;
+}
+
+.phase-steps .phase-step-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.phase-step-item .action-type-badge {
+  min-width: 70px;
+  text-align: center;
+}
+
+.step-wallet {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  min-width: 100px;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.step-wallet.role-system {
+  background: rgba(100, 116, 139, 0.2);
+  color: #94a3b8;
+}
+
+.step-wallet.role-originator {
+  background: rgba(139, 92, 246, 0.2);
+  color: #c4b5fd;
+}
+
+.step-wallet.role-borrower {
+  background: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+}
+
+.step-wallet.role-analyst {
+  background: rgba(14, 165, 233, 0.2);
+  color: #7dd3fc;
+}
+
+.step-wallet.role-investor {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fcd34d;
+}
+
+.step-arrow {
+  color: #475569;
+  font-size: 0.7rem;
+}
+
+.step-params {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  flex: 1;
+  min-width: 100px;
+}
+
+.step-params .param-amount {
+  color: #93c5fd;
+  font-weight: 500;
+}
+
+.step-params .param-late {
+  color: #fbbf24;
+  margin-left: 0.5rem;
+}
+
+.step-params .param-rejection {
+  color: #ef4444;
+  margin-left: 0.5rem;
+}
+
+.step-params .param-empty {
+  color: #475569;
+}
+
+.step-contract {
+  font-size: 0.75rem;
+  color: #e2e8f0;
+  font-weight: 500;
+  min-width: 100px;
+}
+
+.step-timing {
+  font-family: 'SF Mono', monospace;
+  font-size: 0.7rem;
+  color: #64748b;
+  min-width: 60px;
+  text-align: right;
+  margin-left: auto;
+}
+
+/* Timed phase steps (Phase 4) */
+.phase-steps-timed .phase-step-item {
+  padding-right: 1rem;
+}
+
+.phase-steps-timed .phase-step-item.action-late {
+  background: rgba(251, 191, 36, 0.05);
+  border-left: 2px solid #fbbf24;
+}
+
+.phase-steps-timed .phase-step-item.action-rejection {
+  background: rgba(239, 68, 68, 0.05);
+  border-left: 2px solid #ef4444;
+}
+
+/* Loan Schedule Card Collapsible */
+.loan-schedule-card .loan-chevron {
+  color: #64748b;
+  font-size: 0.65rem;
+  width: 10px;
+  margin-right: 0.25rem;
+}
+
+.loan-schedule-card .loan-schedule-header {
+  cursor: pointer;
+}
+
+.loan-schedule-card.collapsed .loan-schedule-header {
+  border-bottom: none;
+}
+
+/* Action Fund badge */
+.action-type-badge.action-fund {
+  background: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+}
+
+/* Action Create badge */
+.action-type-badge.action-create {
+  background: rgba(100, 116, 139, 0.2);
+  color: #94a3b8;
 }
 </style>
