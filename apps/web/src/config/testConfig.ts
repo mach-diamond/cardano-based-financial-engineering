@@ -104,6 +104,32 @@ export function getDefaultConfig(): PipelineConfig {
 }
 
 /**
+ * Generate wallet ID from name (matches NAME_TO_ID_MAP logic)
+ */
+function getWalletId(name: string): string {
+  // Import would create circular dependency, so replicate the mapping logic
+  const NAME_TO_ID_MAP: Record<string, string> = {
+    'MachDiamond Jewelry': 'orig-jewelry',
+    'Airplane Manufacturing LLC': 'orig-airplane',
+    'Bob Smith': 'orig-home',
+    'Premier Asset Holdings': 'orig-realestate',
+    'Yacht Makers Corp': 'orig-yacht',
+    'Cardano Airlines LLC': 'bor-cardanoair',
+    'Superfast Cargo Air': 'bor-superfastcargo',
+    'Alice Doe': 'bor-alice',
+    'Office Operator LLC': 'bor-officeop',
+    'Luxury Apartments LLC': 'bor-luxuryapt',
+    'Boat Operator LLC': 'bor-boatop',
+    'Cardano Investment Bank': 'analyst',
+    'Senior Tranche Investor': 'inv-1',
+    'Mezzanine Tranche Investor': 'inv-2',
+    'Junior Tranche Investor': 'inv-3',
+    'Hedge Fund Alpha': 'inv-4',
+  }
+  return NAME_TO_ID_MAP[name] || `wallet-${name.toLowerCase().replace(/\s+/g, '-')}`
+}
+
+/**
  * Validate a pipeline configuration
  */
 export function validateConfig(config: PipelineConfig): { valid: boolean; errors: string[] } {
@@ -123,13 +149,19 @@ export function validateConfig(config: PipelineConfig): { valid: boolean; errors
     errors.push('At least one Borrower wallet is required')
   }
 
-  // Check loans
+  // Build ID set from wallet names for loan validation
+  const walletIds = new Set(config.wallets.map(w => getWalletId(w.name)))
+
+  // Check loans reference valid originators
   for (const loan of config.loans) {
-    const originator = config.wallets.find(w =>
-      w.name.toLowerCase().includes(loan.originatorId.replace('orig-', '').replace('-', ' '))
-    )
-    if (!originator) {
-      errors.push(`Loan references unknown originator: ${loan.originatorId}`)
+    if (loan.originatorId && !walletIds.has(loan.originatorId)) {
+      // Also check if it's a dynamically generated ID
+      const isDynamicId = config.wallets.some(w =>
+        `wallet-${w.name.toLowerCase().replace(/\s+/g, '-')}` === loan.originatorId
+      )
+      if (!isDynamicId) {
+        errors.push(`Loan references unknown originator: ${loan.originatorId}`)
+      }
     }
   }
 
