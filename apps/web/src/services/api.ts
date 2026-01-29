@@ -737,18 +737,23 @@ export async function deleteAllContractRecords(): Promise<void> {
 }
 
 // =============================================================================
-// Testnet API - Balance checking for Preview testnet via Blockfrost
+// Testnet API - Balance checking for Preview/Preprod testnet via Blockfrost
 // =============================================================================
+
+export type TestnetNetwork = 'preview' | 'preprod'
 
 export interface TestnetStatus {
     configured: boolean
     network: string
+    provider: string | null
+    available: string[]
 }
 
 export interface TestnetBalance {
     address: string
     balance: string
     balanceAda: number
+    network?: TestnetNetwork
 }
 
 export interface FundingNeed {
@@ -765,21 +770,22 @@ export interface FundingCheckResult {
         walletsNeedingFunding: number
         totalAdaNeeded: number
     }
+    network: TestnetNetwork
 }
 
 /**
  * Check if Blockfrost API is configured on backend
  */
-export async function getTestnetStatus(): Promise<TestnetStatus> {
-    const res = await fetch(`${API_BASE}/api/testnet/status`)
+export async function getTestnetStatus(network: TestnetNetwork = 'preview'): Promise<TestnetStatus> {
+    const res = await fetch(`${API_BASE}/api/testnet/status?network=${network}`)
     return res.json()
 }
 
 /**
- * Get balance for address on Preview testnet
+ * Get balance for address on testnet (preview or preprod)
  */
-export async function getTestnetBalance(address: string): Promise<TestnetBalance> {
-    const res = await fetch(`${API_BASE}/api/testnet/balance/${encodeURIComponent(address)}`)
+export async function getTestnetBalance(address: string, network: TestnetNetwork = 'preview'): Promise<TestnetBalance> {
+    const res = await fetch(`${API_BASE}/api/testnet/balance/${encodeURIComponent(address)}?network=${network}`)
     if (!res.ok) {
         const err = await res.json()
         throw new Error(err.error || 'Failed to get testnet balance')
@@ -788,10 +794,10 @@ export async function getTestnetBalance(address: string): Promise<TestnetBalance
 }
 
 /**
- * Get UTxOs for address on Preview testnet
+ * Get UTxOs for address on testnet
  */
-export async function getTestnetUtxos(address: string): Promise<any[]> {
-    const res = await fetch(`${API_BASE}/api/testnet/utxos/${encodeURIComponent(address)}`)
+export async function getTestnetUtxos(address: string, network: TestnetNetwork = 'preview'): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/api/testnet/utxos/${encodeURIComponent(address)}?network=${network}`)
     if (!res.ok) {
         const err = await res.json()
         throw new Error(err.error || 'Failed to get testnet UTxOs')

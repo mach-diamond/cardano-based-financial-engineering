@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS wallet_assets (
 -- Test runs: tracks test execution history
 CREATE TABLE IF NOT EXISTS test_runs (
     id SERIAL PRIMARY KEY,
-    mode VARCHAR(20) NOT NULL CHECK (mode IN ('demo', 'emulator', 'preview')),
+    mode VARCHAR(20) NOT NULL CHECK (mode IN ('demo', 'emulator', 'preview', 'preprod')),
     status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'passed', 'failed')),
     started_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     completed_at TIMESTAMP WITH TIME ZONE,

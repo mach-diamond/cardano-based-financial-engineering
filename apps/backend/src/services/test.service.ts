@@ -113,7 +113,7 @@ export interface TestRun {
   id: number
   name: string
   description: string | null
-  networkMode: 'emulator' | 'preview'
+  networkMode: 'emulator' | 'preview' | 'preprod'
   status: TestStatus
   configHash: string | null        // Hash of config used for this run
   state: TestRunState
@@ -129,7 +129,7 @@ export interface TestRun {
 export interface CreateTestRunInput {
   name: string
   description?: string
-  networkMode: 'emulator' | 'preview'
+  networkMode: 'emulator' | 'preview' | 'preprod'
   configHash?: string
   state: TestRunState
 }

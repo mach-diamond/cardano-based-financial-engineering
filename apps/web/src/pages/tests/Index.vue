@@ -12,13 +12,11 @@
     <!-- Header -->
     <TestHeader
       :is-running="isRunning"
-      :is-cleaning="isCleaning"
       :available-test-runs="availableTestRuns"
       :current-test-run-id="currentTestRunId"
       :current-slot="currentSlot"
       :elapsed-time="elapsedTime"
       @run-tests="handleRunTests"
-      @cleanup="handleCleanup"
       @load-test-run="loadTestRunById"
       @step-time="handleStepTime"
       @reset-time="handleResetTime"
@@ -105,15 +103,12 @@ import {
   generateMockPaymentKeyHash,
   generateMockPrivateKey,
   generateRealWallet,
-  fullTestCleanup,
   getTestRuns,
   getTestRun,
   getLatestTestRun,
   createTestRun,
   updateTestRunState,
   completeTestRun,
-  deleteAllTestRuns,
-  deleteAllContractRecords,
   getTestnetBalance,
   getTestnetStatus,
   syncWalletBalances,
@@ -154,10 +149,9 @@ const router = useRouter()
 
 // State
 const isRunning = ref(false)
-const isCleaning = ref(false)
 const currentPhase = ref(1)
 const currentStepName = ref('Initializing...')
-const networkMode = ref<'emulator' | 'preview'>('emulator')
+const networkMode = ref<'emulator' | 'preview' | 'preprod'>('emulator')
 const isGenerating = ref(false)
 const isRefreshing = ref(false)
 
@@ -428,8 +422,10 @@ async function loadTestRunById(runId: number) {
       currentPhase.value = run.state.currentPhase || 1
       log(`Loaded test run #${run.id}: ${run.name}`, 'success')
 
-      // Sync step status based on restored state
-      syncStepStatusFromState()
+      // Note: We no longer call syncStepStatusFromState() here because we properly
+      // save and restore step statuses. That function infers step status from
+      // wallet/contract state, which can incorrectly mark steps as passed when
+      // the state was carried over from previous runs.
     }
   } catch (err) {
     log(`Error loading test run: ${(err as Error).message}`, 'error')
@@ -504,8 +500,10 @@ async function loadTestRunFromDB() {
       currentPhase.value = latestRun.state.currentPhase || 1
       log(`Restored test state from run #${latestRun.id} (${latestRun.status})`, 'success')
 
-      // Sync step status based on restored state
-      syncStepStatusFromState()
+      // Note: We no longer call syncStepStatusFromState() here because we properly
+      // save and restore step statuses. That function infers step status from
+      // wallet/contract state, which can incorrectly mark steps as passed when
+      // the state was carried over from previous runs.
     } else {
       console.log('loadTestRunFromDB: No latest run found or no state')
     }
@@ -1042,7 +1040,7 @@ function log(text: string, type: ConsoleLine['type'] = 'info') {
 }
 
 // Build pipeline options object for runner calls
-function buildPipelineOptions(mode: 'emulator' | 'preview' = networkMode.value): PipelineOptions {
+function buildPipelineOptions(mode: 'emulator' | 'preview' | 'preprod' = networkMode.value): PipelineOptions {
   return {
     mode,
     identities,
@@ -1060,7 +1058,7 @@ function buildPipelineOptions(mode: 'emulator' | 'preview' = networkMode.value):
   }
 }
 
-async function handleRunTests(mode: 'emulator' | 'preview' = networkMode.value) {
+async function handleRunTests(mode: 'emulator' | 'preview' | 'preprod' = networkMode.value) {
   // Start time tracking
   startTimeTracking()
 
@@ -1146,54 +1144,6 @@ async function handleExecuteStep(phase: Phase, step: any) {
 
 function clearConsole() {
   consoleLines.value = []
-}
-
-// Clean up all test state
-async function handleCleanup() {
-  isCleaning.value = true
-  try {
-    log('Starting cleanup...', 'info')
-
-    // Reset backend state
-    await fullTestCleanup()
-    log('Backend state cleared (emulator, contracts, wallets)', 'success')
-
-    // Delete all contracts from process_smart_contract table
-    await deleteAllContractRecords()
-    log('Contract records cleared', 'success')
-
-    // Delete all test runs
-    await deleteAllTestRuns()
-    currentTestRunId.value = null
-    log('Test runs cleared', 'success')
-
-    // Reset UI state
-    identities.value = []
-    loanContracts.value = []
-    cloContracts.value = []
-    loanPortfolio.value = loanPortfolio.value.map(loan => ({
-      ...loan,
-      payments: 0,
-      active: false,
-      defaulted: false
-    }))
-
-    // Reset phases to pending
-    phases.value.forEach(phase => {
-      phase.status = 'pending'
-      phase.steps.forEach(step => {
-        step.status = 'pending'
-      })
-    })
-
-    log('UI state reset complete', 'success')
-    log('Ready for a fresh test run', 'info')
-  } catch (err) {
-    log('Cleanup error: ' + (err as Error).message, 'error')
-    console.error(err)
-  } finally {
-    isCleaning.value = false
-  }
 }
 
 // Loan Contract handlers

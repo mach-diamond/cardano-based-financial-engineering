@@ -83,6 +83,7 @@
       <div class="col-md-9 col-lg-10">
         <!-- Wallets Tab -->
         <div v-if="activeTab === 'wallets'" class="config-panel">
+          <!-- Wallet Configuration Card -->
           <div class="panel-header">
             <h4>Wallet Configuration</h4>
             <p class="text-muted">Define participants: originators, borrowers, analysts, and investors</p>
@@ -95,9 +96,9 @@
             <table class="table table-dark config-table">
               <thead>
                 <tr>
-                  <th style="width: 130px;">Role</th>
+                  <th style="width: 140px;">Role</th>
                   <th style="min-width: 180px;">Name</th>
-                  <th style="width: 110px;">Initial ADA</th>
+                  <th style="width: 120px;">Initial ADA</th>
                   <th style="min-width: 220px;">Assets</th>
                   <th style="width: 50px;"></th>
                 </tr>
@@ -105,18 +106,19 @@
               <tbody>
                 <tr v-for="(wallet, index) in localConfig.wallets" :key="index" :class="'role-' + wallet.role.toLowerCase()">
                   <td>
-                    <select v-model="wallet.role" class="form-control form-control-sm">
+                    <select v-model="wallet.role" class="form-control form-control-sm config-input">
                       <option value="Originator">Originator</option>
                       <option value="Borrower">Borrower</option>
+                      <option value="Agent">Agent</option>
                       <option value="Analyst">Analyst</option>
                       <option value="Investor">Investor</option>
                     </select>
                   </td>
                   <td>
-                    <input v-model="wallet.name" type="text" class="form-control form-control-sm" placeholder="Wallet name" />
+                    <input v-model="wallet.name" type="text" class="form-control form-control-sm config-input" placeholder="Wallet name" />
                   </td>
                   <td>
-                    <input v-model.number="wallet.initialFunding" type="number" class="form-control form-control-sm" />
+                    <input v-model.number="wallet.initialFunding" type="number" class="form-control form-control-sm config-input" />
                   </td>
                   <td>
                     <div v-if="wallet.role === 'Originator'" class="asset-chips">
@@ -138,30 +140,30 @@
             </table>
           </div>
 
-          <!-- Testnet Distribution Warning -->
-          <div v-if="localConfig.network === 'preview' && totalInitialAda > 99950" class="alert alert-warning faucet-warning mt-3 mb-0">
+          <!-- Faucet Limit Warning - ALWAYS show when over 10k -->
+          <div v-if="totalInitialAda > 10000" class="alert alert-warning faucet-warning mt-3 mb-0">
             <div class="d-flex align-items-start">
               <i class="fas fa-exclamation-triangle mr-3 mt-1"></i>
               <div>
-                <strong>Total Funding Limit Exceeded</strong>
+                <strong>Testnet Faucet Limit Warning</strong>
                 <p class="mb-1">
-                  Total initial ADA: <strong>{{ totalInitialAda.toLocaleString() }} ADA</strong> exceeds 99,950 ADA distribution limit.
+                  Total initial ADA: <strong>{{ totalInitialAda.toLocaleString() }} ADA</strong> exceeds 10,000 ADA faucet limit.
                 </p>
                 <small class="text-muted">
-                  You'll need to redistribute from a funded wallet. The faucet provides ~10,000 ADA per request.
-                  Consider reducing initial funding amounts or planning multiple distribution rounds.
+                  When running on testnet (Preview/Preprod), you'll need to redistribute from a funded wallet.
+                  The faucet provides ~10,000 ADA per request. Consider reducing initial funding amounts.
                 </small>
               </div>
             </div>
           </div>
 
-          <!-- Testnet Info (when under limit) -->
-          <div v-else-if="localConfig.network === 'preview'" class="alert alert-info faucet-info mt-3 mb-0">
+          <!-- Total ADA info when under limit -->
+          <div v-else class="alert alert-info faucet-info mt-3 mb-0">
             <div class="d-flex align-items-center">
               <i class="fas fa-info-circle mr-2"></i>
               <span>
                 Total initial ADA: <strong>{{ totalInitialAda.toLocaleString() }} ADA</strong>
-                <span class="text-muted ml-2">(within 99,950 ADA distribution limit)</span>
+                <span class="text-muted ml-2">(within 10,000 ADA testnet faucet limit)</span>
               </span>
             </div>
           </div>
@@ -170,37 +172,105 @@
             <div class="stat-chips">
               <span class="stat-chip originator">{{ walletCounts.originators }} Originators</span>
               <span class="stat-chip borrower">{{ walletCounts.borrowers }} Borrowers</span>
+              <span class="stat-chip agent">{{ walletCounts.agents }} Agents</span>
               <span class="stat-chip analyst">{{ walletCounts.analysts }} Analysts</span>
               <span class="stat-chip investor">{{ walletCounts.investors }} Investors</span>
-              <span class="stat-chip total-ada" :class="{ 'over-limit': localConfig.network === 'preview' && totalInitialAda > 99950 }">
+              <span class="stat-chip total-ada" :class="{ 'over-limit': totalInitialAda > 10000 }">
                 {{ totalInitialAda.toLocaleString() }} ADA Total
               </span>
+            </div>
+          </div>
+
+          <!-- Distribution Charts - Outside the card, side by side -->
+          <div class="distribution-charts-row mt-4">
+            <div class="row">
+              <!-- ADA Distribution Chart -->
+              <div class="col-md-6 mb-3">
+                <div class="chart-card">
+                  <div class="chart-card-header">
+                    <h5><i class="fas fa-chart-pie mr-2"></i>ADA Distribution</h5>
+                  </div>
+                  <div class="chart-card-body">
+                    <div v-if="adaDistributionData.datasets[0].data.length > 0" class="chart-wrapper">
+                      <canvas ref="adaDistributionChart"></canvas>
+                    </div>
+                    <div v-else class="text-muted text-center py-3">
+                      <i class="fas fa-info-circle mr-1"></i>
+                      No wallets defined
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Role Distribution Chart -->
+              <div class="col-md-6 mb-3">
+                <div class="chart-card">
+                  <div class="chart-card-header">
+                    <h5><i class="fas fa-chart-bar mr-2"></i>Wallets by Role</h5>
+                  </div>
+                  <div class="chart-card-body">
+                    <div v-if="localConfig.wallets.length > 0" class="chart-wrapper">
+                      <canvas ref="roleDistributionChart"></canvas>
+                    </div>
+                    <div v-else class="text-muted text-center py-3">
+                      <i class="fas fa-info-circle mr-1"></i>
+                      No wallets defined
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
         <!-- Loans Tab -->
         <div v-if="activeTab === 'loans'" class="config-panel">
-          <div class="panel-header">
-            <h4>Loan Configuration</h4>
-            <p class="text-muted">Define loan contracts between originators and borrowers</p>
+          <div class="panel-header d-flex justify-content-between align-items-start">
+            <div>
+              <h4>Loan Configuration</h4>
+              <p class="text-muted">Define loan contracts between originators and borrowers</p>
+            </div>
             <button class="btn btn-primary" @click="addLoan">
               <i class="fas fa-plus mr-1"></i> Add Loan
             </button>
           </div>
 
-          <div class="table-responsive">
+          <!-- Assets to Mint Reference - shows allocation status -->
+          <div v-if="totalAssetsToMint.length > 0" class="assets-reference-bar mb-3">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <span class="text-muted small"><i class="fas fa-coins mr-1"></i> Assets Available for Loans:</span>
+            </div>
+            <div class="asset-pills">
+              <span v-for="(asset, idx) in totalAssetsToMint" :key="idx" class="asset-pill" :class="{ 'fully-allocated': asset.unallocated === 0 && !asset.overAllocated, 'partially-allocated': asset.unallocated > 0 && asset.allocated > 0, 'over-allocated': asset.overAllocated }">
+                <span class="asset-pill-originator">{{ asset.originator }}</span>
+                <strong>{{ asset.name }}</strong>
+                <span class="asset-pill-count" :class="{ 'over': asset.overAllocated }">{{ asset.allocated }}/{{ asset.total }}</span>
+                <span v-if="asset.overAllocated" class="asset-pill-warning"><i class="fas fa-exclamation-triangle"></i> Over!</span>
+                <span v-else-if="asset.unallocated > 0" class="asset-pill-remaining">({{ asset.unallocated }} left)</span>
+              </span>
+            </div>
+          </div>
+          <div v-else class="alert alert-info small mb-3">
+            <i class="fas fa-info-circle mr-1"></i>
+            No assets defined. Add assets to Originator wallets in the Wallets tab.
+          </div>
+
+          <div class="table-responsive loans-table-wide">
             <table class="table table-dark config-table">
               <thead>
                 <tr>
-                  <th style="min-width: 140px;">Originator</th>
-                  <th style="min-width: 110px;">Asset</th>
-                  <th style="width: 55px;">Qty</th>
-                  <th style="width: 90px;">Principal</th>
-                  <th style="width: 65px;">APR %</th>
-                  <th style="width: 70px;">Term</th>
+                  <th style="min-width: 130px;">Originator</th>
+                  <th style="min-width: 110px;">Agent</th>
+                  <th style="min-width: 100px;">Asset</th>
+                  <th style="width: 65px;">Qty</th>
+                  <th style="width: 95px;">Principal</th>
+                  <th style="width: 70px;">APR %</th>
+                  <th style="width: 75px;">Term</th>
                   <th style="min-width: 130px;">Borrower</th>
-                  <th style="min-width: 130px;">
+                  <th style="width: 80px;" title="Agent referral fee in ADA">Agent Fee</th>
+                  <th style="width: 100px;" title="Transfer fee split (Buyer% / Seller%)">Transfer Fee</th>
+                  <th style="width: 75px;" title="Late payment fee in ADA">Late Fee</th>
+                  <th style="min-width: 110px;">
                     Lifecycle
                     <i class="fas fa-info-circle ml-1 text-info" style="cursor: help;" title="Test scenario to run for this loan"></i>
                   </th>
@@ -210,12 +280,18 @@
               <tbody>
                 <tr v-for="(loan, index) in localConfig.loans" :key="index">
                   <td>
-                    <select v-model="loan.originatorId" class="form-control form-control-sm" @change="onOriginatorChange(loan)">
+                    <select v-model="loan.originatorId" class="form-control form-control-sm config-input" @change="onOriginatorChange(loan)">
+                      <option v-for="w in originatorsWithAssets" :key="w.id" :value="w.id">{{ w.name }}</option>
+                    </select>
+                  </td>
+                  <td>
+                    <select v-model="loan.agentId" class="form-control form-control-sm config-input">
+                      <option :value="null">None</option>
                       <option v-for="w in allWalletOptions" :key="w.id" :value="w.id">{{ w.name }}</option>
                     </select>
                   </td>
                   <td>
-                    <select v-model="loan.asset" class="form-control form-control-sm">
+                    <select v-model="loan.asset" class="form-control form-control-sm config-input">
                       <option value="">-- Select --</option>
                       <option v-for="asset in getWalletAssets(loan.originatorId)" :key="asset" :value="asset">
                         {{ asset }}
@@ -223,25 +299,40 @@
                     </select>
                   </td>
                   <td>
-                    <input v-model.number="loan.quantity" type="number" min="1" class="form-control form-control-sm" />
+                    <input v-model.number="loan.quantity" type="number" min="1" class="form-control form-control-sm config-input" />
                   </td>
                   <td>
-                    <input v-model.number="loan.principal" type="number" class="form-control form-control-sm" />
+                    <input v-model.number="loan.principal" type="number" class="form-control form-control-sm config-input" />
                   </td>
                   <td>
-                    <input v-model.number="loan.apr" type="number" step="0.1" class="form-control form-control-sm" />
+                    <input v-model.number="loan.apr" type="number" step="0.1" class="form-control form-control-sm config-input" />
                   </td>
                   <td>
-                    <input v-model.number="loan.termMonths" type="number" class="form-control form-control-sm" />
+                    <input v-model.number="loan.termMonths" type="number" class="form-control form-control-sm config-input" />
                   </td>
                   <td>
-                    <select v-model="loan.borrowerId" class="form-control form-control-sm">
+                    <select v-model="loan.borrowerId" class="form-control form-control-sm config-input">
                       <option :value="null">Open Market</option>
-                      <option v-for="b in borrowerOptions" :key="b.id" :value="b.id">{{ b.name }}</option>
+                      <option v-for="b in borrowerOptions" :key="b.id" :value="b.id">
+                        {{ b.name }} ({{ b.initialFunding.toLocaleString() }} ADA)
+                      </option>
                     </select>
                   </td>
                   <td>
-                    <select v-model="loan.lifecycleCase" class="form-control form-control-sm" :class="'lifecycle-' + (loan.lifecycleCase || 'T4')">
+                    <input v-model.number="loan.agentFee" type="number" min="0" step="1" class="form-control form-control-sm config-input" placeholder="0" title="Agent referral fee (ADA)" />
+                  </td>
+                  <td>
+                    <div class="transfer-fee-split">
+                      <input v-model.number="loan.transferFeeBuyerPercent" type="number" min="0" max="100" class="form-control form-control-sm config-input fee-split-input" title="Buyer pays %" />
+                      <span class="fee-split-divider">/</span>
+                      <input :value="100 - (loan.transferFeeBuyerPercent || 50)" type="number" class="form-control form-control-sm config-input fee-split-input" disabled title="Seller pays %" />
+                    </div>
+                  </td>
+                  <td>
+                    <input v-model.number="loan.lateFee" type="number" min="0" step="1" class="form-control form-control-sm config-input" placeholder="10" title="Late fee (ADA)" />
+                  </td>
+                  <td>
+                    <select v-model="loan.lifecycleCase" class="form-control form-control-sm config-input" :class="'lifecycle-' + (loan.lifecycleCase || 'T4')">
                       <option v-for="lc in lifecycleCases" :key="lc.id" :value="lc.id" :title="lc.description">
                         {{ lc.id }}: {{ lc.short }}
                       </option>
@@ -284,11 +375,34 @@
             <p class="text-muted">Configure collateralized loan obligation tranches</p>
           </div>
 
+          <!-- Loans Reference - shows loans that will be bundled into CLO -->
+          <div v-if="localConfig.loans.length > 0" class="loans-reference-bar mb-4">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <span class="text-muted small"><i class="fas fa-file-contract mr-1"></i> Loans for CLO Collateral ({{ cloEligibleLoans.length }} eligible):</span>
+              <span class="badge badge-info">{{ cloEligibleLoans.reduce((sum, l) => sum + l.principal, 0).toLocaleString() }} ADA Total Principal</span>
+            </div>
+            <div class="loan-pills">
+              <span v-for="(loan, idx) in localConfig.loans" :key="idx" class="loan-pill" :class="{ 'eligible': !['T1', 'T6'].includes(loan.lifecycleCase || 'T4'), 'ineligible': ['T1', 'T6'].includes(loan.lifecycleCase || 'T4') }">
+                <span class="loan-pill-asset">{{ loan.asset || 'No Asset' }}</span>
+                <span class="loan-pill-amount">{{ loan.principal.toLocaleString() }} ADA</span>
+                <span class="loan-pill-lifecycle" :class="'lc-' + (loan.lifecycleCase || 'T4')">{{ loan.lifecycleCase || 'T4' }}</span>
+              </span>
+            </div>
+            <small class="text-muted d-block mt-2">
+              <i class="fas fa-info-circle mr-1"></i>
+              Loans with T1 (Cancel) or T6 (Reject) lifecycle cases won't be included in CLO collateral.
+            </small>
+          </div>
+          <div v-else class="alert alert-info small mb-4">
+            <i class="fas fa-info-circle mr-1"></i>
+            No loans defined. Add loans in the Loans tab to bundle into CLO.
+          </div>
+
           <div class="row">
             <div class="col-md-6">
               <div class="form-group">
                 <label>CLO Name</label>
-                <input v-model="localConfig.clo!.name" type="text" class="form-control" placeholder="CLO Series Name" />
+                <input v-model="localConfig.clo!.name" type="text" class="form-control config-input" placeholder="CLO Series Name" />
               </div>
             </div>
           </div>
@@ -337,9 +451,9 @@
             </div>
             <!-- Time Display -->
             <div class="time-control-panel">
-              <div class="time-display" :class="{ 'preview-mode': localConfig.network === 'preview' }">
+              <div class="time-display" :class="{ 'preview-mode': isTestnet }">
                 <div class="network-label">
-                  {{ localConfig.network === 'emulator' ? 'Simulated Time' : 'Preview Testnet' }}
+                  {{ localConfig.network === 'emulator' ? 'Simulated Time' : (localConfig.network === 'preprod' ? 'Preprod Testnet' : 'Preview Testnet') }}
                 </div>
                 <div class="time-value">
                   <i class="fas fa-clock mr-2"></i>
@@ -639,9 +753,10 @@
                 <select v-model="localConfig.network" class="form-control">
                   <option value="emulator">Emulator (Local)</option>
                   <option value="preview">Preview Testnet</option>
+                  <option value="preprod">Preprod Testnet</option>
                 </select>
                 <small class="form-text text-muted">
-                  Emulator runs locally with instant transactions. Preview uses real testnet.
+                  Emulator runs locally with instant transactions. Preview/Preprod use real testnet.
                 </small>
               </div>
             </div>
@@ -724,7 +839,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import type { PipelineConfig, WalletConfig } from '@/utils/pipeline/types'
 import { NAME_TO_ID_MAP } from '@/utils/pipeline/types'
@@ -735,6 +850,10 @@ import {
   DEFAULT_MONTE_CARLO,
   validateConfig
 } from '@/config/testConfig'
+import { Chart, DoughnutController, BarController, ArcElement, BarElement, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js'
+
+// Register Chart.js components
+Chart.register(DoughnutController, BarController, ArcElement, BarElement, CategoryScale, LinearScale, Tooltip, Legend)
 
 const router = useRouter()
 const route = useRoute()
@@ -805,6 +924,7 @@ const newAsset = ref({ name: '', quantity: 1 })
 const walletCounts = computed(() => ({
   originators: localConfig.value.wallets.filter(w => w.role === 'Originator').length,
   borrowers: localConfig.value.wallets.filter(w => w.role === 'Borrower').length,
+  agents: localConfig.value.wallets.filter(w => w.role === 'Agent').length,
   analysts: localConfig.value.wallets.filter(w => w.role === 'Analyst').length,
   investors: localConfig.value.wallets.filter(w => w.role === 'Investor').length,
 }))
@@ -814,11 +934,21 @@ const totalInitialAda = computed(() => {
   return localConfig.value.wallets.reduce((sum, w) => sum + (w.initialFunding || 0), 0)
 })
 
+// Check if using a testnet (preview or preprod)
+const isTestnet = computed(() => {
+  return localConfig.value.network === 'preview' || localConfig.value.network === 'preprod'
+})
+
 const loanCounts = computed(() => ({
   reserved: localConfig.value.loans.filter(l => l.reservedBuyer).length,
   open: localConfig.value.loans.filter(l => !l.reservedBuyer).length,
   totalPrincipal: localConfig.value.loans.reduce((sum, l) => sum + l.principal, 0),
 }))
+
+// Loans eligible for CLO (excludes T1 Cancel and T6 Reject cases)
+const cloEligibleLoans = computed(() => {
+  return localConfig.value.loans.filter(l => !['T1', 'T6'].includes(l.lifecycleCase || 'T4'))
+})
 
 const allocationTotal = computed(() => {
   return localConfig.value.clo?.tranches.reduce((sum, t) => sum + t.allocation, 0) || 0
@@ -827,7 +957,11 @@ const allocationTotal = computed(() => {
 const borrowerOptions = computed(() => {
   return localConfig.value.wallets
     .filter(w => w.role === 'Borrower')
-    .map(w => ({ id: NAME_TO_ID_MAP[w.name] || `bor-${w.name.toLowerCase().replace(/\s+/g, '-')}`, name: w.name }))
+    .map(w => ({
+      id: NAME_TO_ID_MAP[w.name] || `bor-${w.name.toLowerCase().replace(/\s+/g, '-')}`,
+      name: w.name,
+      initialFunding: w.initialFunding || 0
+    }))
 })
 
 // All wallets for originator dropdown (any wallet can originate)
@@ -837,6 +971,183 @@ const allWalletOptions = computed(() => {
     name: w.name,
     role: w.role
   }))
+})
+
+// Originators that have assets to mint (filtered for loan originator dropdown)
+const originatorsWithAssets = computed(() => {
+  return localConfig.value.wallets
+    .filter(w => w.role === 'Originator' && w.assets && w.assets.length > 0)
+    .map(w => ({
+      id: NAME_TO_ID_MAP[w.name] || `wallet-${w.name.toLowerCase().replace(/\s+/g, '-')}`,
+      name: w.name,
+      assetCount: w.assets?.length || 0
+    }))
+})
+
+// Chart refs
+const adaDistributionChart = ref<HTMLCanvasElement | null>(null)
+const roleDistributionChart = ref<HTMLCanvasElement | null>(null)
+let adaChartInstance: Chart | null = null
+let roleChartInstance: Chart | null = null
+
+// Compute total assets to mint and their allocation to loans
+const totalAssetsToMint = computed(() => {
+  const assetMap = new Map<string, { total: number; allocated: number; originator: string }>()
+
+  // Collect all assets from originators
+  for (const wallet of localConfig.value.wallets) {
+    if (wallet.role === 'Originator' && wallet.assets) {
+      for (const asset of wallet.assets) {
+        const existing = assetMap.get(asset.name) || { total: 0, allocated: 0, originator: wallet.name }
+        existing.total += asset.quantity
+        // Keep track of originator (use first one if multiple)
+        if (!existing.originator) existing.originator = wallet.name
+        assetMap.set(asset.name, existing)
+      }
+    }
+  }
+
+  // Calculate allocation from loans
+  for (const loan of localConfig.value.loans) {
+    if (loan.asset && assetMap.has(loan.asset)) {
+      const asset = assetMap.get(loan.asset)!
+      asset.allocated += loan.quantity || 0
+    }
+  }
+
+  // Convert to array with percentages
+  return Array.from(assetMap.entries()).map(([name, data]) => ({
+    name,
+    total: data.total,
+    allocated: data.allocated,
+    unallocated: data.total - data.allocated,
+    overAllocated: data.allocated > data.total,
+    allocatedPercent: data.total > 0 ? Math.min(100, Math.round((data.allocated / data.total) * 100)) : 0,
+    originator: data.originator,
+  }))
+})
+
+// Role colors - consistent across UI (matching stat-chips in CSS)
+const ROLE_COLORS: Record<string, string> = {
+  Originator: 'rgba(139, 92, 246, 0.8)',   // Purple - #a78bfa
+  Borrower: 'rgba(34, 197, 94, 0.8)',      // Green - #4ade80
+  Analyst: 'rgba(59, 130, 246, 0.8)',      // Blue - #60a5fa
+  Investor: 'rgba(251, 191, 36, 0.8)',     // Yellow/Amber - #fbbf24
+  Agent: 'rgba(6, 182, 212, 0.8)',         // Cyan - #22d3ee
+}
+
+// ADA distribution data for pie chart
+const adaDistributionData = computed(() => {
+  const labels: string[] = []
+  const data: number[] = []
+  const colors: string[] = []
+
+  for (const wallet of localConfig.value.wallets) {
+    if (wallet.initialFunding && wallet.initialFunding > 0) {
+      labels.push(wallet.name)
+      data.push(wallet.initialFunding)
+      colors.push(ROLE_COLORS[wallet.role] || 'rgba(156, 163, 175, 0.8)')
+    }
+  }
+
+  return {
+    labels,
+    datasets: [{
+      data,
+      backgroundColor: colors,
+      borderColor: 'rgba(30, 41, 59, 1)',
+      borderWidth: 2
+    }]
+  }
+})
+
+// Role distribution data for bar chart
+const roleDistributionData = computed(() => {
+  const counts = walletCounts.value
+  return {
+    labels: ['Originators', 'Borrowers', 'Agents', 'Analysts', 'Investors'],
+    datasets: [{
+      label: 'Wallets',
+      data: [counts.originators, counts.borrowers, counts.agents, counts.analysts, counts.investors],
+      backgroundColor: [
+        ROLE_COLORS.Originator,
+        ROLE_COLORS.Borrower,
+        ROLE_COLORS.Agent,
+        ROLE_COLORS.Analyst,
+        ROLE_COLORS.Investor,
+      ],
+      borderColor: 'rgba(30, 41, 59, 1)',
+      borderWidth: 1
+    }]
+  }
+})
+
+// Initialize charts
+function initCharts() {
+  nextTick(() => {
+    // ADA Distribution Doughnut Chart
+    if (adaDistributionChart.value) {
+      if (adaChartInstance) adaChartInstance.destroy()
+      adaChartInstance = new Chart(adaDistributionChart.value, {
+        type: 'doughnut',
+        data: adaDistributionData.value,
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => `${ctx.label}: ${ctx.parsed.toLocaleString()} ADA`
+              }
+            }
+          }
+        }
+      })
+    }
+
+    // Role Distribution Bar Chart
+    if (roleDistributionChart.value) {
+      if (roleChartInstance) roleChartInstance.destroy()
+      roleChartInstance = new Chart(roleDistributionChart.value, {
+        type: 'bar',
+        data: roleDistributionData.value,
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { color: '#94a3b8', stepSize: 1 },
+              grid: { color: 'rgba(148, 163, 184, 0.1)' }
+            },
+            x: {
+              ticks: { color: '#94a3b8', font: { size: 10 } },
+              grid: { display: false }
+            }
+          }
+        }
+      })
+    }
+
+  })
+}
+
+// Watch for wallet changes to update charts
+watch(() => localConfig.value.wallets, () => {
+  if (activeTab.value === 'wallets') {
+    initCharts()
+  }
+}, { deep: true })
+
+// Watch for tab change to init charts
+watch(activeTab, (newTab) => {
+  if (newTab === 'wallets') {
+    initCharts()
+  }
 })
 
 // Get assets for a specific wallet by ID
@@ -867,6 +1178,7 @@ const walletRoleSummary = computed(() => {
   const parts = []
   if (counts.originators > 0) parts.push(`${counts.originators} Originator${counts.originators > 1 ? 's' : ''}`)
   if (counts.borrowers > 0) parts.push(`${counts.borrowers} Borrower${counts.borrowers > 1 ? 's' : ''}`)
+  if (counts.agents > 0) parts.push(`${counts.agents} Agent${counts.agents > 1 ? 's' : ''}`)
   if (counts.analysts > 0) parts.push(`${counts.analysts} Analyst${counts.analysts > 1 ? 's' : ''}`)
   if (counts.investors > 0) parts.push(`${counts.investors} Investor${counts.investors > 1 ? 's' : ''}`)
   return parts.join(', ')
@@ -990,13 +1302,14 @@ function confirmAddAsset() {
 }
 
 function addLoan() {
-  const firstOriginator = allWalletOptions.value.find(w => w.role === 'Originator')
-  const originatorId = firstOriginator?.id || allWalletOptions.value[0]?.id || ''
+  const firstOriginator = originatorsWithAssets.value[0]
+  const originatorId = firstOriginator?.id || ''
   const assets = getWalletAssets(originatorId)
 
   localConfig.value.loans.push({
     borrowerId: '',
     originatorId,
+    agentId: null,           // Agent wallet (none by default)
     asset: assets[0] || '',
     quantity: 1,
     principal: 500,
@@ -1004,6 +1317,9 @@ function addLoan() {
     termMonths: 12,
     reservedBuyer: false,
     lifecycleCase: 'T4',
+    agentFee: 0,             // Agent referral fee in ADA
+    transferFeeBuyerPercent: 50,  // Transfer fee split (buyer %)
+    lateFee: 10,             // Late payment fee in ADA
   })
 }
 
@@ -1153,6 +1469,11 @@ onMounted(() => {
   // Load saved configs list
   loadSavedConfigsList()
 
+  // Initialize charts if on wallets tab
+  if (activeTab.value === 'wallets') {
+    initCharts()
+  }
+
   // Check if editing existing config from route
   if (route.params.id) {
     selectedConfigId.value = route.params.id as string
@@ -1283,6 +1604,7 @@ onMounted(() => {
 
 .stat-chip.originator { background: rgba(139, 92, 246, 0.2); color: #a78bfa; }
 .stat-chip.borrower { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+.stat-chip.agent { background: rgba(6, 182, 212, 0.2); color: #22d3ee; }
 .stat-chip.analyst { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
 .stat-chip.investor { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
 .stat-chip.reserved { background: rgba(14, 165, 233, 0.2); color: #38bdf8; }
@@ -1355,10 +1677,21 @@ onMounted(() => {
   padding: 0.4rem 0.5rem;
 }
 
-.config-table .form-control-sm {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.8rem;
+/* Config Input - Proper padding for visibility */
+.config-input.form-control-sm,
+.config-table .form-control-sm.config-input {
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
   height: auto;
+  min-height: 32px;
+}
+
+/* Override for regular form-control-sm without config-input class */
+.config-table .form-control-sm {
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+  height: auto;
+  min-height: 32px;
 }
 
 .config-table .btn-icon {
@@ -1368,6 +1701,7 @@ onMounted(() => {
 
 tr.role-originator { border-left: 3px solid #a78bfa; }
 tr.role-borrower { border-left: 3px solid #4ade80; }
+tr.role-agent { border-left: 3px solid #22d3ee; }
 tr.role-analyst { border-left: 3px solid #60a5fa; }
 tr.role-investor { border-left: 3px solid #fbbf24; }
 
@@ -1861,4 +2195,267 @@ tr.role-investor { border-left: 3px solid #fbbf24; }
 .lc-compact.lc-C2 { border-left-color: #f59e0b; }
 .lc-compact.lc-C3 { border-left-color: #ef4444; }
 .lc-compact.lc-C4 { border-left-color: #8b5cf6; }
+
+/* Floating Charts Container */
+.floating-charts-container {
+  position: sticky;
+  top: 1rem;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+}
+
+.chart-card {
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.chart-card-header {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.chart-card-header h5 {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.chart-card-body {
+  padding: 1rem;
+}
+
+.chart-wrapper {
+  height: 180px;
+  position: relative;
+}
+
+/* Asset Mint Items */
+.asset-mint-item {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.asset-mint-item:last-child {
+  border-bottom: none;
+}
+
+.asset-name {
+  font-weight: 600;
+  color: #e2e8f0;
+  font-size: 0.85rem;
+}
+
+.asset-qty {
+  color: #94a3b8;
+  font-size: 0.8rem;
+}
+
+.asset-allocation-bar {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  margin: 0.35rem 0;
+  overflow: hidden;
+}
+
+.allocation-used {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #16a34a);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+/* Loans Table Wide - for scrolling */
+.loans-table-wide {
+  overflow-x: auto;
+}
+
+.loans-table-wide table {
+  min-width: 1200px;
+}
+
+/* Transfer Fee Split Input */
+.transfer-fee-split {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.fee-split-input {
+  width: 38px !important;
+  padding: 0.2rem 0.25rem;
+  text-align: center;
+  font-size: 0.75rem;
+}
+
+.fee-split-divider {
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 991px) {
+  .floating-charts-container {
+    position: relative;
+    top: 0;
+  }
+}
+
+/* Config panel takes available width */
+.config-panel {
+  max-width: 100%;
+}
+
+/* Assets Reference Bar (Loans Tab) */
+.assets-reference-bar {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+}
+
+.asset-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.asset-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 1rem;
+  font-size: 0.8rem;
+  background: rgba(139, 92, 246, 0.2);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  color: #c4b5fd;
+}
+
+.asset-pill.fully-allocated {
+  background: rgba(34, 197, 94, 0.2);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: #86efac;
+}
+
+.asset-pill.partially-allocated {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #fcd34d;
+}
+
+.asset-pill.over-allocated {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #fca5a5;
+}
+
+.asset-pill-originator {
+  font-size: 0.7rem;
+  color: #94a3b8;
+  padding-right: 0.25rem;
+  border-right: 1px solid rgba(255, 255, 255, 0.15);
+  margin-right: 0.25rem;
+}
+
+.asset-pill-count {
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.25rem;
+}
+
+.asset-pill-count.over {
+  background: rgba(239, 68, 68, 0.3);
+  color: #f87171;
+}
+
+.asset-pill-remaining {
+  font-size: 0.7rem;
+  opacity: 0.8;
+}
+
+.asset-pill-warning {
+  font-size: 0.7rem;
+  color: #f87171;
+  font-weight: 600;
+}
+
+/* Loans Reference Bar (CLO Tab) */
+.loans-reference-bar {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+}
+
+.loan-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.loan-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  background: rgba(59, 130, 246, 0.2);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.loan-pill.eligible {
+  color: #93c5fd;
+}
+
+.loan-pill.ineligible {
+  background: rgba(107, 114, 128, 0.2);
+  border-color: rgba(107, 114, 128, 0.3);
+  color: #9ca3af;
+  opacity: 0.7;
+  text-decoration: line-through;
+}
+
+.loan-pill-asset {
+  font-weight: 600;
+}
+
+.loan-pill-amount {
+  color: #94a3b8;
+}
+
+.loan-pill-lifecycle {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.1rem 0.3rem;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.loan-pill-lifecycle.lc-T1 { background: rgba(107, 114, 128, 0.3); color: #d1d5db; }
+.loan-pill-lifecycle.lc-T2 { background: rgba(239, 68, 68, 0.3); color: #fca5a5; }
+.loan-pill-lifecycle.lc-T3 { background: rgba(34, 197, 94, 0.3); color: #86efac; }
+.loan-pill-lifecycle.lc-T4 { background: rgba(59, 130, 246, 0.3); color: #93c5fd; }
+.loan-pill-lifecycle.lc-T5 { background: rgba(251, 191, 36, 0.3); color: #fde047; }
+.loan-pill-lifecycle.lc-T6 { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+.loan-pill-lifecycle.lc-T7 { background: rgba(139, 92, 246, 0.3); color: #c4b5fd; }
+
+/* Distribution Charts Row */
+.distribution-charts-row {
+  margin-top: 1.5rem;
+}
+
+/* Fee Split Input - wider for visibility */
+.fee-split-input.config-input {
+  width: 45px !important;
+  min-width: 45px;
+  padding: 0.35rem 0.4rem;
+  text-align: center;
+}
 </style>

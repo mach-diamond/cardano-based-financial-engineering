@@ -31,9 +31,9 @@
     <div class="d-flex justify-content-between align-items-end">
       <!-- Simulated Time Display with Controls -->
       <div class="time-display-panel">
-        <div class="time-display" :class="{ 'preview-mode': networkMode === 'preview' }">
+        <div class="time-display" :class="{ 'preview-mode': networkMode !== 'emulator' }">
           <div class="network-label">
-            {{ networkMode === 'emulator' ? 'Simulated Time' : 'Preview Testnet' }}
+            {{ networkMode === 'emulator' ? 'Simulated Time' : (networkMode === 'preprod' ? 'Preprod Testnet' : 'Preview Testnet') }}
           </div>
           <div class="time-value">
             <i class="fas fa-clock mr-2"></i>
@@ -83,7 +83,16 @@
               @click="setNetwork('preview')"
             >
               <i class="fas fa-globe mr-2"></i>
-              Preview Testnet
+              Preview
+            </button>
+            <button
+              type="button"
+              class="btn network-btn"
+              :class="networkMode === 'preprod' ? 'btn-preprod active' : 'btn-outline-secondary'"
+              @click="setNetwork('preprod')"
+            >
+              <i class="fas fa-server mr-2"></i>
+              Preprod
             </button>
           </div>
         </div>
@@ -92,23 +101,13 @@
         <button
           @click="$emit('runTests', networkMode)"
           class="btn btn-success btn-lg btn-run-full-test"
-          :disabled="isRunning || isCleaning"
+          :disabled="isRunning"
         >
           <span v-if="isRunning" class="spinner-border spinner-border-sm mr-2" role="status"></span>
           <i v-else class="fas fa-play mr-2"></i>
           {{ isRunning ? 'Running...' : 'Run Full Test' }}
         </button>
 
-        <!-- Clean Up Button -->
-        <button
-          @click="$emit('cleanup')"
-          class="btn btn-outline-danger btn-lg btn-cleanup"
-          :disabled="isRunning || isCleaning"
-        >
-          <span v-if="isCleaning" class="spinner-border spinner-border-sm mr-2" role="status"></span>
-          <i v-else class="fas fa-trash-alt mr-2"></i>
-          {{ isCleaning ? 'Cleaning...' : 'Clean Up' }}
-        </button>
       </div>
     </div>
 
@@ -119,6 +118,10 @@
           <i :class="networkMode === 'emulator' ? 'fas fa-microchip' : 'fas fa-satellite-dish'" class="mr-2"></i>
           <span v-if="networkMode === 'emulator'">
             <strong>Emulator Mode:</strong> Fast, local testing with pre-funded wallets. No real ADA required.
+          </span>
+          <span v-else-if="networkMode === 'preprod'">
+            <strong>Preprod Testnet:</strong> Real blockchain testing on preprod. Wallets must be funded from faucet before proceeding.
+            <span class="preview-warning ml-2">(Contract operations require loan-contract/cdo-bond integration)</span>
           </span>
           <span v-else>
             <strong>Preview Testnet:</strong> Real blockchain testing. Wallets must be funded from faucet before proceeding.
@@ -146,7 +149,6 @@ interface TestRun {
 
 const props = withDefaults(defineProps<{
   isRunning: boolean
-  isCleaning?: boolean
   availableTestRuns?: TestRun[]
   currentTestRunId?: number | null
   currentSlot?: number
@@ -157,15 +159,14 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{
-  runTests: [mode: 'emulator' | 'preview']
-  'update:networkMode': [mode: 'emulator' | 'preview']
-  cleanup: []
+  runTests: [mode: 'emulator' | 'preview' | 'preprod']
+  'update:networkMode': [mode: 'emulator' | 'preview' | 'preprod']
   loadTestRun: [runId: number]
   stepTime: [slots: number]
   resetTime: []
 }>()
 
-const networkMode = ref<'emulator' | 'preview'>('emulator')
+const networkMode = ref<'emulator' | 'preview' | 'preprod'>('emulator')
 
 // Filter test runs by current network mode
 const filteredTestRuns = computed(() => {
@@ -179,7 +180,7 @@ const otherModeRunCount = computed(() => {
   return props.availableTestRuns.filter(run => run.networkMode !== networkMode.value).length
 })
 
-function setNetwork(mode: 'emulator' | 'preview') {
+function setNetwork(mode: 'emulator' | 'preview' | 'preprod') {
   networkMode.value = mode
   emit('update:networkMode', mode)
 }
@@ -318,9 +319,11 @@ function formatElapsed(ms: number): string {
   border: 1px solid rgba(255, 255, 255, 0.2);
   color: #e2e8f0;
   border-radius: 0.375rem;
-  padding: 0.5rem 0.75rem;
+  padding: 0.375rem 0.75rem;
   font-size: 0.85rem;
   min-width: 180px;
+  min-height: 2rem;
+  line-height: 1.25;
   cursor: pointer;
 }
 
@@ -397,6 +400,19 @@ function formatElapsed(ms: number): string {
   color: white;
 }
 
+.btn-preprod {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  border-color: #f59e0b;
+  color: white;
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
+}
+
+.btn-preprod:hover {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  border-color: #fbbf24;
+  color: white;
+}
+
 .btn-outline-secondary {
   background: rgba(255, 255, 255, 0.05);
   border-color: rgba(255, 255, 255, 0.2);
@@ -438,6 +454,12 @@ function formatElapsed(ms: number): string {
   color: #c4b5fd;
 }
 
+.banner-preprod {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(217, 119, 6, 0.1) 100%);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #fcd34d;
+}
+
 .preview-warning {
   color: #fbbf24;
   font-size: 0.75rem;
@@ -448,20 +470,4 @@ function formatElapsed(ms: number): string {
   gap: 1rem;
 }
 
-.btn-cleanup {
-  padding: 0.6rem 1.25rem;
-  font-weight: 600;
-  font-size: 0.95rem;
-  height: calc(0.6rem * 2 + 1.5rem + 4px);
-  display: inline-flex;
-  align-items: center;
-  border-width: 2px;
-  transition: all 0.2s ease;
-}
-
-.btn-cleanup:hover:not(:disabled) {
-  background: rgba(220, 53, 69, 0.15);
-  border-color: #dc3545;
-  color: #dc3545;
-}
 </style>
