@@ -370,7 +370,7 @@
           <div class="loan-calculations mt-4">
             <h6 class="text-muted mb-2"><i class="fas fa-calculator mr-1"></i> Loan Analysis</h6>
             <div class="calculations-grid">
-              <div v-for="(loan, index) in localConfig.loans" :key="'calc-' + index" class="loan-calc-card">
+              <div v-for="(loan, index) in sortedLoans" :key="loan._uid || ('calc-' + index)" class="loan-calc-card">
                 <div class="calc-header">
                   <span class="calc-index">#{{ index + 1 }}</span>
                   <span class="calc-asset">{{ loan.asset || 'Unnamed' }}</span>
@@ -525,10 +525,7 @@
               <div class="phase-header-collapsible" @click="collapsedSections.phase1 = !collapsedSections.phase1">
                 <i class="fas phase-chevron" :class="collapsedSections.phase1 ? 'fa-chevron-right' : 'fa-chevron-down'"></i>
                 <div class="phase-number">1</div>
-                <div class="phase-info">
-                  <div class="phase-title">Setup & Identities</div>
-                  <div class="phase-description">Create and fund wallets for all participants</div>
-                </div>
+                <div class="phase-title">Setup & Identities</div>
                 <span class="badge badge-secondary ml-auto">{{ localConfig.wallets.length }} wallets</span>
               </div>
               <div v-show="!collapsedSections.phase1" class="phase-steps">
@@ -564,10 +561,7 @@
               <div class="phase-header-collapsible" @click="collapsedSections.phase2 = !collapsedSections.phase2">
                 <i class="fas phase-chevron" :class="collapsedSections.phase2 ? 'fa-chevron-right' : 'fa-chevron-down'"></i>
                 <div class="phase-number">2</div>
-                <div class="phase-info">
-                  <div class="phase-title">Asset Tokenization</div>
-                  <div class="phase-description">Originators mint tokenized real-world assets</div>
-                </div>
+                <div class="phase-title">Asset Tokenization</div>
                 <span class="badge badge-secondary ml-auto">{{ totalAssets }} assets</span>
               </div>
               <div v-show="!collapsedSections.phase2" class="phase-steps">
@@ -591,10 +585,7 @@
               <div class="phase-header-collapsible" @click="collapsedSections.phase3 = !collapsedSections.phase3">
                 <i class="fas phase-chevron" :class="collapsedSections.phase3 ? 'fa-chevron-right' : 'fa-chevron-down'"></i>
                 <div class="phase-number">3</div>
-                <div class="phase-info">
-                  <div class="phase-title">Initialize Loan Contracts</div>
-                  <div class="phase-description">Create loans using tokenized assets as collateral</div>
-                </div>
+                <div class="phase-title">Initialize Loan Contracts</div>
                 <span class="badge badge-secondary ml-auto">{{ localConfig.loans.length }} loans</span>
               </div>
               <div v-show="!collapsedSections.phase3" class="phase-steps">
@@ -617,23 +608,24 @@
               <div class="phase-header-collapsible" @click="collapsedSections.phase4 = !collapsedSections.phase4">
                 <i class="fas phase-chevron" :class="collapsedSections.phase4 ? 'fa-chevron-right' : 'fa-chevron-down'"></i>
                 <div class="phase-number">4</div>
-                <div class="phase-info">
-                  <div class="phase-title">Run Contracts</div>
-                  <div class="phase-description">Execute loan lifecycle actions (accept, pay, collect, complete)</div>
-                </div>
+                <div class="phase-title">Run Contracts</div>
                 <span class="badge badge-secondary ml-auto">{{ postInitActionCount }} actions</span>
               </div>
               <div v-show="!collapsedSections.phase4" class="phase-steps phase-steps-timed">
                 <div v-for="item in sortedPostInitActions" :key="item.action.id" class="phase-step-item"
-                     :class="{ 'action-late': item.action.isLate, 'action-rejection': item.action.expectedResult === 'rejection' }">
+                     :class="{
+                       'action-late': item.action.isLate,
+                       'action-rejection': item.action.expectedResult === 'rejection'
+                     }">
                   <span class="action-type-badge" :class="'action-' + item.action.actionType">{{ item.action.label }}</span>
                   <span class="step-wallet" :class="'role-' + item.executorRole.toLowerCase()">{{ item.executorWallet }}</span>
                   <span class="step-arrow">→</span>
                   <span class="step-params">
                     <span v-if="item.action.amount" class="param-amount">{{ item.action.amount }} ADA</span>
+                    <span v-if="item.action.actionType === 'complete'" class="param-token"><i class="fas fa-gem"></i> {{ item.loan.asset }}</span>
                     <span v-if="item.action.isLate" class="param-late"><i class="fas fa-clock"></i> Late</span>
                     <span v-if="item.action.expectedResult === 'rejection'" class="param-rejection"><i class="fas fa-times-circle"></i> Reject</span>
-                    <span v-if="!item.action.amount && !item.action.isLate && item.action.expectedResult !== 'rejection'" class="param-empty">—</span>
+                    <span v-if="!item.action.amount && item.action.actionType !== 'complete' && !item.action.isLate && item.action.expectedResult !== 'rejection'" class="param-empty">—</span>
                   </span>
                   <span class="step-arrow">→</span>
                   <span class="step-contract">{{ item.contractRef }} ({{ item.loan.asset }})</span>
@@ -643,16 +635,13 @@
             </div>
           </div>
 
-          <!-- Loan Action Schedules (Collapsible) -->
-          <div class="collapsible-section mt-4" :class="{ 'collapsed': collapsedSections.loanSchedules }">
-            <div class="collapsible-header" @click="collapsedSections.loanSchedules = !collapsedSections.loanSchedules">
-              <i class="fas" :class="collapsedSections.loanSchedules ? 'fa-chevron-right' : 'fa-chevron-down'"></i>
-              <h5 class="mb-0"><i class="fas fa-calendar-alt mr-2"></i>Loan Action Schedules</h5>
+          <!-- Loan Action Schedules -->
+          <div class="loan-action-schedules mt-4">
+            <h5 class="schedules-header mb-3">
+              <i class="fas fa-calendar-alt mr-2"></i>Loan Action Schedules
               <small class="text-muted ml-2">(T+0 = Acceptance)</small>
-              <span class="badge badge-secondary ml-auto">{{ localConfig.loans.length }} loans</span>
-            </div>
-            <div v-show="!collapsedSections.loanSchedules" class="collapsible-content">
-              <div class="loan-schedules-grid">
+            </h5>
+            <div class="loan-schedules-grid">
               <div v-for="schedule in loanActionSchedules" :key="schedule.loan._uid || `loan-${schedule.loanIndex}`"
                    class="loan-schedule-card"
                    :class="['lc-border-' + (schedule.loan.lifecycleCase || 'T4'), { 'no-buyer': !hasValidBuyer(schedule.loan) && !['T1'].includes(schedule.loan.lifecycleCase || 'T4'), 'collapsed': collapsedLoanSchedules[schedule.loan._uid || `loan-${schedule.loanIndex}`] }]">
@@ -737,12 +726,17 @@
                         <i class="fas fa-times-circle"></i> Expected Rejection
                       </span>
                     </div>
+                    <div v-if="action.balance !== undefined" class="action-balance">
+                      <span class="balance-label">Bal:</span>
+                      <span class="balance-value" :class="{ 'balance-zero': action.balance === 0 }">
+                        {{ action.balance.toLocaleString() }}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
                 <!-- Summary -->
-                  <!-- Summary -->
-                  <div class="loan-schedule-summary">
+                <div class="loan-schedule-summary">
                     <span class="summary-item">
                       <i class="fas fa-list-ol"></i>
                       {{ schedule.actions.length }} actions
@@ -755,7 +749,6 @@
                 </div>
               </div>
             </div>
-          </div>
           </div>
 
           <!-- CLO Operations (Collapsible) -->
@@ -1131,7 +1124,6 @@ const collapsedSections = ref({
   phase3: false,
   phase4: false,
   // Other sections
-  loanSchedules: false,
   cloOperations: false,
   contractReference: false,
 })
@@ -1627,6 +1619,7 @@ interface LoanAction {
   timing: string // e.g., "T-0", "T+0", "T+1mo", "T+30d"
   timingPeriod: number // period number (0 = acceptance, negative = before, positive = after)
   amount?: number // payment amount in ADA
+  balance?: number // remaining balance after this action
   expectedResult: 'success' | 'failure' | 'rejection'
   isLate?: boolean
   description?: string
@@ -1738,6 +1731,8 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
   const freqLabel = getFrequencyLabel(loan.frequency)
   const buyerId = loan.borrowerId || null
   const buyerName = getBuyerName(buyerId)
+  const principal = loan.principal
+  let runningBalance = principal
 
   // All loans start with Init (pipeline T0)
   actions.push({
@@ -1747,6 +1742,7 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
     label: 'Initialize',
     timing: 'T-0',
     timingPeriod: -1,
+    balance: runningBalance,
     expectedResult: 'success',
     description: `Create loan contract with ${loan.asset} as collateral`
   })
@@ -1776,6 +1772,7 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
       break
 
     case 'T2': // Default
+      runningBalance -= termPayment
       actions.push({
         id: `${loanIndex}-accept`,
         loanIndex,
@@ -1784,6 +1781,7 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         timing: 'T+0',
         timingPeriod: 0,
         amount: termPayment,
+        balance: runningBalance,
         expectedResult: 'success',
         buyerId,
         buyerName,
@@ -1796,6 +1794,7 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         label: 'Claim Default',
         timing: `T+2${freqLabel}`,
         timingPeriod: 2,
+        balance: runningBalance,
         expectedResult: 'success',
         description: 'Seller claims default after missed payments'
       })
@@ -1804,6 +1803,7 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
     case 'T3': // Nominal (0% APR)
     case 'T4': // Nominal (with interest)
     case 'T7': // Reserved + Fees
+      runningBalance -= termPayment
       actions.push({
         id: `${loanIndex}-accept`,
         loanIndex,
@@ -1812,6 +1812,7 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         timing: 'T+0',
         timingPeriod: 0,
         amount: termPayment,
+        balance: runningBalance,
         expectedResult: 'success',
         buyerId,
         buyerName,
@@ -1819,6 +1820,7 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
       })
       // Add payment actions for remaining installments
       for (let i = 2; i <= totalPayments; i++) {
+        runningBalance -= termPayment
         actions.push({
           id: `${loanIndex}-pay-${i}`,
           loanIndex,
@@ -1827,6 +1829,7 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
           timing: `T+${i-1}${freqLabel}`,
           timingPeriod: i - 1,
           amount: termPayment,
+          balance: Math.max(0, runningBalance),
           expectedResult: 'success',
           description: `Installment ${i} of ${totalPayments}`
         })
@@ -1838,6 +1841,7 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         label: 'Complete',
         timing: `T+${totalPayments}${freqLabel}`,
         timingPeriod: totalPayments,
+        balance: 0,
         expectedResult: 'success',
         description: 'Transfer asset ownership to buyer'
       })
@@ -1854,6 +1858,7 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
       break
 
     case 'T5': // Late Fee
+      runningBalance -= termPayment
       actions.push({
         id: `${loanIndex}-accept`,
         loanIndex,
@@ -1862,12 +1867,14 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         timing: 'T+0',
         timingPeriod: 0,
         amount: termPayment,
+        balance: runningBalance,
         expectedResult: 'success',
         buyerId,
         buyerName,
         description: `Buyer accepts and pays 1st installment`
       })
-      // First payment is late
+      // First payment is late (late fee doesn't reduce principal balance)
+      runningBalance -= termPayment
       actions.push({
         id: `${loanIndex}-pay-2-late`,
         loanIndex,
@@ -1876,12 +1883,14 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         timing: `T+1${freqLabel}+`,
         timingPeriod: 1.5,
         amount: termPayment + (loan.lateFee || 10),
+        balance: runningBalance,
         expectedResult: 'success',
         isLate: true,
         description: `Late payment with ${loan.lateFee || 10} ADA fee`
       })
       // Remaining payments
       for (let i = 3; i <= totalPayments; i++) {
+        runningBalance -= termPayment
         actions.push({
           id: `${loanIndex}-pay-${i}`,
           loanIndex,
@@ -1890,6 +1899,7 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
           timing: `T+${i-1}${freqLabel}`,
           timingPeriod: i - 1,
           amount: termPayment,
+          balance: Math.max(0, runningBalance),
           expectedResult: 'success'
         })
       }
@@ -1900,6 +1910,7 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         label: 'Complete',
         timing: `T+${totalPayments}${freqLabel}`,
         timingPeriod: totalPayments,
+        balance: 0,
         expectedResult: 'success',
         description: 'Transfer asset ownership to buyer'
       })
@@ -1944,11 +1955,9 @@ const loanActionSchedules = computed(() => {
   }))
 })
 
-// Computed: Count of actions after initialization (for Phase 4)
+/// Computed: Count of actions after initialization (for Phase 4)
 const postInitActionCount = computed(() => {
-  return loanActionSchedules.value.reduce((total, schedule) => {
-    return total + schedule.actions.filter(a => a.actionType !== 'init').length
-  }, 0)
+  return sortedPostInitActions.value.length
 })
 
 // Computed: All post-init actions sorted by time for Phase 4
@@ -1959,14 +1968,23 @@ interface SortedAction {
   executorWallet: string
   executorRole: string
   contractRef: string
+  hasBuyer: boolean
 }
 
 const sortedPostInitActions = computed((): SortedAction[] => {
   const allActions: SortedAction[] = []
 
   for (const schedule of loanActionSchedules.value) {
+    const loanHasBuyer = hasValidBuyer(schedule.loan)
+    const isT1Lifecycle = ['T1'].includes(schedule.loan.lifecycleCase || 'T4')
+
     for (const action of schedule.actions) {
       if (action.actionType === 'init') continue
+
+      // Skip actions for loans without buyers (except T1 cancel-only and accept actions)
+      if (!loanHasBuyer && !isT1Lifecycle && action.actionType !== 'accept') {
+        continue
+      }
 
       // Determine executor based on action type
       let executorWallet = ''
@@ -1992,7 +2010,8 @@ const sortedPostInitActions = computed((): SortedAction[] => {
         loanIndex: schedule.loanIndex,
         executorWallet,
         executorRole,
-        contractRef: `Loan #${schedule.loanIndex + 1}`
+        contractRef: `Loan #${schedule.loanIndex + 1}`,
+        hasBuyer: loanHasBuyer
       })
     }
   }
@@ -2336,6 +2355,15 @@ onMounted(() => {
   padding: 0.75rem 1rem;
   margin-bottom: 0.25rem;
   transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.config-nav .nav-link .badge {
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .config-nav .nav-link:hover {
@@ -3858,6 +3886,30 @@ tr.drag-over {
   pointer-events: none;
 }
 
+.action-balance {
+  margin-left: auto;
+  font-family: 'SF Mono', monospace;
+  font-size: 0.7rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding-left: 0.5rem;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.action-balance .balance-label {
+  color: #64748b;
+}
+
+.action-balance .balance-value {
+  color: #93c5fd;
+  font-weight: 500;
+}
+
+.action-balance .balance-value.balance-zero {
+  color: #22c55e;
+}
+
 /* Contract Actions Reference */
 .contract-actions-reference {
   background: rgba(0, 0, 0, 0.15);
@@ -4184,6 +4236,7 @@ tr.drag-over {
 .phase-steps .phase-step-item {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.5rem;
   padding: 0.4rem 0.75rem;
   border-radius: 0.25rem;
@@ -4247,11 +4300,21 @@ tr.drag-over {
   color: #94a3b8;
   flex: 1;
   min-width: 100px;
+  word-break: break-word;
 }
 
 .step-params .param-amount {
   color: #93c5fd;
   font-weight: 500;
+}
+
+.step-params .param-token {
+  color: #a78bfa;
+  font-weight: 500;
+}
+
+.step-params .param-token i {
+  margin-right: 0.25rem;
 }
 
 .step-params .param-late {
@@ -4297,6 +4360,13 @@ tr.drag-over {
 .phase-steps-timed .phase-step-item.action-rejection {
   background: rgba(239, 68, 68, 0.05);
   border-left: 2px solid #ef4444;
+}
+
+.phase-steps-timed .phase-step-item.action-no-buyer {
+  opacity: 0.4;
+  pointer-events: none;
+  background: rgba(108, 117, 125, 0.05);
+  border-left: 2px solid #6c757d;
 }
 
 /* Loan Schedule Card Collapsible */
