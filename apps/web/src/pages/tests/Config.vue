@@ -513,72 +513,12 @@
 
         <!-- Lifecycle Tab -->
         <div v-if="activeTab === 'lifecycle'" class="config-panel lifecycle-tab">
-          <div class="panel-header d-flex justify-content-between align-items-start">
-            <div>
-              <h4>Pipeline Lifecycle</h4>
-              <p class="text-muted mb-0">Preview and configure the test execution sequence</p>
-            </div>
-            <!-- Time Display -->
-            <div class="time-control-panel">
-              <div class="time-display" :class="{ 'preview-mode': isTestnet }">
-                <div class="network-label">
-                  {{ localConfig.network === 'emulator' ? 'Simulated Time' : (localConfig.network === 'preprod' ? 'Preprod Testnet' : 'Preview Testnet') }}
-                </div>
-                <div class="time-value">
-                  <i class="fas fa-clock mr-2"></i>
-                  <span>Slot {{ simulatedSlot }}</span>
-                  <span class="time-separator">|</span>
-                  <span class="elapsed-time">{{ formatElapsedTime(simulatedSlot) }}</span>
-                </div>
-              </div>
-              <div v-if="localConfig.network === 'emulator'" class="time-controls mt-2">
-                <button class="btn btn-sm btn-outline-info" @click="stepTimeForward(1)" title="Advance 1 slot">
-                  <i class="fas fa-step-forward"></i> +1
-                </button>
-                <button class="btn btn-sm btn-outline-info" @click="stepTimeForward(100)" title="Advance 100 slots">
-                  <i class="fas fa-forward"></i> +100
-                </button>
-                <button class="btn btn-sm btn-outline-info" @click="stepTimeForward(43200)" title="Advance 1 day (~43200 slots)">
-                  <i class="fas fa-calendar-day"></i> +1 Day
-                </button>
-                <button class="btn btn-sm btn-outline-secondary" @click="resetTime" title="Reset to slot 0">
-                  <i class="fas fa-undo"></i>
-                </button>
-              </div>
-            </div>
+          <div class="panel-header">
+            <h4>Pipeline Lifecycle</h4>
+            <p class="text-muted mb-0">Configure the execution sequence and scheduled actions for each loan</p>
           </div>
 
-          <!-- Settings Row -->
-          <div class="row mb-4">
-            <div class="col-md-4">
-              <div class="form-group mb-0">
-                <label class="small text-muted">Step Delay</label>
-                <div class="input-group input-group-sm">
-                  <input v-model.number="localConfig.lifecycle.stepDelay" type="number" min="0" max="5000" class="form-control" />
-                  <span class="input-group-text">ms</span>
-                </div>
-              </div>
-            </div>
-            <div class="col-md-8">
-              <label class="small text-muted d-block">Options</label>
-              <div class="d-flex gap-3">
-                <div class="form-check form-check-inline">
-                  <input type="checkbox" class="form-check-input" id="pausePhase" v-model="localConfig.lifecycle.pauseOnPhase" />
-                  <label class="form-check-label small" for="pausePhase">Pause between phases</label>
-                </div>
-                <div class="form-check form-check-inline">
-                  <input type="checkbox" class="form-check-input" id="pauseErr" v-model="localConfig.lifecycle.pauseOnError" />
-                  <label class="form-check-label small" for="pauseErr">Pause on error</label>
-                </div>
-                <div class="form-check form-check-inline">
-                  <input type="checkbox" class="form-check-input" id="verbose" v-model="localConfig.lifecycle.verboseLogging" />
-                  <label class="form-check-label small" for="verbose">Verbose</label>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Pipeline Preview -->
+          <!-- Pipeline Overview -->
           <div class="pipeline-preview">
             <div class="phase-timeline">
               <!-- Phase 1: Setup & Identities -->
@@ -679,106 +619,112 @@
                 </div>
               </div>
 
-              <!-- Phase 4: Accept Loans -->
-              <div class="phase-block">
-                <div class="phase-header d-flex align-items-center justify-content-between">
-                  <div class="d-flex align-items-center">
-                    <div class="phase-number">4</div>
-                    <div class="phase-info">
-                      <div class="phase-title">Accept Loan Contracts</div>
-                      <div class="phase-description">Buyers accept loans and make first payment to activate</div>
-                    </div>
+            </div>
+          </div>
+
+          <!-- Loan Action Schedules -->
+          <div class="loan-action-schedules mt-4">
+            <h5 class="mb-3">
+              <i class="fas fa-calendar-alt mr-2"></i>
+              Loan Action Schedules
+              <small class="text-muted ml-2">(T+0 = Acceptance)</small>
+            </h5>
+
+            <div class="loan-schedules-grid">
+              <div v-for="schedule in loanActionSchedules" :key="schedule.loanIndex" class="loan-schedule-card" :class="'lc-border-' + (schedule.loan.lifecycleCase || 'T4')">
+                <!-- Loan Header -->
+                <div class="loan-schedule-header">
+                  <div class="loan-schedule-index">#{{ schedule.loanIndex + 1 }}</div>
+                  <div class="loan-schedule-info">
+                    <span class="loan-schedule-asset">{{ schedule.loan.asset }}</span>
+                    <span class="loan-schedule-principal">{{ schedule.loan.principal.toLocaleString() }} ADA</span>
                   </div>
-                  <div class="d-flex align-items-center gap-2">
-                    <span class="badge badge-secondary">{{ acceptableLoansCount }} accepts</span>
+                  <div class="lifecycle-badge" :class="'lc-' + (schedule.loan.lifecycleCase || 'T4')">
+                    {{ schedule.loan.lifecycleCase || 'T4' }}
                   </div>
                 </div>
-                <div class="phase-steps">
-                  <div v-for="(loan, li) in acceptableLoans" :key="'accept-' + li" class="phase-step-item" :class="{ 'step-disabled': loan.lifecycleCase === 'T1' }">
-                    <div class="d-flex align-items-center">
-                      <div class="step-status-icon">
-                        <i v-if="loan.lifecycleCase === 'T1'" class="fas fa-ban text-secondary"></i>
-                        <i v-else-if="loan.lifecycleCase === 'T6'" class="fas fa-times-circle text-danger" title="Expected rejection"></i>
-                        <i v-else class="far fa-circle text-muted"></i>
-                      </div>
-                      <span class="step-action-bubble action-accept" :class="{ 'action-disabled': loan.lifecycleCase === 'T1' }">Accept</span>
-                      <span class="step-entity-text" :class="{ 'text-muted': loan.lifecycleCase === 'T1' }">
-                        {{ getBorrowerName(loan.borrowerId) || 'Available Buyer' }} → {{ loan.asset }} Loan
-                        <span v-if="loan.lifecycleCase === 'T1'" class="step-disabled-reason">(Skipped - Cancel case)</span>
-                        <span v-if="loan.lifecycleCase === 'T6'" class="text-danger ml-1">(Expected rejection)</span>
+
+                <!-- Action Timeline -->
+                <div class="loan-action-timeline">
+                  <div v-for="action in schedule.actions" :key="action.id"
+                       class="action-item"
+                       :class="{
+                         'action-pre-t0': action.timingPeriod < 0,
+                         'action-t0': action.timingPeriod === 0,
+                         'action-post-t0': action.timingPeriod > 0,
+                         'action-late': action.isLate,
+                         'action-rejection': action.expectedResult === 'rejection'
+                       }">
+                    <div class="action-timing">{{ action.timing }}</div>
+                    <div class="action-content">
+                      <span class="action-type-badge" :class="'action-' + action.actionType">
+                        {{ action.label }}
+                      </span>
+                      <span v-if="action.amount !== undefined" class="action-amount">
+                        <input
+                          type="number"
+                          :value="action.amount"
+                          @change="updateActionAmount(schedule.loanIndex, action.id, parseFloat(($event.target as HTMLInputElement).value))"
+                          class="action-amount-input"
+                          :title="action.description || ''"
+                        /> ADA
+                      </span>
+                      <span v-if="action.isLate" class="action-late-badge">
+                        <i class="fas fa-clock"></i> Late
+                      </span>
+                      <span v-if="action.expectedResult === 'rejection'" class="action-rejection-badge">
+                        <i class="fas fa-times-circle"></i> Expected Rejection
                       </span>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <!-- Phase 5: CLO -->
-              <div class="phase-block">
-                <div class="phase-header d-flex align-items-center justify-content-between">
-                  <div class="d-flex align-items-center">
-                    <div class="phase-number">5</div>
-                    <div class="phase-info">
-                      <div class="phase-title">CLO Bundle & Distribution</div>
-                      <div class="phase-description">Bundle collateral into CLO with tranches</div>
-                    </div>
-                  </div>
-                  <div class="d-flex align-items-center gap-2">
-                    <span class="badge badge-secondary">{{ localConfig.clo?.tranches.length }} tranches</span>
-                  </div>
-                </div>
-                <div class="phase-steps">
-                  <div class="phase-step-item">
-                    <div class="d-flex align-items-center">
-                      <div class="step-status-icon"><i class="far fa-circle text-muted"></i></div>
-                      <span class="step-action-bubble action-clo">Init</span>
-                      <span class="step-entity-text">{{ localConfig.clo?.name }} ({{ localConfig.clo?.tranches.length }} Tranches)</span>
-                    </div>
-                  </div>
-                  <div class="phase-step-item">
-                    <div class="d-flex align-items-center">
-                      <div class="step-status-icon"><i class="far fa-circle text-muted"></i></div>
-                      <span class="step-action-bubble action-clo">Bundle</span>
-                      <span class="step-entity-text">Collateral Tokens from active loans</span>
-                    </div>
-                  </div>
-                  <div class="phase-step-item">
-                    <div class="d-flex align-items-center">
-                      <div class="step-status-icon"><i class="far fa-circle text-muted"></i></div>
-                      <span class="step-action-bubble action-clo">Mint</span>
-                      <span class="step-entity-text">Tranche Tokens (Senior, Mezzanine, Junior)</span>
-                    </div>
-                  </div>
+                <!-- Summary -->
+                <div class="loan-schedule-summary">
+                  <span class="summary-item">
+                    <i class="fas fa-list-ol"></i>
+                    {{ schedule.actions.length }} actions
+                  </span>
+                  <span class="summary-item">
+                    <i class="fas fa-coins"></i>
+                    {{ calculateTotalValue(schedule.loan).toFixed(0) }} ADA total
+                  </span>
                 </div>
               </div>
+            </div>
+          </div>
 
-              <!-- Phase 6: Payments -->
-              <div class="phase-block">
-                <div class="phase-header d-flex align-items-center justify-content-between">
+          <!-- CLO Phase (kept separate) -->
+          <div class="clo-phase-preview mt-4">
+            <h5 class="mb-3"><i class="fas fa-layer-group mr-2"></i> CLO Operations</h5>
+            <div class="phase-block">
+              <div class="phase-steps">
+                <div class="phase-step-item">
                   <div class="d-flex align-items-center">
-                    <div class="phase-number">6</div>
-                    <div class="phase-info">
-                      <div class="phase-title">Make Loan Payments</div>
-                      <div class="phase-description">Borrowers make scheduled payments on their loans</div>
-                    </div>
-                  </div>
-                  <div class="d-flex align-items-center gap-2">
-                    <span class="badge badge-secondary">{{ payableLoansCount }} loans</span>
+                    <div class="step-status-icon"><i class="far fa-circle text-muted"></i></div>
+                    <span class="step-action-bubble action-clo">Init</span>
+                    <span class="step-entity-text">{{ localConfig.clo?.name }} ({{ localConfig.clo?.tranches.length }} Tranches)</span>
                   </div>
                 </div>
-                <div class="phase-steps">
-                  <div v-for="(loan, li) in payableLoans" :key="'pay-' + li" class="phase-step-item" :class="{ 'step-disabled': ['T1', 'T2', 'T6'].includes(loan.lifecycleCase || 'T4') }">
-                    <div class="d-flex align-items-center">
-                      <div class="step-status-icon">
-                        <i v-if="['T1', 'T2', 'T6'].includes(loan.lifecycleCase || 'T4')" class="fas fa-ban text-secondary"></i>
-                        <i v-else class="far fa-circle text-muted"></i>
-                      </div>
-                      <span class="step-action-bubble action-payment" :class="{ 'action-disabled': ['T1', 'T2', 'T6'].includes(loan.lifecycleCase || 'T4') }">Pay</span>
-                      <span class="step-entity-text" :class="{ 'text-muted': ['T1', 'T2', 'T6'].includes(loan.lifecycleCase || 'T4') }">
-                        {{ getBorrowerName(loan.borrowerId) || 'Borrower' }} → {{ loan.asset }} Loan
-                        <span v-if="loan.lifecycleCase === 'T5'" class="text-warning ml-1">(Late)</span>
-                        <span v-if="['T1', 'T2', 'T6'].includes(loan.lifecycleCase || 'T4')" class="step-disabled-reason">(Skipped)</span>
-                      </span>
-                    </div>
+                <div class="phase-step-item">
+                  <div class="d-flex align-items-center">
+                    <div class="step-status-icon"><i class="far fa-circle text-muted"></i></div>
+                    <span class="step-action-bubble action-clo">Bundle</span>
+                    <span class="step-entity-text">Collateral Tokens from {{ cloEligibleLoans.length }} active loans</span>
+                  </div>
+                </div>
+                <div class="phase-step-item">
+                  <div class="d-flex align-items-center">
+                    <div class="step-status-icon"><i class="far fa-circle text-muted"></i></div>
+                    <span class="step-action-bubble action-clo">Mint</span>
+                    <span class="step-entity-text">Tranche Tokens (Senior, Mezzanine, Junior)</span>
+                  </div>
+                </div>
+                <div class="phase-step-item">
+                  <div class="d-flex align-items-center">
+                    <div class="step-status-icon"><i class="far fa-circle text-muted"></i></div>
+                    <span class="step-action-bubble action-clo">Distribute</span>
+                    <span class="step-entity-text">Waterfall payments to tranche holders</span>
                   </div>
                 </div>
               </div>
@@ -1076,26 +1022,13 @@ function dragEnd() {
   dragOverIndex.value = null
 }
 
-// Simulated time for emulator
-const simulatedSlot = ref(0)
-
-// Default lifecycle config
-const DEFAULT_LIFECYCLE = {
-  timeScale: 'instant' as 'instant' | 'fast' | 'realistic',
-  stepDelay: 400,
-  pauseOnPhase: false,
-  pauseOnError: true,
-  verboseLogging: false,
-}
-
 // Local config state
-const localConfig = ref<PipelineConfig & { lifecycle: typeof DEFAULT_LIFECYCLE }>({
+const localConfig = ref<PipelineConfig>({
   network: 'emulator',
   wallets: JSON.parse(JSON.stringify(DEFAULT_WALLETS)),
   loans: JSON.parse(JSON.stringify(DEFAULT_LOANS)),
   clo: JSON.parse(JSON.stringify(DEFAULT_CLO)),
   monteCarlo: JSON.parse(JSON.stringify(DEFAULT_MONTE_CARLO)),
-  lifecycle: { ...DEFAULT_LIFECYCLE },
 })
 
 // Asset modal
@@ -1144,11 +1077,6 @@ const walletCounts = computed(() => ({
 // Total initial ADA across all wallets (for testnet faucet warning)
 const totalInitialAda = computed(() => {
   return localConfig.value.wallets.reduce((sum, w) => sum + (w.initialFunding || 0), 0)
-})
-
-// Check if using a testnet (preview or preprod)
-const isTestnet = computed(() => {
-  return localConfig.value.network === 'preview' || localConfig.value.network === 'preprod'
 })
 
 const loanCounts = computed(() => ({
@@ -1395,41 +1323,234 @@ const totalAssets = computed(() => {
   return originatorWallets.value.reduce((sum, w) => sum + (w.assets?.length || 0), 0)
 })
 
-const acceptableLoans = computed(() => {
-  return localConfig.value.loans
-})
-
-const acceptableLoansCount = computed(() => {
-  return localConfig.value.loans.filter(l => l.lifecycleCase !== 'T1').length
-})
-
-const payableLoans = computed(() => {
-  return localConfig.value.loans
-})
-
-const payableLoansCount = computed(() => {
-  return localConfig.value.loans.filter(l => !['T1', 'T2', 'T6'].includes(l.lifecycleCase || 'T4')).length
-})
-
-// Time control functions
-function stepTimeForward(slots: number) {
-  simulatedSlot.value += slots
+// Loan action schedule - generates scheduled actions per loan based on lifecycle case
+interface LoanAction {
+  id: string
+  loanIndex: number
+  actionType: 'init' | 'update' | 'cancel' | 'accept' | 'pay' | 'complete' | 'collect' | 'default'
+  label: string
+  timing: string // e.g., "T-0", "T+0", "T+1mo", "T+30d"
+  timingPeriod: number // period number (0 = acceptance, negative = before, positive = after)
+  amount?: number // payment amount in ADA
+  expectedResult: 'success' | 'failure' | 'rejection'
+  isLate?: boolean
+  description?: string
 }
 
-function resetTime() {
-  simulatedSlot.value = 0
+// Generate action schedule for a loan based on its lifecycle case
+function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
+  const actions: LoanAction[] = []
+  const lifecycleCase = loan.lifecycleCase || 'T4'
+  const termPayment = calculateTermPayment(loan)
+  const totalPayments = loan.termMonths
+  const freqLabel = getFrequencyLabel(loan.frequency)
+
+  // All loans start with Init (pipeline T0)
+  actions.push({
+    id: `${loanIndex}-init`,
+    loanIndex,
+    actionType: 'init',
+    label: 'Initialize',
+    timing: 'T-0',
+    timingPeriod: -1,
+    expectedResult: 'success',
+    description: `Create loan contract with ${loan.asset} as collateral`
+  })
+
+  switch (lifecycleCase) {
+    case 'T1': // Cancel
+      actions.push({
+        id: `${loanIndex}-update`,
+        loanIndex,
+        actionType: 'update',
+        label: 'Update Terms',
+        timing: 'T-0',
+        timingPeriod: -1,
+        expectedResult: 'success',
+        description: 'Seller updates contract terms'
+      })
+      actions.push({
+        id: `${loanIndex}-cancel`,
+        loanIndex,
+        actionType: 'cancel',
+        label: 'Cancel',
+        timing: 'T-0',
+        timingPeriod: -1,
+        expectedResult: 'success',
+        description: 'Seller cancels contract, reclaims collateral'
+      })
+      break
+
+    case 'T2': // Default
+      actions.push({
+        id: `${loanIndex}-accept`,
+        loanIndex,
+        actionType: 'accept',
+        label: 'Accept',
+        timing: 'T+0',
+        timingPeriod: 0,
+        amount: termPayment,
+        expectedResult: 'success',
+        description: `Buyer accepts and pays first installment`
+      })
+      actions.push({
+        id: `${loanIndex}-default`,
+        loanIndex,
+        actionType: 'default',
+        label: 'Claim Default',
+        timing: `T+2${freqLabel}`,
+        timingPeriod: 2,
+        expectedResult: 'success',
+        description: 'Seller claims default after missed payments'
+      })
+      break
+
+    case 'T3': // Nominal (0% APR)
+    case 'T4': // Nominal (with interest)
+    case 'T7': // Reserved + Fees
+      actions.push({
+        id: `${loanIndex}-accept`,
+        loanIndex,
+        actionType: 'accept',
+        label: 'Accept',
+        timing: 'T+0',
+        timingPeriod: 0,
+        amount: termPayment,
+        expectedResult: 'success',
+        description: `Buyer accepts and pays 1st of ${totalPayments} installments`
+      })
+      // Add payment actions for remaining installments
+      for (let i = 2; i <= totalPayments; i++) {
+        actions.push({
+          id: `${loanIndex}-pay-${i}`,
+          loanIndex,
+          actionType: 'pay',
+          label: `Pay #${i}`,
+          timing: `T+${i-1}${freqLabel}`,
+          timingPeriod: i - 1,
+          amount: termPayment,
+          expectedResult: 'success',
+          description: `Installment ${i} of ${totalPayments}`
+        })
+      }
+      actions.push({
+        id: `${loanIndex}-complete`,
+        loanIndex,
+        actionType: 'complete',
+        label: 'Complete',
+        timing: `T+${totalPayments}${freqLabel}`,
+        timingPeriod: totalPayments,
+        expectedResult: 'success',
+        description: 'Transfer asset ownership to buyer'
+      })
+      actions.push({
+        id: `${loanIndex}-collect`,
+        loanIndex,
+        actionType: 'collect',
+        label: 'Collect',
+        timing: `T+${totalPayments}${freqLabel}`,
+        timingPeriod: totalPayments,
+        expectedResult: 'success',
+        description: 'Seller collects accumulated payments'
+      })
+      break
+
+    case 'T5': // Late Fee
+      actions.push({
+        id: `${loanIndex}-accept`,
+        loanIndex,
+        actionType: 'accept',
+        label: 'Accept',
+        timing: 'T+0',
+        timingPeriod: 0,
+        amount: termPayment,
+        expectedResult: 'success',
+        description: `Buyer accepts and pays 1st installment`
+      })
+      // First payment is late
+      actions.push({
+        id: `${loanIndex}-pay-2-late`,
+        loanIndex,
+        actionType: 'pay',
+        label: 'Pay #2 (Late)',
+        timing: `T+1${freqLabel}+`,
+        timingPeriod: 1.5,
+        amount: termPayment + (loan.lateFee || 10),
+        expectedResult: 'success',
+        isLate: true,
+        description: `Late payment with ${loan.lateFee || 10} ADA fee`
+      })
+      // Remaining payments
+      for (let i = 3; i <= totalPayments; i++) {
+        actions.push({
+          id: `${loanIndex}-pay-${i}`,
+          loanIndex,
+          actionType: 'pay',
+          label: `Pay #${i}`,
+          timing: `T+${i-1}${freqLabel}`,
+          timingPeriod: i - 1,
+          amount: termPayment,
+          expectedResult: 'success'
+        })
+      }
+      actions.push({
+        id: `${loanIndex}-complete`,
+        loanIndex,
+        actionType: 'complete',
+        label: 'Complete',
+        timing: `T+${totalPayments}${freqLabel}`,
+        timingPeriod: totalPayments,
+        expectedResult: 'success',
+        description: 'Transfer asset ownership to buyer'
+      })
+      actions.push({
+        id: `${loanIndex}-collect`,
+        loanIndex,
+        actionType: 'collect',
+        label: 'Collect',
+        timing: `T+${totalPayments}${freqLabel}`,
+        timingPeriod: totalPayments,
+        expectedResult: 'success',
+        description: 'Seller collects accumulated payments'
+      })
+      break
+
+    case 'T6': // Reserved (Reject)
+      actions.push({
+        id: `${loanIndex}-accept-reject`,
+        loanIndex,
+        actionType: 'accept',
+        label: 'Accept (Wrong Buyer)',
+        timing: 'T+0',
+        timingPeriod: 0,
+        amount: termPayment,
+        expectedResult: 'rejection',
+        description: 'Non-reserved buyer attempts acceptance (expected rejection)'
+      })
+      break
+  }
+
+  return actions
 }
 
-function formatElapsedTime(slot: number): string {
-  // Cardano has ~1 second slots
-  const seconds = slot
-  if (seconds < 60) return `${seconds}s`
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
-  const hours = Math.floor(seconds / 3600)
-  const mins = Math.floor((seconds % 3600) / 60)
-  if (hours < 24) return `${hours}h ${mins}m`
-  const days = Math.floor(hours / 24)
-  return `${days}d ${hours % 24}h`
+// Computed: All loan action schedules
+const loanActionSchedules = computed(() => {
+  return localConfig.value.loans.map((loan, index) => ({
+    loanIndex: index,
+    loan,
+    actions: generateLoanActions(loan, index)
+  }))
+})
+
+// Update a loan action amount
+function updateActionAmount(loanIndex: number, actionId: string, newAmount: number) {
+  const schedule = loanActionSchedules.value.find(s => s.loanIndex === loanIndex)
+  if (schedule) {
+    const action = schedule.actions.find(a => a.id === actionId)
+    if (action) {
+      action.amount = newAmount
+    }
+  }
 }
 
 // Get borrower name from ID
@@ -1525,7 +1646,6 @@ function resetToDefaults() {
     loans: JSON.parse(JSON.stringify(DEFAULT_LOANS)),
     clo: JSON.parse(JSON.stringify(DEFAULT_CLO)),
     monteCarlo: JSON.parse(JSON.stringify(DEFAULT_MONTE_CARLO)),
-    lifecycle: { ...DEFAULT_LIFECYCLE },
   }
   configName.value = ''
   selectedConfigId.value = null
@@ -1545,10 +1665,6 @@ function loadSelectedConfig() {
   const found = configs.find((cfg: any) => cfg.id === selectedConfigId.value)
   if (found && found.config) {
     localConfig.value = JSON.parse(JSON.stringify(found.config))
-    // Ensure lifecycle config exists
-    if (!localConfig.value.lifecycle) {
-      localConfig.value.lifecycle = { ...DEFAULT_LIFECYCLE }
-    }
     configName.value = found.name
     console.log('Loaded config:', found.name)
   }
@@ -2970,5 +3086,220 @@ tr.drag-over {
 .loans-table .form-check-input:disabled {
   opacity: 0.3;
   cursor: not-allowed;
+}
+
+/* Loan Action Schedules */
+.loan-action-schedules h5 {
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.loan-schedules-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1rem;
+}
+
+.loan-schedule-card {
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  border-left: 4px solid #3b82f6;
+}
+
+/* Lifecycle border colors */
+.loan-schedule-card.lc-border-T1 { border-left-color: #6b7280; }
+.loan-schedule-card.lc-border-T2 { border-left-color: #ef4444; }
+.loan-schedule-card.lc-border-T3 { border-left-color: #22c55e; }
+.loan-schedule-card.lc-border-T4 { border-left-color: #3b82f6; }
+.loan-schedule-card.lc-border-T5 { border-left-color: #fbbf24; }
+.loan-schedule-card.lc-border-T6 { border-left-color: #dc2626; }
+.loan-schedule-card.lc-border-T7 { border-left-color: #8b5cf6; }
+
+.loan-schedule-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.loan-schedule-index {
+  font-weight: 700;
+  font-size: 1rem;
+  color: #94a3b8;
+  min-width: 32px;
+}
+
+.loan-schedule-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.loan-schedule-asset {
+  font-weight: 600;
+  color: #e2e8f0;
+  font-size: 0.9rem;
+}
+
+.loan-schedule-principal {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+/* Action Timeline */
+.loan-action-timeline {
+  padding: 0.5rem 0;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.action-item {
+  display: flex;
+  align-items: center;
+  padding: 0.35rem 1rem;
+  gap: 0.5rem;
+  border-left: 2px solid transparent;
+  margin-left: 0.5rem;
+  transition: background 0.15s ease;
+}
+
+.action-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.action-item.action-pre-t0 {
+  border-left-color: #6b7280;
+}
+
+.action-item.action-t0 {
+  border-left-color: #22c55e;
+  background: rgba(34, 197, 94, 0.05);
+}
+
+.action-item.action-post-t0 {
+  border-left-color: #3b82f6;
+}
+
+.action-item.action-late {
+  border-left-color: #fbbf24;
+  background: rgba(251, 191, 36, 0.05);
+}
+
+.action-item.action-rejection {
+  border-left-color: #ef4444;
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.action-timing {
+  font-family: 'SF Mono', monospace;
+  font-size: 0.7rem;
+  color: #64748b;
+  min-width: 50px;
+  text-align: right;
+}
+
+.action-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.action-type-badge {
+  display: inline-block;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.action-type-badge.action-init { background: rgba(139, 92, 246, 0.2); color: #c4b5fd; }
+.action-type-badge.action-update { background: rgba(14, 165, 233, 0.2); color: #7dd3fc; }
+.action-type-badge.action-cancel { background: rgba(107, 114, 128, 0.3); color: #d1d5db; }
+.action-type-badge.action-accept { background: rgba(34, 197, 94, 0.2); color: #86efac; }
+.action-type-badge.action-pay { background: rgba(59, 130, 246, 0.2); color: #93c5fd; }
+.action-type-badge.action-complete { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; }
+.action-type-badge.action-collect { background: rgba(245, 158, 11, 0.2); color: #fcd34d; }
+.action-type-badge.action-default { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
+
+.action-amount {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.action-amount-input {
+  width: 60px;
+  padding: 0.15rem 0.3rem;
+  font-size: 0.75rem;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+  color: #e2e8f0;
+  text-align: right;
+}
+
+.action-amount-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.action-late-badge {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.3rem;
+  background: rgba(251, 191, 36, 0.2);
+  color: #fcd34d;
+  border-radius: 2px;
+}
+
+.action-rejection-badge {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.3rem;
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  border-radius: 2px;
+}
+
+/* Loan Schedule Summary */
+.loan-schedule-summary {
+  display: flex;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.summary-item {
+  font-size: 0.7rem;
+  color: #64748b;
+}
+
+.summary-item i {
+  margin-right: 0.25rem;
+}
+
+/* CLO Phase Preview */
+.clo-phase-preview h5 {
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.clo-phase-preview .phase-block {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+}
+
+.clo-phase-preview .phase-steps {
+  padding: 0;
 }
 </style>
