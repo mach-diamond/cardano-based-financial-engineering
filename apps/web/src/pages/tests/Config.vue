@@ -518,11 +518,18 @@
             <p class="text-muted mb-0">Configure the execution sequence and scheduled actions for each loan</p>
           </div>
 
-          <!-- Pipeline Overview -->
-          <div class="pipeline-preview">
-            <div class="phase-timeline">
-              <!-- Phase 1: Setup & Identities -->
-              <div class="phase-block">
+          <!-- Pipeline Overview (Collapsible) -->
+          <div class="collapsible-section" :class="{ 'collapsed': collapsedSections.pipelineOverview }">
+            <div class="collapsible-header" @click="collapsedSections.pipelineOverview = !collapsedSections.pipelineOverview">
+              <i class="fas" :class="collapsedSections.pipelineOverview ? 'fa-chevron-right' : 'fa-chevron-down'"></i>
+              <h5 class="mb-0">Pipeline Phases</h5>
+              <span class="badge badge-secondary ml-auto">4 phases</span>
+            </div>
+            <div v-show="!collapsedSections.pipelineOverview" class="collapsible-content">
+              <div class="pipeline-preview">
+                <div class="phase-timeline">
+                  <!-- Phase 1: Setup & Identities -->
+                  <div class="phase-block">
                 <div class="phase-header d-flex align-items-center justify-content-between">
                   <div class="d-flex align-items-center">
                     <div class="phase-number">1</div>
@@ -608,7 +615,7 @@
                   <div v-for="(loan, li) in localConfig.loans" :key="'init-' + li" class="phase-step-item">
                     <div class="d-flex align-items-center">
                       <div class="step-status-icon"><i class="far fa-circle text-muted"></i></div>
-                      <span class="step-action-bubble action-loan">Create</span>
+                      <span class="step-action-bubble action-init">Initialize</span>
                       <span class="step-entity-text">
                         {{ getBorrowerName(loan.borrowerId) || 'Open Market' }} ← {{ loan.asset }}
                         <span class="text-muted">({{ loan.reservedBuyer ? 'Reserved' : 'Open' }})</span>
@@ -619,18 +626,53 @@
                 </div>
               </div>
 
+              <!-- Phase 4: Run Contracts -->
+              <div class="phase-block">
+                <div class="phase-header d-flex align-items-center justify-content-between">
+                  <div class="d-flex align-items-center">
+                    <div class="phase-number">4</div>
+                    <div class="phase-info">
+                      <div class="phase-title">Run Contracts</div>
+                      <div class="phase-description">Execute loan lifecycle actions (accept, pay, collect, complete)</div>
+                    </div>
+                  </div>
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="badge badge-secondary">{{ postInitActionCount }} actions</span>
+                  </div>
+                </div>
+                <div class="phase-steps">
+                  <div v-for="schedule in loanActionSchedules" :key="'run-' + schedule.loanIndex">
+                    <div v-for="action in schedule.actions.filter(a => a.actionType !== 'init')" :key="action.id" class="phase-step-item">
+                      <div class="d-flex align-items-center">
+                        <div class="step-status-icon"><i class="far fa-circle text-muted"></i></div>
+                        <span class="step-action-bubble" :class="'action-' + action.actionType">{{ action.label }}</span>
+                        <span class="step-entity-text">
+                          Loan #{{ schedule.loanIndex + 1 }} ({{ schedule.loan.asset }})
+                          <span class="text-muted ml-1">{{ action.timing }}</span>
+                          <span v-if="action.amount" class="text-info ml-1">{{ action.amount }} ADA</span>
+                          <span v-if="action.buyerName && action.actionType === 'accept'" class="text-success ml-1">→ {{ action.buyerName }}</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+                </div>
+              </div>
             </div>
           </div>
 
-          <!-- Loan Action Schedules -->
-          <div class="loan-action-schedules mt-4">
-            <h5 class="mb-3">
-              <i class="fas fa-calendar-alt mr-2"></i>
-              Loan Action Schedules
+          <!-- Loan Action Schedules (Collapsible) -->
+          <div class="collapsible-section mt-4" :class="{ 'collapsed': collapsedSections.loanSchedules }">
+            <div class="collapsible-header" @click="collapsedSections.loanSchedules = !collapsedSections.loanSchedules">
+              <i class="fas" :class="collapsedSections.loanSchedules ? 'fa-chevron-right' : 'fa-chevron-down'"></i>
+              <h5 class="mb-0"><i class="fas fa-calendar-alt mr-2"></i>Loan Action Schedules</h5>
               <small class="text-muted ml-2">(T+0 = Acceptance)</small>
-            </h5>
-
-            <div class="loan-schedules-grid">
+              <span class="badge badge-secondary ml-auto">{{ localConfig.loans.length }} loans</span>
+            </div>
+            <div v-show="!collapsedSections.loanSchedules" class="collapsible-content">
+              <div class="loan-schedules-grid">
               <div v-for="schedule in loanActionSchedules" :key="schedule.loanIndex" class="loan-schedule-card" :class="['lc-border-' + (schedule.loan.lifecycleCase || 'T4'), { 'no-buyer': !hasValidBuyer(schedule.loan) && !['T1'].includes(schedule.loan.lifecycleCase || 'T4') }]">
                 <!-- Loan Header -->
                 <div class="loan-schedule-header">
@@ -726,11 +768,17 @@
               </div>
             </div>
           </div>
+          </div>
 
-          <!-- CLO Phase (kept separate) -->
-          <div class="clo-phase-preview mt-4">
-            <h5 class="mb-3"><i class="fas fa-layer-group mr-2"></i> CLO Operations</h5>
-            <div class="phase-block">
+          <!-- CLO Operations (Collapsible) -->
+          <div class="collapsible-section mt-4" :class="{ 'collapsed': collapsedSections.cloOperations }">
+            <div class="collapsible-header" @click="collapsedSections.cloOperations = !collapsedSections.cloOperations">
+              <i class="fas" :class="collapsedSections.cloOperations ? 'fa-chevron-right' : 'fa-chevron-down'"></i>
+              <h5 class="mb-0"><i class="fas fa-layer-group mr-2"></i>CLO Operations</h5>
+              <span class="badge badge-secondary ml-auto">{{ localConfig.clo?.tranches.length || 0 }} tranches</span>
+            </div>
+            <div v-show="!collapsedSections.cloOperations" class="collapsible-content">
+              <div class="phase-block">
               <div class="phase-steps">
                 <div class="phase-step-item">
                   <div class="d-flex align-items-center">
@@ -763,50 +811,198 @@
               </div>
             </div>
           </div>
-
-          <!-- Lifecycle Case & Contract Action References -->
-          <div class="row mt-4">
-            <div class="col-md-6">
-              <h6 class="text-muted mb-2"><i class="fas fa-file-contract mr-1"></i> Loan Lifecycle Cases</h6>
-              <div class="lifecycle-cases-compact">
-                <div v-for="lc in lifecycleCases" :key="lc.id" class="lc-compact" :class="'lc-' + lc.id" :title="lc.description">
-                  <span class="lc-id">{{ lc.id }}</span>
-                  <span class="lc-short">{{ lc.short }}</span>
-                </div>
-              </div>
-            </div>
-            <div class="col-md-6">
-              <h6 class="text-muted mb-2"><i class="fas fa-layer-group mr-1"></i> CLO Lifecycle Cases</h6>
-              <div class="lifecycle-cases-compact">
-                <div v-for="lc in cloLifecycleCases" :key="lc.id" class="lc-compact" :class="'lc-' + lc.id" :title="lc.description">
-                  <span class="lc-id">{{ lc.id }}</span>
-                  <span class="lc-short">{{ lc.short }}</span>
-                </div>
-              </div>
-            </div>
           </div>
 
-          <!-- Contract Actions Reference -->
-          <div class="contract-actions-reference mt-4">
-            <h6 class="text-muted mb-2">
-              <i class="fas fa-code mr-1"></i> Loan Contract Actions
-              <small class="text-muted ml-2">(asset-transfer/src/actions)</small>
-            </h6>
-            <div class="actions-grid">
-              <div v-for="action in contractActions" :key="action.name" class="action-ref-card">
-                <div class="action-ref-header">
-                  <span class="action-ref-name" :class="'action-' + action.name">{{ action.label }}</span>
-                  <span class="action-ref-executor">{{ action.executor }}</span>
+          <!-- Contract Reference (Collapsible with Tabs) -->
+          <div class="collapsible-section mt-4" :class="{ 'collapsed': collapsedSections.contractReference }">
+            <div class="collapsible-header" @click="collapsedSections.contractReference = !collapsedSections.contractReference">
+              <i class="fas" :class="collapsedSections.contractReference ? 'fa-chevron-right' : 'fa-chevron-down'"></i>
+              <h5 class="mb-0"><i class="fas fa-book mr-2"></i>Contract Reference</h5>
+              <span class="badge badge-secondary ml-auto">Documentation</span>
+            </div>
+            <div v-show="!collapsedSections.contractReference" class="collapsible-content">
+              <!-- Contract Type Tabs (Loan / CLO) -->
+              <div class="contract-ref-tabs">
+                <div class="contract-type-tabs">
+                  <button
+                    class="contract-type-tab"
+                    :class="{ active: contractRefTab === 'loan' }"
+                    @click="contractRefTab = 'loan'"
+                  >
+                    <i class="fas fa-file-contract mr-1"></i> Loan Contract
+                  </button>
+                  <button
+                    class="contract-type-tab"
+                    :class="{ active: contractRefTab === 'clo' }"
+                    @click="contractRefTab = 'clo'"
+                  >
+                    <i class="fas fa-layer-group mr-1"></i> CLO Contract
+                  </button>
                 </div>
-                <div class="action-ref-desc">{{ action.description }}</div>
-                <div v-if="action.params.length > 0" class="action-ref-params">
-                  <div v-for="param in action.params" :key="param.name" class="param-item">
-                    <code class="param-name">{{ param.name }}</code>
-                    <span class="param-type">{{ param.type }}</span>
-                    <span class="param-desc">{{ param.desc }}</span>
+
+                <!-- Sub-tabs (Actions / Lifecycle Cases) -->
+                <div class="contract-sub-tabs">
+                  <button
+                    class="contract-sub-tab"
+                    :class="{ active: contractRefSubTab === 'actions' }"
+                    @click="contractRefSubTab = 'actions'"
+                  >
+                    <i class="fas fa-code mr-1"></i> Actions
+                  </button>
+                  <button
+                    class="contract-sub-tab"
+                    :class="{ active: contractRefSubTab === 'lifecycle' }"
+                    @click="contractRefSubTab = 'lifecycle'"
+                  >
+                    <i class="fas fa-clock mr-1"></i> Lifecycle Cases
+                  </button>
+                </div>
+              </div>
+
+              <!-- Loan Contract Content -->
+              <div v-if="contractRefTab === 'loan'" class="contract-ref-content">
+                <!-- Loan Actions -->
+                <div v-if="contractRefSubTab === 'actions'" class="contract-actions-reference">
+                  <p class="text-muted small mb-3">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Actions from <code>asset-transfer/src/actions</code> for amortized loan contracts
+                  </p>
+                  <div class="actions-grid">
+                    <div v-for="action in contractActions" :key="action.name" class="action-ref-card">
+                      <div class="action-ref-header">
+                        <span class="action-ref-name" :class="'action-' + action.name">{{ action.label }}</span>
+                        <span class="action-ref-executor">{{ action.executor }}</span>
+                      </div>
+                      <div class="action-ref-desc">{{ action.description }}</div>
+                      <div v-if="action.params.length > 0" class="action-ref-params">
+                        <div v-for="param in action.params" :key="param.name" class="param-item">
+                          <code class="param-name">{{ param.name }}</code>
+                          <span class="param-type">{{ param.type }}</span>
+                          <span class="param-desc">{{ param.desc }}</span>
+                        </div>
+                      </div>
+                      <div v-else class="action-ref-params text-muted small">No parameters</div>
+                    </div>
                   </div>
                 </div>
-                <div v-else class="action-ref-params text-muted small">No parameters</div>
+
+                <!-- Loan Lifecycle Cases -->
+                <div v-if="contractRefSubTab === 'lifecycle'" class="lifecycle-ref">
+                  <p class="text-muted small mb-3">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Test case scenarios from <code>Tx_Tests.md</code> covering loan lifecycle paths
+                  </p>
+                  <div class="lifecycle-cases-detailed">
+                    <div v-for="lc in lifecycleCases" :key="lc.id" class="lifecycle-case-card" :class="'lc-border-' + lc.id">
+                      <div class="lifecycle-case-header">
+                        <span class="lifecycle-case-id" :class="'lc-' + lc.id">{{ lc.id }}</span>
+                        <span class="lifecycle-case-name">{{ lc.short }}</span>
+                      </div>
+                      <div class="lifecycle-case-desc">{{ lc.description }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- CLO Contract Content -->
+              <div v-if="contractRefTab === 'clo'" class="contract-ref-content">
+                <!-- CLO Actions -->
+                <div v-if="contractRefSubTab === 'actions'" class="contract-actions-reference">
+                  <p class="text-muted small mb-3">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    CLO contract actions for collateralized loan obligations
+                  </p>
+                  <div class="actions-grid">
+                    <div class="action-ref-card">
+                      <div class="action-ref-header">
+                        <span class="action-ref-name action-clo">Init</span>
+                        <span class="action-ref-executor">CLO Manager</span>
+                      </div>
+                      <div class="action-ref-desc">Create CLO structure with tranche configuration</div>
+                      <div class="action-ref-params">
+                        <div class="param-item">
+                          <code class="param-name">name</code>
+                          <span class="param-type">string</span>
+                          <span class="param-desc">CLO pool name</span>
+                        </div>
+                        <div class="param-item">
+                          <code class="param-name">tranches</code>
+                          <span class="param-type">Tranche[]</span>
+                          <span class="param-desc">Tranche definitions (senior, mezz, junior)</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="action-ref-card">
+                      <div class="action-ref-header">
+                        <span class="action-ref-name action-clo">Bundle</span>
+                        <span class="action-ref-executor">CLO Manager</span>
+                      </div>
+                      <div class="action-ref-desc">Add collateral tokens from active loan contracts</div>
+                      <div class="action-ref-params">
+                        <div class="param-item">
+                          <code class="param-name">collateralTokens</code>
+                          <span class="param-type">Asset[]</span>
+                          <span class="param-desc">Collateral tokens to bundle</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="action-ref-card">
+                      <div class="action-ref-header">
+                        <span class="action-ref-name action-clo">Mint</span>
+                        <span class="action-ref-executor">CLO Manager</span>
+                      </div>
+                      <div class="action-ref-desc">Mint tranche tokens for investors</div>
+                      <div class="action-ref-params text-muted small">No parameters</div>
+                    </div>
+                    <div class="action-ref-card">
+                      <div class="action-ref-header">
+                        <span class="action-ref-name action-clo">Distribute</span>
+                        <span class="action-ref-executor">CLO Manager</span>
+                      </div>
+                      <div class="action-ref-desc">Waterfall payment distribution to tranche holders</div>
+                      <div class="action-ref-params">
+                        <div class="param-item">
+                          <code class="param-name">amount</code>
+                          <span class="param-type">number</span>
+                          <span class="param-desc">Amount to distribute in lovelace</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="action-ref-card">
+                      <div class="action-ref-header">
+                        <span class="action-ref-name action-default">Liquidate</span>
+                        <span class="action-ref-executor">CLO Manager</span>
+                      </div>
+                      <div class="action-ref-desc">Early liquidation due to default threshold breach</div>
+                      <div class="action-ref-params text-muted small">No parameters</div>
+                    </div>
+                    <div class="action-ref-card">
+                      <div class="action-ref-header">
+                        <span class="action-ref-name action-complete">Mature</span>
+                        <span class="action-ref-executor">CLO Manager</span>
+                      </div>
+                      <div class="action-ref-desc">Complete CLO lifecycle, return collateral</div>
+                      <div class="action-ref-params text-muted small">No parameters</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- CLO Lifecycle Cases -->
+                <div v-if="contractRefSubTab === 'lifecycle'" class="lifecycle-ref">
+                  <p class="text-muted small mb-3">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Test case scenarios for CLO lifecycle paths
+                  </p>
+                  <div class="lifecycle-cases-detailed">
+                    <div v-for="lc in cloLifecycleCases" :key="lc.id" class="lifecycle-case-card" :class="'lc-border-' + lc.id">
+                      <div class="lifecycle-case-header">
+                        <span class="lifecycle-case-id" :class="'lc-' + lc.id">{{ lc.id }}</span>
+                        <span class="lifecycle-case-name">{{ lc.short }}</span>
+                      </div>
+                      <div class="lifecycle-case-desc">{{ lc.description }}</div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -938,6 +1134,18 @@ const selectedConfigId = ref<string | null>(null)
 const configName = ref('')
 
 const activeTab = ref('wallets')
+
+// Collapsible section states
+const collapsedSections = ref({
+  pipelineOverview: false,
+  loanSchedules: false,
+  cloOperations: false,
+  contractReference: false,
+})
+
+// Contract Reference tabs
+const contractRefTab = ref<'loan' | 'clo'>('loan')
+const contractRefSubTab = ref<'actions' | 'lifecycle'>('actions')
 
 const tabs = computed(() => [
   { id: 'wallets', label: 'Wallets', icon: 'fas fa-wallet', count: localConfig.value.wallets.length },
@@ -1697,6 +1905,13 @@ const loanActionSchedules = computed(() => {
     loan,
     actions: generateLoanActions(loan, index)
   }))
+})
+
+// Computed: Count of actions after initialization (for Phase 4)
+const postInitActionCount = computed(() => {
+  return loanActionSchedules.value.reduce((total, schedule) => {
+    return total + schedule.actions.filter(a => a.actionType !== 'init').length
+  }, 0)
 })
 
 // Update a loan action amount
@@ -3652,5 +3867,191 @@ tr.drag-over {
   color: #94a3b8;
   flex: 1;
   min-width: 100px;
+}
+
+/* Collapsible Sections */
+.collapsible-section {
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.collapsible-section.collapsed {
+  border-color: rgba(255, 255, 255, 0.05);
+}
+
+.collapsible-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease;
+}
+
+.collapsible-header:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.collapsible-header i.fas {
+  color: #64748b;
+  font-size: 0.75rem;
+  width: 12px;
+}
+
+.collapsible-header h5 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.collapsible-content {
+  padding: 1rem;
+}
+
+.collapsible-content .pipeline-preview {
+  margin: 0;
+}
+
+/* Contract Reference Tabs */
+.contract-ref-tabs {
+  margin-bottom: 1rem;
+}
+
+.contract-type-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 0.75rem;
+}
+
+.contract-type-tab {
+  padding: 0.5rem 1rem;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.375rem;
+  color: #94a3b8;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.contract-type-tab:hover {
+  background: rgba(0, 0, 0, 0.3);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.contract-type-tab.active {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #93c5fd;
+}
+
+.contract-sub-tabs {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.contract-sub-tab {
+  padding: 0.35rem 0.75rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  color: #64748b;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.contract-sub-tab:hover {
+  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.contract-sub-tab.active {
+  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.contract-ref-content {
+  min-height: 200px;
+}
+
+/* Lifecycle Cases Detailed */
+.lifecycle-cases-detailed {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 0.75rem;
+}
+
+.lifecycle-case-card {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 3px solid;
+  border-radius: 0.375rem;
+  padding: 0.75rem 1rem;
+}
+
+.lifecycle-case-card.lc-border-T1 { border-left-color: #6b7280; }
+.lifecycle-case-card.lc-border-T2 { border-left-color: #ef4444; }
+.lifecycle-case-card.lc-border-T3 { border-left-color: #22c55e; }
+.lifecycle-case-card.lc-border-T4 { border-left-color: #3b82f6; }
+.lifecycle-case-card.lc-border-T5 { border-left-color: #fbbf24; }
+.lifecycle-case-card.lc-border-T6 { border-left-color: #dc2626; }
+.lifecycle-case-card.lc-border-T7 { border-left-color: #8b5cf6; }
+.lifecycle-case-card.lc-border-C1 { border-left-color: #14b8a6; }
+.lifecycle-case-card.lc-border-C2 { border-left-color: #f59e0b; }
+.lifecycle-case-card.lc-border-C3 { border-left-color: #ef4444; }
+.lifecycle-case-card.lc-border-C4 { border-left-color: #8b5cf6; }
+
+.lifecycle-case-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.lifecycle-case-id {
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.lifecycle-case-id.lc-T1 { color: #9ca3af; }
+.lifecycle-case-id.lc-T2 { color: #fca5a5; }
+.lifecycle-case-id.lc-T3 { color: #86efac; }
+.lifecycle-case-id.lc-T4 { color: #93c5fd; }
+.lifecycle-case-id.lc-T5 { color: #fcd34d; }
+.lifecycle-case-id.lc-T6 { color: #fca5a5; }
+.lifecycle-case-id.lc-T7 { color: #c4b5fd; }
+.lifecycle-case-id.lc-C1 { color: #5eead4; }
+.lifecycle-case-id.lc-C2 { color: #fcd34d; }
+.lifecycle-case-id.lc-C3 { color: #fca5a5; }
+.lifecycle-case-id.lc-C4 { color: #c4b5fd; }
+
+.lifecycle-case-name {
+  font-weight: 600;
+  color: #e2e8f0;
+  font-size: 0.9rem;
+}
+
+.lifecycle-case-desc {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+/* CLO action badge */
+.action-clo {
+  background: rgba(20, 184, 166, 0.2) !important;
+  color: #5eead4 !important;
 }
 </style>
