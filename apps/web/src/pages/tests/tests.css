@@ -562,8 +562,38 @@
 }
 
 .action-default {
-    background: rgba(108, 117, 125, 0.2);
-    color: #adb5bd;
+    background: rgba(239, 68, 68, 0.2);
+    color: #f87171;
+}
+
+.action-init {
+    background: rgba(139, 92, 246, 0.2);
+    color: #c4b5fd;
+}
+
+.action-update {
+    background: rgba(14, 165, 233, 0.2);
+    color: #7dd3fc;
+}
+
+.action-cancel {
+    background: rgba(107, 114, 128, 0.3);
+    color: #d1d5db;
+}
+
+.action-pay {
+    background: rgba(59, 130, 246, 0.2);
+    color: #93c5fd;
+}
+
+.action-complete {
+    background: rgba(16, 185, 129, 0.2);
+    color: #6ee7b7;
+}
+
+.action-collect {
+    background: rgba(245, 158, 11, 0.2);
+    color: #fcd34d;
 }
 
 .action-disabled {
@@ -603,6 +633,35 @@
 
 .step-tx-hash i {
     margin-right: 4px;
+}
+
+.step-timing {
+    font-family: 'SF Mono', monospace;
+    font-size: 0.7rem;
+    color: #64748b;
+    margin-left: auto;
+    margin-right: 0.5rem;
+    padding: 0.1rem 0.4rem;
+    background: rgba(100, 116, 139, 0.15);
+    border-radius: 3px;
+}
+
+.step-late-badge {
+    font-size: 0.65rem;
+    color: #fbbf24;
+    background: rgba(251, 191, 36, 0.15);
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+    margin-left: 0.5rem;
+}
+
+.step-reject-badge {
+    font-size: 0.65rem;
+    color: #f87171;
+    background: rgba(239, 68, 68, 0.15);
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+    margin-left: 0.5rem;
 }
 
 .step-actions {

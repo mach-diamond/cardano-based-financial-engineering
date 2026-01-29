@@ -454,18 +454,34 @@ export async function executePhase(phase: Phase, options: PipelineOptions): Prom
  * Get action label for a step
  */
 export function getStepAction(phaseId: number, step?: any): string {
-  if (phaseId === 1 && step?.action) {
-    if (step.action === 'create-wallets') return 'Create'
-    if (step.action === 'fund-wallets') return 'Fund'
-    if (step.action === 'mint-credentials') return 'Mint'
+  // Check for explicit action/actionType first
+  if (step?.action) {
+    const actionMap: Record<string, string> = {
+      'create-wallets': 'Create',
+      'fund-wallets': 'Fund',
+      'mint-credentials': 'Mint',
+      'mint': 'Mint',
+      'init': 'Initialize',
+      'update': 'Update',
+      'cancel': 'Cancel',
+      'accept': 'Accept',
+      'pay': 'Pay',
+      'complete': 'Complete',
+      'collect': 'Collect',
+      'default': 'Default',
+      'bundle': 'Bundle',
+      'deploy': 'Deploy',
+      'distribute': 'Distribute',
+    }
+    if (actionMap[step.action]) return actionMap[step.action]
   }
+  // Fallback to phase-based
   switch (phaseId) {
     case 1: return 'Setup'
     case 2: return 'Mint'
-    case 3: return 'Create'
-    case 4: return 'Accept'
+    case 3: return 'Initialize'
+    case 4: return 'Run'
     case 5: return 'CLO'
-    case 6: return 'Pay'
     default: return 'Run'
   }
 }
@@ -474,18 +490,34 @@ export function getStepAction(phaseId: number, step?: any): string {
  * Get CSS class for step action button
  */
 export function getStepActionClass(phaseId: number, step?: any): string {
-  if (phaseId === 1 && step?.action) {
-    if (step.action === 'create-wallets') return 'create'
-    if (step.action === 'fund-wallets') return 'fund'
-    if (step.action === 'mint-credentials') return 'mint'
+  // Check for explicit action/actionType first
+  if (step?.action) {
+    const classMap: Record<string, string> = {
+      'create-wallets': 'create',
+      'fund-wallets': 'fund',
+      'mint-credentials': 'mint',
+      'mint': 'mint',
+      'init': 'init',
+      'update': 'update',
+      'cancel': 'cancel',
+      'accept': 'accept',
+      'pay': 'pay',
+      'complete': 'complete',
+      'collect': 'collect',
+      'default': 'default',
+      'bundle': 'clo',
+      'deploy': 'clo',
+      'distribute': 'clo',
+    }
+    if (classMap[step.action]) return classMap[step.action]
   }
+  // Fallback to phase-based
   switch (phaseId) {
     case 1: return 'fund'
     case 2: return 'mint'
-    case 3: return 'loan'
-    case 4: return 'accept'
+    case 3: return 'init'
+    case 4: return 'pay'
     case 5: return 'clo'
-    case 6: return 'payment'
     default: return 'default'
   }
 }
@@ -494,26 +526,67 @@ export function getStepActionClass(phaseId: number, step?: any): string {
  * Get display entity name for a step
  */
 export function getStepEntity(step: any, identities: Identity[]): string {
+  // Handle wallet list steps (Phase 1)
   if ('wallets' in step && Array.isArray(step.wallets)) {
     const count = step.wallets.length
     const roles = [...new Set(step.wallets.map((w: any) => w.role))]
     return `${count} wallets (${roles.join(', ')})`
   }
+
+  // Handle loan action steps (Phase 4 - Run Contracts)
+  if (step.actionType && step.contractRef) {
+    const borrowerName = step.borrowerName || 'Open Market'
+    const amount = step.amount ? ` (${step.amount.toFixed(2)} ADA)` : ''
+    const late = step.isLate ? ' [Late]' : ''
+    const reject = step.expectedResult === 'rejection' ? ' [Reject]' : ''
+
+    switch (step.actionType) {
+      case 'accept':
+        return `${borrowerName} → ${step.asset}${amount}${reject}`
+      case 'pay':
+        return `${borrowerName} → ${step.contractRef}${amount}${late}`
+      case 'complete':
+        return `${borrowerName} ← ${step.asset} (ownership transfer)`
+      case 'collect':
+        return `${step.originatorName || 'Originator'} collects from ${step.contractRef}`
+      case 'default':
+        return `${step.originatorName || 'Originator'} claims default on ${step.contractRef}`
+      case 'update':
+        return `${step.originatorName || 'Originator'} updates ${step.contractRef}`
+      case 'cancel':
+        return `${step.originatorName || 'Originator'} cancels ${step.contractRef}`
+    }
+  }
+
+  // Handle init steps (Phase 3)
+  if (step.actionType === 'init' || step.action === 'init') {
+    const lifecycleLabel = step.lifecycleCase ? ` [${step.lifecycleCase}]` : ''
+    return `${step.originatorName || 'Originator'} → ${step.asset}${lifecycleLabel}`
+  }
+
+  // Handle target ID based steps
   if ('targetId' in step) {
     const identity = identities.find(i => i.id === step.targetId)
     return identity?.name || step.name
   }
-  if ('asset' in step && !('borrowerId' in step)) {
+
+  // Handle asset tokenization steps (Phase 2)
+  if ('asset' in step && !('borrowerId' in step) && !step.actionType) {
     return `${step.asset} tokens`
   }
-  if ('borrowerId' in step && 'asset' in step) {
+
+  // Legacy: borrowerId + asset (old loan creation format)
+  if ('borrowerId' in step && 'asset' in step && !step.actionType) {
     const borrower = identities.find(i => i.id === step.borrowerId)
     const marketType = step.reservedBuyer ? '(Reserved)' : '(Open)'
     return `${borrower?.name || 'Open Market'} ← ${step.asset} ${marketType}`
   }
-  if ('borrowerId' in step && 'amount' in step) {
+
+  // Legacy: borrowerId + amount (old payment format)
+  if ('borrowerId' in step && 'amount' in step && !step.actionType) {
     const borrower = identities.find(i => i.id === step.borrowerId)
     return `${borrower?.name || ''} (${step.amount} ADA)`
   }
-  return step.name?.replace('Bundle ', '').replace('Deploy ', '').replace('Distribute ', '') || 'Step'
+
+  return step.name?.replace('Bundle ', '').replace('Deploy ', '').replace('Distribute ', '').replace('Initialize: ', '').replace('Accept: ', '').replace('Pay: ', '') || 'Step'
 }

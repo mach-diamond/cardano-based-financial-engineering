@@ -99,7 +99,10 @@
                 <span class="step-entity-text" :class="{ 'text-muted': step.disabled || step.status === 'disabled' }">
                   {{ getStepEntity(step) }}
                   <span v-if="step.disabledReason" class="step-disabled-reason">({{ step.disabledReason }})</span>
+                  <span v-if="step.isLate" class="step-late-badge"><i class="fas fa-clock"></i> Late</span>
+                  <span v-if="step.expectedResult === 'rejection'" class="step-reject-badge"><i class="fas fa-times-circle"></i> Reject</span>
                 </span>
+                <span v-if="step.timing" class="step-timing">{{ step.timing }}</span>
                 <span v-if="step.txHash" class="step-tx-hash" :title="step.txHash">
                   <i class="fas fa-link"></i> {{ step.txHash.slice(0, 8) }}...
                 </span>

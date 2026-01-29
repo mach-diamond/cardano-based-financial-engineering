@@ -657,6 +657,166 @@ function getWalletId(name: string): string {
   return NAME_TO_ID_MAP[name] || `wallet-${name.toLowerCase().replace(/\s+/g, '-')}`
 }
 
+// Frequency options for loan schedules
+const frequencyOptions = [
+  { value: 12, label: 'mo', fullLabel: 'Monthly' },
+  { value: 4, label: 'qtr', fullLabel: 'Quarterly' },
+  { value: 2, label: 'semi', fullLabel: 'Bi-Annual' },
+  { value: 52, label: 'wk', fullLabel: 'Weekly' },
+  { value: 365, label: 'd', fullLabel: 'Daily' },
+  { value: 8760, label: 'hr', fullLabel: 'Hourly' },
+  { value: 17531, label: '30m', fullLabel: '30-min' },
+  { value: 35063, label: '15m', fullLabel: '15-min' },
+  { value: 52594, label: '10m', fullLabel: '10-min' },
+  { value: 105189, label: '5m', fullLabel: '5-min' },
+]
+
+function getFrequencyLabel(frequency?: number): string {
+  const freq = frequencyOptions.find(f => f.value === (frequency || 12))
+  return freq ? freq.label : 'p'
+}
+
+function calculateTermPayment(loan: { principal: number; apr: number; termMonths: number; frequency?: number }): number {
+  const principal = loan.principal
+  const apr = loan.apr / 100
+  const installments = loan.termMonths
+  const periodsPerYear = loan.frequency || 12
+
+  if (installments <= 0) return 0
+  if (apr === 0) return principal / installments
+
+  const periodRate = apr / periodsPerYear
+  return (periodRate * principal) / (1 - Math.pow(1 + periodRate, -installments))
+}
+
+function getBuyerName(borrowerId: string | null, config: PipelineConfig): string {
+  if (!borrowerId) return 'Open Market'
+  const wallet = config.wallets.find(w => getWalletId(w.name) === borrowerId)
+  return wallet?.name || borrowerId
+}
+
+function getOriginatorName(originatorId: string | null, config: PipelineConfig): string {
+  if (!originatorId) return 'Unknown'
+  const wallet = config.wallets.find(w => getWalletId(w.name) === originatorId)
+  return wallet?.name || originatorId
+}
+
+// Generate detailed loan actions (same logic as LifecycleTab)
+interface LoanActionStep {
+  id: string
+  name: string
+  status: 'pending' | 'passed' | 'failed' | 'running' | 'disabled'
+  action: string
+  actionType: 'init' | 'update' | 'cancel' | 'accept' | 'pay' | 'complete' | 'collect' | 'default'
+  loanIndex: number
+  timing: string
+  timingPeriod: number
+  amount?: number
+  asset: string
+  borrowerId?: string | null
+  borrowerName?: string
+  originatorId?: string
+  originatorName?: string
+  isLate?: boolean
+  expectedResult?: 'success' | 'rejection'
+  contractRef: string
+}
+
+function generateLoanActions(loan: any, loanIndex: number, config: PipelineConfig): LoanActionStep[] {
+  const actions: LoanActionStep[] = []
+  const lifecycleCase = loan.lifecycleCase || 'T4'
+  const termPayment = calculateTermPayment(loan)
+  const totalPayments = loan.termMonths
+  const freqLabel = getFrequencyLabel(loan.frequency)
+  const buyerId = loan.borrowerId || null
+  const buyerName = getBuyerName(buyerId, config)
+  const originatorName = getOriginatorName(loan.originatorId, config)
+  const principal = loan.principal
+  const apr = loan.apr / 100
+  const periodsPerYear = loan.frequency || 12
+  const periodRate = apr / periodsPerYear
+  const contractRef = `Loan #${loanIndex + 1}`
+
+  // Helper to create step
+  const makeStep = (
+    suffix: string,
+    actionType: LoanActionStep['actionType'],
+    label: string,
+    timing: string,
+    timingPeriod: number,
+    extra: Partial<LoanActionStep> = {}
+  ): LoanActionStep => ({
+    id: `${loanIndex}-${suffix}`,
+    name: `${label}: ${buyerName} → ${loan.asset}`,
+    status: 'pending',
+    action: actionType,
+    actionType,
+    loanIndex,
+    timing,
+    timingPeriod,
+    asset: loan.asset,
+    borrowerId: buyerId,
+    borrowerName: buyerName,
+    originatorId: loan.originatorId,
+    originatorName,
+    contractRef,
+    expectedResult: 'success',
+    ...extra
+  })
+
+  switch (lifecycleCase) {
+    case 'T1':
+      // Cancel flow: Init -> Update -> Cancel
+      actions.push(makeStep('update', 'update', 'Update Terms', 'T-0', -1))
+      actions.push(makeStep('cancel', 'cancel', 'Cancel', 'T-0', -1))
+      break
+
+    case 'T2': {
+      // Default flow: Accept -> Default
+      actions.push(makeStep('accept', 'accept', 'Accept', 'T+0', 0, { amount: termPayment }))
+      actions.push(makeStep('default', 'default', 'Claim Default', `T+2${freqLabel}`, 2))
+      break
+    }
+
+    case 'T3':
+    case 'T4':
+    case 'T7': {
+      // Full payment flow
+      actions.push(makeStep('accept', 'accept', 'Accept', 'T+0', 0, { amount: termPayment }))
+      for (let i = 2; i <= totalPayments; i++) {
+        actions.push(makeStep(`pay-${i}`, 'pay', `Pay #${i}`, `T+${i-1}${freqLabel}`, i - 1, { amount: termPayment }))
+      }
+      actions.push(makeStep('complete', 'complete', 'Complete', `T+${totalPayments}${freqLabel}`, totalPayments))
+      actions.push(makeStep('collect', 'collect', 'Collect', `T+${totalPayments}${freqLabel}`, totalPayments))
+      break
+    }
+
+    case 'T5': {
+      // Late fee flow
+      const lateFee = loan.lateFee || 10
+      actions.push(makeStep('accept', 'accept', 'Accept', 'T+0', 0, { amount: termPayment }))
+      actions.push(makeStep('pay-2-late', 'pay', 'Pay #2 (Late)', `T+1${freqLabel}+`, 1.5, { amount: termPayment + lateFee, isLate: true }))
+      for (let i = 3; i <= totalPayments; i++) {
+        actions.push(makeStep(`pay-${i}`, 'pay', `Pay #${i}`, `T+${i-1}${freqLabel}`, i - 1, { amount: termPayment }))
+      }
+      actions.push(makeStep('complete', 'complete', 'Complete', `T+${totalPayments}${freqLabel}`, totalPayments))
+      actions.push(makeStep('collect', 'collect', 'Collect', `T+${totalPayments}${freqLabel}`, totalPayments))
+      break
+    }
+
+    case 'T6':
+      // Rejection flow
+      actions.push(makeStep('accept-reject', 'accept', 'Accept (Wrong Buyer)', 'T+0', 0, {
+        amount: termPayment,
+        expectedResult: 'rejection',
+        borrowerName: 'Wrong Buyer'
+      }))
+      break
+  }
+
+  return actions
+}
+
 // Update phases/steps based on pipeline config
 function updatePhasesFromConfig(config: PipelineConfig) {
   // Update Phase 1: Setup & Identities
@@ -688,6 +848,7 @@ function updatePhasesFromConfig(config: PipelineConfig) {
         id: `A${idx * 10 + aidx + 1}`,
         name: `Mint ${asset.name} tokens (${o.name})`,
         status: 'pending' as const,
+        action: 'mint',
         originatorId: getWalletId(o.name),
         asset: asset.name,
         qty: BigInt(asset.quantity)
@@ -700,69 +861,55 @@ function updatePhasesFromConfig(config: PipelineConfig) {
     phase3.steps = config.loans.map((loan, idx) => {
       const isReserved = loan.reservedBuyer !== false
       const borrower = config.wallets.find(w => getWalletId(w.name) === loan.borrowerId)
+      const originator = config.wallets.find(w => getWalletId(w.name) === loan.originatorId)
       return {
         id: `L${idx + 1}`,
-        name: isReserved
-          ? `Create: ${borrower?.name || 'Unknown'} ← ${loan.asset} (Reserved)`
-          : `Create: Open Market ${loan.asset} Loan`,
+        name: `Initialize: ${originator?.name || 'Originator'} → ${loan.asset}`,
         status: 'pending' as const,
-        action: 'create-loan',
-        contractRef: `LOAN-${loan.asset}-${isReserved ? loan.borrowerId : 'Open'}`,
+        action: 'init',
+        actionType: 'init' as const,
+        loanIndex: idx,
+        contractRef: `Loan #${idx + 1}`,
         borrowerId: isReserved ? loan.borrowerId : null,
+        borrowerName: borrower?.name || 'Open Market',
         originatorId: loan.originatorId,
+        originatorName: originator?.name || 'Unknown',
         asset: loan.asset,
         qty: loan.quantity,
         principal: loan.principal,
-        reservedBuyer: isReserved
+        reservedBuyer: isReserved,
+        lifecycleCase: loan.lifecycleCase || 'T4'
       }
     })
   }
 
-  // Update Phase 4: Accept Loan Contracts
+  // Update Phase 4: Run Contracts (all post-init actions)
   const phase4 = phases.value.find(p => p.id === 4)
   if (phase4) {
-    phase4.steps = config.loans.map((loan, idx) => {
-      const isReserved = loan.reservedBuyer !== false
-      const borrower = config.wallets.find(w => getWalletId(w.name) === loan.borrowerId)
-      return {
-        id: `AC${idx + 1}`,
-        name: `Accept: ${borrower?.name || 'Available Buyer'} → ${loan.asset} Loan`,
-        status: 'pending' as const,
-        action: 'accept-loan',
-        contractRef: `LOAN-${loan.asset}-${isReserved ? loan.borrowerId : 'Open'}`,
-        signerId: loan.borrowerId || getWalletId(borrower?.name || `borrower-${idx}`),
-        signerRole: 'Borrower' as const
-      }
+    // Generate all loan actions and flatten
+    const allActions: LoanActionStep[] = []
+    config.loans.forEach((loan, idx) => {
+      const loanActions = generateLoanActions(loan, idx, config)
+      allActions.push(...loanActions)
     })
+
+    // Sort by timing period, then by loan index
+    allActions.sort((a, b) => {
+      if (a.timingPeriod !== b.timingPeriod) return a.timingPeriod - b.timingPeriod
+      return a.loanIndex - b.loanIndex
+    })
+
+    phase4.steps = allActions
   }
 
   // Update Phase 5: CLO Bundle & Distribution
   const phase5 = phases.value.find(p => p.id === 5)
   if (phase5 && config.clo) {
     phase5.steps = [
-      { id: 'C1', name: 'Bundle Collateral Tokens', status: 'pending' as const, action: 'bundle-collateral', signerId: 'analyst', signerRole: 'Analyst' as const },
-      { id: 'C2', name: `Deploy CLO: ${config.clo.name} (${config.clo.tranches.length} Tranches)`, status: 'pending' as const, action: 'deploy-clo', signerId: 'analyst', signerRole: 'Analyst' as const },
-      { id: 'C3', name: 'Distribute Tranche Tokens', status: 'pending' as const, action: 'distribute-tranches', signerId: 'analyst', signerRole: 'Analyst' as const },
+      { id: 'C1', name: 'Bundle Collateral Tokens', status: 'pending' as const, action: 'bundle', signerId: 'analyst', signerRole: 'Analyst' as const },
+      { id: 'C2', name: `Deploy CLO: ${config.clo.name} (${config.clo.tranches.length} Tranches)`, status: 'pending' as const, action: 'deploy', signerId: 'analyst', signerRole: 'Analyst' as const },
+      { id: 'C3', name: 'Distribute Tranche Tokens', status: 'pending' as const, action: 'distribute', signerId: 'analyst', signerRole: 'Analyst' as const },
     ]
-  }
-
-  // Update Phase 6: Make Loan Payments
-  const phase6 = phases.value.find(p => p.id === 6)
-  if (phase6) {
-    phase6.steps = config.loans.map((loan, idx) => {
-      const borrower = config.wallets.find(w => getWalletId(w.name) === loan.borrowerId)
-      const isReserved = loan.reservedBuyer !== false
-      return {
-        id: `P${idx + 1}`,
-        name: `Pay: ${borrower?.name || 'Borrower'} → ${loan.asset} Loan`,
-        status: 'pending' as const,
-        action: 'make-payment',
-        contractRef: `LOAN-${loan.asset}-${isReserved ? loan.borrowerId : 'Open'}`,
-        signerId: loan.borrowerId || getWalletId(borrower?.name || `borrower-${idx}`),
-        signerRole: 'Borrower' as const,
-        amount: Math.round(loan.principal / 12) // Approximate monthly payment
-      }
-    })
   }
 
   log('Pipeline phases updated from configuration', 'info')
@@ -977,24 +1124,16 @@ const phases = ref<Phase[]>([
   },
   {
     id: 4,
-    name: 'Accept Loan Contracts',
-    description: 'Buyers accept loans and make first payment to activate',
+    name: 'Run Contracts',
+    description: 'Execute loan lifecycle: accept, payments, complete, collect',
     status: 'pending',
     expanded: true,
-    steps: [] // Populated from config
+    steps: [] // Populated from config - all post-init loan actions
   },
   {
     id: 5,
     name: 'CLO Bundle & Distribution',
     description: 'Bundle collateral into CLO with tranches',
-    status: 'pending',
-    expanded: false,
-    steps: [] // Populated from config
-  },
-  {
-    id: 6,
-    name: 'Make Loan Payments',
-    description: 'Borrowers make scheduled payments on their loans',
     status: 'pending',
     expanded: false,
     steps: [] // Populated from config
