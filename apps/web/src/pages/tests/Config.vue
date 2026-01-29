@@ -260,17 +260,16 @@
               <thead>
                 <tr>
                   <th style="min-width: 130px;">Originator</th>
-                  <th style="min-width: 110px;">Agent</th>
+                  <th style="min-width: 100px;">Agent</th>
                   <th style="min-width: 100px;">Asset</th>
-                  <th style="width: 65px;">Qty</th>
-                  <th style="width: 95px;">Principal</th>
-                  <th style="width: 70px;">APR %</th>
-                  <th style="width: 75px;">Term</th>
+                  <th style="width: 60px;">Qty</th>
+                  <th style="width: 100px;">Principal</th>
+                  <th style="width: 80px;">APR %</th>
+                  <th style="width: 80px;">Term (mo)</th>
                   <th style="min-width: 130px;">Borrower</th>
                   <th style="width: 80px;" title="Agent referral fee in ADA">Agent Fee</th>
-                  <th style="width: 100px;" title="Transfer fee split (Buyer% / Seller%)">Transfer Fee</th>
                   <th style="width: 75px;" title="Late payment fee in ADA">Late Fee</th>
-                  <th style="min-width: 110px;">
+                  <th style="min-width: 100px;">
                     Lifecycle
                     <i class="fas fa-info-circle ml-1 text-info" style="cursor: help;" title="Test scenario to run for this loan"></i>
                   </th>
@@ -299,16 +298,16 @@
                     </select>
                   </td>
                   <td>
-                    <input v-model.number="loan.quantity" type="number" min="1" class="form-control form-control-sm config-input" />
+                    <input v-model.number="loan.quantity" type="number" min="1" class="form-control form-control-sm config-input input-narrow" />
                   </td>
                   <td>
                     <input v-model.number="loan.principal" type="number" class="form-control form-control-sm config-input" />
                   </td>
                   <td>
-                    <input v-model.number="loan.apr" type="number" step="0.1" class="form-control form-control-sm config-input" />
+                    <input v-model.number="loan.apr" type="number" step="0.1" class="form-control form-control-sm config-input input-narrow" />
                   </td>
                   <td>
-                    <input v-model.number="loan.termMonths" type="number" class="form-control form-control-sm config-input" />
+                    <input v-model.number="loan.termMonths" type="number" class="form-control form-control-sm config-input input-narrow" />
                   </td>
                   <td>
                     <select v-model="loan.borrowerId" class="form-control form-control-sm config-input">
@@ -319,17 +318,10 @@
                     </select>
                   </td>
                   <td>
-                    <input v-model.number="loan.agentFee" type="number" min="0" step="1" class="form-control form-control-sm config-input" placeholder="0" title="Agent referral fee (ADA)" />
+                    <input v-model.number="loan.agentFee" type="number" min="0" step="1" class="form-control form-control-sm config-input input-narrow" placeholder="0" />
                   </td>
                   <td>
-                    <div class="transfer-fee-split">
-                      <input v-model.number="loan.transferFeeBuyerPercent" type="number" min="0" max="100" class="form-control form-control-sm config-input fee-split-input" title="Buyer pays %" />
-                      <span class="fee-split-divider">/</span>
-                      <input :value="100 - (loan.transferFeeBuyerPercent || 50)" type="number" class="form-control form-control-sm config-input fee-split-input" disabled title="Seller pays %" />
-                    </div>
-                  </td>
-                  <td>
-                    <input v-model.number="loan.lateFee" type="number" min="0" step="1" class="form-control form-control-sm config-input" placeholder="10" title="Late fee (ADA)" />
+                    <input v-model.number="loan.lateFee" type="number" min="0" step="1" class="form-control form-control-sm config-input input-narrow" placeholder="10" />
                   </td>
                   <td>
                     <select v-model="loan.lifecycleCase" class="form-control form-control-sm config-input" :class="'lifecycle-' + (loan.lifecycleCase || 'T4')">
@@ -346,6 +338,63 @@
                 </tr>
               </tbody>
             </table>
+          </div>
+
+          <!-- Transfer Fee Configuration -->
+          <div class="transfer-fee-config mt-3">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <span class="text-muted"><i class="fas fa-percentage mr-1"></i> Transfer Fee Split (applies to all loans):</span>
+              <span class="fee-display">
+                <span class="buyer-label">Buyer: {{ transferFeeBuyerPercent }}%</span>
+                <span class="mx-2">|</span>
+                <span class="seller-label">Seller: {{ 100 - transferFeeBuyerPercent }}%</span>
+              </span>
+            </div>
+            <div class="fee-slider-row">
+              <span class="slider-label buyer-label">Buyer</span>
+              <input
+                type="range"
+                v-model.number="transferFeeBuyerPercent"
+                min="0"
+                max="100"
+                step="5"
+                class="fee-slider"
+              />
+              <span class="slider-label seller-label">Seller</span>
+            </div>
+            <div v-if="hasHighPrincipalLoans" class="deferment-option mt-2">
+              <label class="form-check-inline mb-0">
+                <input type="checkbox" class="form-check-input" v-model="transferFeeDeferment" />
+                <span class="small text-muted">Defer seller's fee until payment collection (for loans ≥ 10,000 ADA principal)</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Loan Calculations Summary -->
+          <div class="loan-calculations mt-4">
+            <h6 class="text-muted mb-2"><i class="fas fa-calculator mr-1"></i> Loan Analysis</h6>
+            <div class="calculations-grid">
+              <div v-for="(loan, index) in localConfig.loans" :key="'calc-' + index" class="loan-calc-card">
+                <div class="calc-header">
+                  <span class="calc-asset">{{ loan.asset || 'Loan ' + (index + 1) }}</span>
+                  <span class="calc-principal">{{ loan.principal.toLocaleString() }} ADA</span>
+                </div>
+                <div class="calc-body">
+                  <div class="calc-row">
+                    <span class="calc-label">Term Payment</span>
+                    <span class="calc-value">{{ calculateTermPayment(loan).toFixed(2) }} ADA</span>
+                  </div>
+                  <div class="calc-row">
+                    <span class="calc-label">Total Interest</span>
+                    <span class="calc-value" :class="{ 'text-success': loan.apr > 0 }">{{ calculateTotalInterest(loan).toFixed(2) }} ADA</span>
+                  </div>
+                  <div class="calc-row total">
+                    <span class="calc-label">Total Value</span>
+                    <span class="calc-value text-info">{{ calculateTotalValue(loan).toFixed(2) }} ADA</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- Lifecycle Case Legend -->
@@ -379,14 +428,36 @@
           <div v-if="localConfig.loans.length > 0" class="loans-reference-bar mb-4">
             <div class="d-flex align-items-center justify-content-between mb-2">
               <span class="text-muted small"><i class="fas fa-file-contract mr-1"></i> Loans for CLO Collateral ({{ cloEligibleLoans.length }} eligible):</span>
-              <span class="badge badge-info">{{ cloEligibleLoans.reduce((sum, l) => sum + l.principal, 0).toLocaleString() }} ADA Total Principal</span>
+              <div class="d-flex gap-2">
+                <span class="badge badge-secondary">{{ cloEligibleLoans.reduce((sum, l) => sum + l.principal, 0).toLocaleString() }} ADA Principal</span>
+                <span class="badge badge-info">{{ cloEligibleLoans.reduce((sum, l) => sum + calculateTotalValue(l), 0).toFixed(0) }} ADA Total Value</span>
+              </div>
             </div>
-            <div class="loan-pills">
-              <span v-for="(loan, idx) in localConfig.loans" :key="idx" class="loan-pill" :class="{ 'eligible': !['T1', 'T6'].includes(loan.lifecycleCase || 'T4'), 'ineligible': ['T1', 'T6'].includes(loan.lifecycleCase || 'T4') }">
-                <span class="loan-pill-asset">{{ loan.asset || 'No Asset' }}</span>
-                <span class="loan-pill-amount">{{ loan.principal.toLocaleString() }} ADA</span>
-                <span class="loan-pill-lifecycle" :class="'lc-' + (loan.lifecycleCase || 'T4')">{{ loan.lifecycleCase || 'T4' }}</span>
-              </span>
+            <div class="loan-pills-clo">
+              <div v-for="(loan, idx) in localConfig.loans" :key="idx" class="loan-pill-clo" :class="{ 'eligible': !['T1', 'T6'].includes(loan.lifecycleCase || 'T4'), 'ineligible': ['T1', 'T6'].includes(loan.lifecycleCase || 'T4') }">
+                <div class="loan-pill-clo-header">
+                  <span class="loan-pill-asset">{{ loan.asset || 'No Asset' }}</span>
+                  <span class="loan-pill-lifecycle" :class="'lc-' + (loan.lifecycleCase || 'T4')">{{ loan.lifecycleCase || 'T4' }}</span>
+                </div>
+                <div class="loan-pill-clo-body">
+                  <div class="loan-pill-row">
+                    <span class="loan-pill-label">Principal</span>
+                    <span class="loan-pill-value">{{ loan.principal.toLocaleString() }}</span>
+                  </div>
+                  <div class="loan-pill-row">
+                    <span class="loan-pill-label">Payment</span>
+                    <span class="loan-pill-value">{{ calculateTermPayment(loan).toFixed(0) }}/mo</span>
+                  </div>
+                  <div class="loan-pill-row">
+                    <span class="loan-pill-label">Interest</span>
+                    <span class="loan-pill-value text-success">+{{ calculateTotalInterest(loan).toFixed(0) }}</span>
+                  </div>
+                  <div class="loan-pill-row total">
+                    <span class="loan-pill-label">Total</span>
+                    <span class="loan-pill-value text-info">{{ calculateTotalValue(loan).toFixed(0) }}</span>
+                  </div>
+                </div>
+              </div>
             </div>
             <small class="text-muted d-block mt-2">
               <i class="fas fa-info-circle mr-1"></i>
@@ -919,6 +990,43 @@ const localConfig = ref<PipelineConfig & { lifecycle: typeof DEFAULT_LIFECYCLE }
 const showAssetModal = ref(false)
 const editingWalletIndex = ref<number | null>(null)
 const newAsset = ref({ name: '', quantity: 1 })
+
+// Transfer fee configuration (global for all loans)
+const transferFeeBuyerPercent = ref(50)
+const transferFeeDeferment = ref(false)
+
+// Check if any loans have principal >= 10,000 ADA (eligible for deferment)
+const hasHighPrincipalLoans = computed(() => {
+  return localConfig.value.loans.some(loan => loan.principal >= 10000)
+})
+
+// Loan calculation functions
+function calculateTermPayment(loan: { principal: number; apr: number; termMonths: number }): number {
+  const principal = loan.principal
+  const apr = loan.apr / 100 // Convert percentage to decimal
+  const installments = loan.termMonths
+
+  if (installments <= 0) return 0
+  if (apr === 0) {
+    // For 0% APR, simply divide principal by number of installments
+    return principal / installments
+  }
+
+  // Standard loan payment formula (monthly payments)
+  const monthlyRate = apr / 12
+  const termPayment = (monthlyRate * principal) / (1 - Math.pow(1 + monthlyRate, -installments))
+  return Math.round((termPayment + Number.EPSILON) * 100) / 100
+}
+
+function calculateTotalInterest(loan: { principal: number; apr: number; termMonths: number }): number {
+  const termPayment = calculateTermPayment(loan)
+  const totalPaid = termPayment * loan.termMonths
+  return Math.max(0, Math.round((totalPaid - loan.principal + Number.EPSILON) * 100) / 100)
+}
+
+function calculateTotalValue(loan: { principal: number; apr: number; termMonths: number }): number {
+  return loan.principal + calculateTotalInterest(loan)
+}
 
 // Computed
 const walletCounts = computed(() => ({
@@ -2451,11 +2559,211 @@ tr.role-investor { border-left: 3px solid #fbbf24; }
   margin-top: 1.5rem;
 }
 
-/* Fee Split Input - wider for visibility */
-.fee-split-input.config-input {
-  width: 45px !important;
-  min-width: 45px;
-  padding: 0.35rem 0.4rem;
+/* Narrow inputs for numeric fields */
+.input-narrow {
+  width: 70px !important;
+  min-width: 70px;
   text-align: center;
+}
+
+/* Transfer Fee Configuration */
+.transfer-fee-config {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+}
+
+.fee-display {
+  font-size: 0.85rem;
+}
+
+.buyer-label {
+  color: #60a5fa;
+}
+
+.seller-label {
+  color: #a78bfa;
+}
+
+.fee-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.fee-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 8px;
+  background: linear-gradient(to right, rgba(96, 165, 250, 0.4), rgba(167, 139, 250, 0.4));
+  border-radius: 4px;
+  outline: none;
+}
+
+.fee-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  background: #e2e8f0;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.fee-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  background: #e2e8f0;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.slider-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  min-width: 40px;
+}
+
+.deferment-option {
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Loan Calculations */
+.loan-calculations {
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.calculations-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.75rem;
+}
+
+.loan-calc-card {
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.375rem;
+  overflow: hidden;
+}
+
+.calc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.calc-asset {
+  font-weight: 600;
+  color: #e2e8f0;
+  font-size: 0.85rem;
+}
+
+.calc-principal {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.calc-body {
+  padding: 0.5rem 0.75rem;
+}
+
+.calc-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.2rem 0;
+  font-size: 0.8rem;
+}
+
+.calc-row.total {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin-top: 0.25rem;
+  padding-top: 0.35rem;
+}
+
+.calc-label {
+  color: #94a3b8;
+}
+
+.calc-value {
+  font-weight: 500;
+  color: #e2e8f0;
+}
+
+/* CLO Loan Pills with Calculations */
+.loan-pills-clo {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.5rem;
+}
+
+.loan-pill-clo {
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 0.375rem;
+  overflow: hidden;
+  font-size: 0.75rem;
+}
+
+.loan-pill-clo.eligible {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.loan-pill-clo.ineligible {
+  background: rgba(107, 114, 128, 0.15);
+  border-color: rgba(107, 114, 128, 0.3);
+  opacity: 0.6;
+}
+
+.loan-pill-clo.ineligible .loan-pill-clo-body {
+  text-decoration: line-through;
+}
+
+.loan-pill-clo-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.35rem 0.5rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.loan-pill-clo-body {
+  padding: 0.35rem 0.5rem;
+}
+
+.loan-pill-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.1rem 0;
+}
+
+.loan-pill-row.total {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin-top: 0.15rem;
+  padding-top: 0.2rem;
+  font-weight: 600;
+}
+
+.loan-pill-label {
+  color: #94a3b8;
+  font-size: 0.7rem;
+}
+
+.loan-pill-value {
+  color: #e2e8f0;
 }
 </style>
