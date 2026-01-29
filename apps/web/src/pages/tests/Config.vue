@@ -631,7 +631,7 @@
             </h5>
 
             <div class="loan-schedules-grid">
-              <div v-for="schedule in loanActionSchedules" :key="schedule.loanIndex" class="loan-schedule-card" :class="'lc-border-' + (schedule.loan.lifecycleCase || 'T4')">
+              <div v-for="schedule in loanActionSchedules" :key="schedule.loanIndex" class="loan-schedule-card" :class="['lc-border-' + (schedule.loan.lifecycleCase || 'T4'), { 'no-buyer': !hasValidBuyer(schedule.loan) && !['T1'].includes(schedule.loan.lifecycleCase || 'T4') }]">
                 <!-- Loan Header -->
                 <div class="loan-schedule-header">
                   <div class="loan-schedule-index">#{{ schedule.loanIndex + 1 }}</div>
@@ -639,9 +639,23 @@
                     <span class="loan-schedule-asset">{{ schedule.loan.asset }}</span>
                     <span class="loan-schedule-principal">{{ schedule.loan.principal.toLocaleString() }} ADA</span>
                   </div>
-                  <div class="lifecycle-badge" :class="'lc-' + (schedule.loan.lifecycleCase || 'T4')">
-                    {{ schedule.loan.lifecycleCase || 'T4' }}
-                  </div>
+                  <!-- Lifecycle Case Selector -->
+                  <select
+                    :value="schedule.loan.lifecycleCase || 'T4'"
+                    @change="updateLoanLifecycleCase(schedule.loanIndex, ($event.target as HTMLSelectElement).value)"
+                    class="lifecycle-select"
+                    :class="'lc-' + (schedule.loan.lifecycleCase || 'T4')"
+                  >
+                    <option v-for="lc in lifecycleCases" :key="lc.id" :value="lc.id" :title="lc.description">
+                      {{ lc.id }} - {{ lc.short }}
+                    </option>
+                  </select>
+                </div>
+
+                <!-- No Buyer Warning (for non-T1 loans without buyer) -->
+                <div v-if="!hasValidBuyer(schedule.loan) && !['T1'].includes(schedule.loan.lifecycleCase || 'T4')" class="no-buyer-warning">
+                  <i class="fas fa-exclamation-triangle"></i>
+                  No buyer assigned - select a buyer in Accept action to enable payment schedule
                 </div>
 
                 <!-- Action Timeline -->
@@ -653,7 +667,8 @@
                          'action-t0': action.timingPeriod === 0,
                          'action-post-t0': action.timingPeriod > 0,
                          'action-late': action.isLate,
-                         'action-rejection': action.expectedResult === 'rejection'
+                         'action-rejection': action.expectedResult === 'rejection',
+                         'action-disabled': action.actionType !== 'init' && action.actionType !== 'accept' && !hasValidBuyer(schedule.loan) && !['T1'].includes(schedule.loan.lifecycleCase || 'T4')
                        }">
                     <div class="action-timing">{{ action.timing }}</div>
                     <div class="action-content">
@@ -668,6 +683,24 @@
                           class="action-amount-input"
                           :title="action.description || ''"
                         /> ADA
+                      </span>
+                      <!-- Buyer display/selection for Accept action -->
+                      <span v-if="action.actionType === 'accept'" class="action-buyer">
+                        <i class="fas fa-user mr-1"></i>
+                        <!-- Show dropdown if no buyer assigned (open market) -->
+                        <select
+                          v-if="!schedule.loan.borrowerId"
+                          :value="schedule.loan.borrowerId || ''"
+                          @change="updateLoanBuyer(schedule.loanIndex, ($event.target as HTMLSelectElement).value || null)"
+                          class="buyer-select"
+                        >
+                          <option value="">Select Buyer...</option>
+                          <option v-for="b in borrowerOptions" :key="b.id" :value="b.id">
+                            {{ b.name }}
+                          </option>
+                        </select>
+                        <!-- Show buyer name if assigned -->
+                        <span v-else class="buyer-name">{{ action.buyerName }}</span>
                       </span>
                       <span v-if="action.isLate" class="action-late-badge">
                         <i class="fas fa-clock"></i> Late
@@ -731,7 +764,7 @@
             </div>
           </div>
 
-          <!-- Lifecycle Case References -->
+          <!-- Lifecycle Case & Contract Action References -->
           <div class="row mt-4">
             <div class="col-md-6">
               <h6 class="text-muted mb-2"><i class="fas fa-file-contract mr-1"></i> Loan Lifecycle Cases</h6>
@@ -749,6 +782,31 @@
                   <span class="lc-id">{{ lc.id }}</span>
                   <span class="lc-short">{{ lc.short }}</span>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Contract Actions Reference -->
+          <div class="contract-actions-reference mt-4">
+            <h6 class="text-muted mb-2">
+              <i class="fas fa-code mr-1"></i> Loan Contract Actions
+              <small class="text-muted ml-2">(asset-transfer/src/actions)</small>
+            </h6>
+            <div class="actions-grid">
+              <div v-for="action in contractActions" :key="action.name" class="action-ref-card">
+                <div class="action-ref-header">
+                  <span class="action-ref-name" :class="'action-' + action.name">{{ action.label }}</span>
+                  <span class="action-ref-executor">{{ action.executor }}</span>
+                </div>
+                <div class="action-ref-desc">{{ action.description }}</div>
+                <div v-if="action.params.length > 0" class="action-ref-params">
+                  <div v-for="param in action.params" :key="param.name" class="param-item">
+                    <code class="param-name">{{ param.name }}</code>
+                    <span class="param-type">{{ param.type }}</span>
+                    <span class="param-desc">{{ param.desc }}</span>
+                  </div>
+                </div>
+                <div v-else class="action-ref-params text-muted small">No parameters</div>
               </div>
             </div>
           </div>
@@ -1335,6 +1393,95 @@ interface LoanAction {
   expectedResult: 'success' | 'failure' | 'rejection'
   isLate?: boolean
   description?: string
+  buyerId?: string | null // Buyer ID for accept action
+  buyerName?: string // Buyer name for display
+}
+
+// Contract action reference - documents available actions and parameters
+const contractActions = [
+  {
+    name: 'init',
+    label: 'Initialize',
+    description: 'Locks asset into contract, mints CollateralToken',
+    executor: 'Originator (Seller)',
+    params: [
+      { name: 'buyer', type: 'string | null', desc: 'Reserved buyer address (null = open market)' },
+      { name: 'base_asset', type: 'Asset', desc: 'Asset to transfer (policy, name, quantity)' },
+      { name: 'principal', type: 'number', desc: 'Total loan amount in lovelace' },
+      { name: 'apr', type: 'number', desc: 'Annual rate in basis points (2000 = 20%)' },
+      { name: 'frequency', type: 'number', desc: 'Payments per year (12=monthly)' },
+      { name: 'installments', type: 'number', desc: 'Total number of payments' },
+      { name: 'deferFee', type: 'boolean', desc: 'Defer seller transfer fee to end' },
+    ]
+  },
+  {
+    name: 'update',
+    label: 'Update Terms',
+    description: 'Modify contract terms before acceptance',
+    executor: 'Originator (Seller)',
+    params: [
+      { name: 'state', type: 'ContractState', desc: 'New contract state/terms' },
+      { name: 'deferFee', type: 'boolean', desc: 'Update fee deferment setting' },
+    ]
+  },
+  {
+    name: 'cancel',
+    label: 'Cancel',
+    description: 'Burns CollateralToken, returns asset to seller',
+    executor: 'Originator (Seller)',
+    params: []
+  },
+  {
+    name: 'accept',
+    label: 'Accept',
+    description: 'Buyer accepts terms, makes first payment, receives LiabilityToken',
+    executor: 'Borrower (Buyer)',
+    params: [
+      { name: 'payment', type: 'number', desc: 'First installment amount in lovelace' },
+      { name: 'timestamp', type: 'number', desc: 'Transaction timestamp' },
+    ]
+  },
+  {
+    name: 'pay',
+    label: 'Pay',
+    description: 'Make installment payment',
+    executor: 'Borrower (Buyer)',
+    params: [
+      { name: 'payment', type: 'number', desc: 'Payment amount in lovelace' },
+      { name: 'timestamp', type: 'number', desc: 'Transaction timestamp' },
+    ]
+  },
+  {
+    name: 'collect',
+    label: 'Collect',
+    description: 'Withdraw accumulated payments from contract',
+    executor: 'Originator (Seller)',
+    params: [
+      { name: 'payment', type: 'number', desc: 'Amount to withdraw in lovelace' },
+    ]
+  },
+  {
+    name: 'complete',
+    label: 'Complete Transfer',
+    description: 'Burns tokens, transfers asset to buyer after final payment',
+    executor: 'Borrower (Buyer)',
+    params: []
+  },
+  {
+    name: 'default',
+    label: 'Claim Default',
+    description: 'Seller reclaims asset after missed payments',
+    executor: 'Originator (Seller)',
+    params: []
+  },
+]
+
+// Get buyer name from borrowerId
+function getBuyerName(borrowerId: string | null): string {
+  if (!borrowerId) return 'Open Market'
+  // Find wallet name from ID
+  const entry = Object.entries(NAME_TO_ID_MAP).find(([_, id]) => id === borrowerId)
+  return entry ? entry[0] : borrowerId
 }
 
 // Generate action schedule for a loan based on its lifecycle case
@@ -1344,6 +1491,8 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
   const termPayment = calculateTermPayment(loan)
   const totalPayments = loan.termMonths
   const freqLabel = getFrequencyLabel(loan.frequency)
+  const buyerId = loan.borrowerId || null
+  const buyerName = getBuyerName(buyerId)
 
   // All loans start with Init (pipeline T0)
   actions.push({
@@ -1391,6 +1540,8 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         timingPeriod: 0,
         amount: termPayment,
         expectedResult: 'success',
+        buyerId,
+        buyerName,
         description: `Buyer accepts and pays first installment`
       })
       actions.push({
@@ -1417,6 +1568,8 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         timingPeriod: 0,
         amount: termPayment,
         expectedResult: 'success',
+        buyerId,
+        buyerName,
         description: `Buyer accepts and pays 1st of ${totalPayments} installments`
       })
       // Add payment actions for remaining installments
@@ -1465,6 +1618,8 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         timingPeriod: 0,
         amount: termPayment,
         expectedResult: 'success',
+        buyerId,
+        buyerName,
         description: `Buyer accepts and pays 1st installment`
       })
       // First payment is late
@@ -1525,6 +1680,8 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         timingPeriod: 0,
         amount: termPayment,
         expectedResult: 'rejection',
+        buyerId: 'wrong-buyer',
+        buyerName: 'Wrong Buyer',
         description: 'Non-reserved buyer attempts acceptance (expected rejection)'
       })
       break
@@ -1551,6 +1708,27 @@ function updateActionAmount(loanIndex: number, actionId: string, newAmount: numb
       action.amount = newAmount
     }
   }
+}
+
+// Update loan buyer (for open market loans)
+function updateLoanBuyer(loanIndex: number, newBuyerId: string | null) {
+  if (loanIndex >= 0 && loanIndex < localConfig.value.loans.length) {
+    localConfig.value.loans[loanIndex].borrowerId = newBuyerId as any
+    // Set reservedBuyer based on whether a buyer is specified
+    localConfig.value.loans[loanIndex].reservedBuyer = !!newBuyerId
+  }
+}
+
+// Update loan lifecycle case
+function updateLoanLifecycleCase(loanIndex: number, newCase: string) {
+  if (loanIndex >= 0 && loanIndex < localConfig.value.loans.length) {
+    localConfig.value.loans[loanIndex].lifecycleCase = newCase as any
+  }
+}
+
+// Check if a loan has a buyer assigned (reserved or selected)
+function hasValidBuyer(loan: any): boolean {
+  return !!loan.borrowerId
 }
 
 // Get borrower name from ID
@@ -3301,5 +3479,178 @@ tr.drag-over {
 
 .clo-phase-preview .phase-steps {
   padding: 0;
+}
+
+/* Lifecycle Case Selector in Header */
+.lifecycle-select {
+  padding: 0.2rem 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: inherit;
+  cursor: pointer;
+  min-width: 90px;
+}
+
+.lifecycle-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.lifecycle-select.lc-T1 { color: #9ca3af; border-color: rgba(107, 114, 128, 0.5); }
+.lifecycle-select.lc-T2 { color: #fca5a5; border-color: rgba(239, 68, 68, 0.5); }
+.lifecycle-select.lc-T3 { color: #86efac; border-color: rgba(34, 197, 94, 0.5); }
+.lifecycle-select.lc-T4 { color: #93c5fd; border-color: rgba(59, 130, 246, 0.5); }
+.lifecycle-select.lc-T5 { color: #fcd34d; border-color: rgba(251, 191, 36, 0.5); }
+.lifecycle-select.lc-T6 { color: #fca5a5; border-color: rgba(220, 38, 38, 0.5); }
+.lifecycle-select.lc-T7 { color: #c4b5fd; border-color: rgba(139, 92, 246, 0.5); }
+
+/* Buyer Display/Selection */
+.action-buyer {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+.buyer-select {
+  padding: 0.15rem 0.3rem;
+  font-size: 0.7rem;
+  background: rgba(251, 191, 36, 0.15);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  border-radius: 3px;
+  color: #fcd34d;
+  cursor: pointer;
+  min-width: 100px;
+}
+
+.buyer-select:focus {
+  outline: none;
+  border-color: #fbbf24;
+}
+
+.buyer-name {
+  font-weight: 500;
+  color: #86efac;
+}
+
+/* No Buyer Warning */
+.no-buyer-warning {
+  padding: 0.5rem 1rem;
+  background: rgba(251, 191, 36, 0.1);
+  border-bottom: 1px solid rgba(251, 191, 36, 0.2);
+  color: #fcd34d;
+  font-size: 0.75rem;
+}
+
+.no-buyer-warning i {
+  margin-right: 0.5rem;
+}
+
+.loan-schedule-card.no-buyer {
+  opacity: 0.85;
+}
+
+.action-item.action-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* Contract Actions Reference */
+.contract-actions-reference {
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.contract-actions-reference h6 {
+  margin-bottom: 0.75rem;
+}
+
+.actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 0.75rem;
+}
+
+.action-ref-card {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.375rem;
+  padding: 0.75rem;
+}
+
+.action-ref-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.action-ref-name {
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+}
+
+.action-ref-name.action-init { background: rgba(139, 92, 246, 0.2); color: #c4b5fd; }
+.action-ref-name.action-update { background: rgba(14, 165, 233, 0.2); color: #7dd3fc; }
+.action-ref-name.action-cancel { background: rgba(107, 114, 128, 0.3); color: #d1d5db; }
+.action-ref-name.action-accept { background: rgba(34, 197, 94, 0.2); color: #86efac; }
+.action-ref-name.action-pay { background: rgba(59, 130, 246, 0.2); color: #93c5fd; }
+.action-ref-name.action-complete { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; }
+.action-ref-name.action-collect { background: rgba(245, 158, 11, 0.2); color: #fcd34d; }
+.action-ref-name.action-default { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
+
+.action-ref-executor {
+  font-size: 0.65rem;
+  color: #64748b;
+  font-style: italic;
+}
+
+.action-ref-desc {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin-bottom: 0.5rem;
+  line-height: 1.4;
+}
+
+.action-ref-params {
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 0.5rem;
+}
+
+.param-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  font-size: 0.65rem;
+  padding: 0.2rem 0;
+  align-items: baseline;
+}
+
+.param-name {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.1rem 0.3rem;
+  border-radius: 2px;
+  color: #f8fafc;
+  font-size: 0.65rem;
+}
+
+.param-type {
+  color: #64748b;
+  font-family: 'SF Mono', monospace;
+}
+
+.param-desc {
+  color: #94a3b8;
+  flex: 1;
+  min-width: 100px;
 }
 </style>
