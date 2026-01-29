@@ -3,12 +3,12 @@
  * Core type definitions for the test pipeline runner
  */
 
-export type TestNetwork = 'emulator' | 'preview'
+export type TestNetwork = 'emulator' | 'preview' | 'preprod'
 
 export interface Identity {
   id: string
   name: string
-  role: 'Originator' | 'Borrower' | 'Analyst' | 'Investor'
+  role: 'Originator' | 'Borrower' | 'Agent' | 'Analyst' | 'Investor'
   address: string
   wallets: Wallet[]
 }
@@ -116,7 +116,7 @@ export interface PipelineConfig {
 
 export interface WalletConfig {
   name: string
-  role: 'Originator' | 'Borrower' | 'Analyst' | 'Investor'
+  role: 'Originator' | 'Borrower' | 'Agent' | 'Analyst' | 'Investor'
   initialFunding: number // in ADA
   assets?: {
     name: string
@@ -129,13 +129,19 @@ export type LifecycleCaseId = 'T1' | 'T2' | 'T3' | 'T4' | 'T5' | 'T6' | 'T7'
 export interface LoanConfig {
   borrowerId: string
   originatorId: string
+  agentId?: string | null // Agent wallet (optional)
   asset: string
   quantity: number
   principal: number // in ADA
   apr: number
-  termMonths: number
+  frequency?: number // Payment periods per year: 12=Monthly, 4=Quarterly, 52=Weekly, etc.
+  termMonths: number // Number of payment installments
   reservedBuyer?: boolean // true = reserved for specific borrower, false = open market
   lifecycleCase?: LifecycleCaseId // Test scenario: T1=Cancel, T2=Default, T3=Nominal(0%), T4=Nominal, T5=LateFee, T6=RejectGuard, T7=Reserved+Fees
+  agentFee?: number // Agent referral fee in ADA
+  transferFeeBuyerPercent?: number // Transfer fee split - buyer percentage (0-100)
+  deferFee?: boolean // Defer seller fee until end of loan
+  lateFee?: number // Late payment fee in ADA
 }
 
 export interface CLOConfig {

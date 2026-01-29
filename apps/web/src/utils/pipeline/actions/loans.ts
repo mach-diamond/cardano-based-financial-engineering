@@ -20,7 +20,7 @@ export interface LoanDefinition {
 }
 
 export interface LoanOptions {
-  mode: 'emulator' | 'preview'
+  mode: 'emulator' | 'preview' | 'preprod'
   identities: Ref<Identity[]>
   phases: Ref<Phase[]>
   currentStepName: Ref<string>

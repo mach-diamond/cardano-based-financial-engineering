@@ -493,7 +493,7 @@ export interface TestRun {
     id: number
     name: string
     description: string | null
-    networkMode: 'emulator' | 'preview'
+    networkMode: 'emulator' | 'preview' | 'preprod'
     status: 'pending' | 'running' | 'passed' | 'failed' | 'skipped'
     configHash: string | null
     state: TestRunState
@@ -540,7 +540,7 @@ export async function getTestRun(id: number): Promise<TestRun | null> {
 export async function createTestRun(params: {
     name: string
     description?: string
-    networkMode: 'emulator' | 'preview'
+    networkMode: 'emulator' | 'preview' | 'preprod'
     state: TestRunState
 }): Promise<TestRun> {
     const res = await fetch(`${API_BASE}/api/test/runs`, {
@@ -844,7 +844,7 @@ export async function checkTestnetFundingNeeds(
 /**
  * Get balance for an address (works for both emulator and testnet mode)
  */
-export async function getWalletBalance(address: string, networkMode: 'emulator' | 'preview'): Promise<bigint> {
+export async function getWalletBalance(address: string, networkMode: 'emulator' | 'preview' | 'preprod'): Promise<bigint> {
     if (networkMode === 'emulator') {
         return getEmulatorBalance(address)
     } else {

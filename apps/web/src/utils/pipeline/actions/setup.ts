@@ -9,7 +9,7 @@ import { NAME_TO_ID_MAP } from '../types'
 import * as ctx from '../context'
 
 export interface SetupOptions {
-  mode: 'emulator' | 'preview'
+  mode: 'emulator' | 'preview' | 'preprod'
   identities: Ref<Identity[]>
   phases: Ref<Phase[]>
   currentStepName: Ref<string>

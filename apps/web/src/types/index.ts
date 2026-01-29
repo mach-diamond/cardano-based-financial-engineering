@@ -147,7 +147,7 @@ export interface TestSuite {
 }
 
 // Identity and Simulation types
-export type IdentityRole = 'Originator' | 'Borrower' | 'Analyst' | 'Investor';
+export type IdentityRole = 'Originator' | 'Borrower' | 'Agent' | 'Analyst' | 'Investor';
 
 export interface Identity {
   id: string;

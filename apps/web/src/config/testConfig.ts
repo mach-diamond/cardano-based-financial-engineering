@@ -43,14 +43,14 @@ export const DEFAULT_WALLETS: WalletConfig[] = [
  */
 export const DEFAULT_LOANS: LoanConfig[] = [
   // Reserved buyer loans
-  { borrowerId: 'bor-alice', originatorId: 'orig-jewelry', asset: 'Diamond', quantity: 2, principal: 500, apr: 6, termMonths: 12, reservedBuyer: true, lifecycleCase: 'T4' },
-  { borrowerId: 'bor-cardanoair', originatorId: 'orig-airplane', asset: 'Airplane', quantity: 5, principal: 2000, apr: 4, termMonths: 60, reservedBuyer: true, lifecycleCase: 'T4' },
-  { borrowerId: 'bor-officeop', originatorId: 'orig-realestate', asset: 'RealEstate', quantity: 5, principal: 500, apr: 5, termMonths: 24, reservedBuyer: true, lifecycleCase: 'T4' },
+  { borrowerId: 'bor-alice', originatorId: 'orig-jewelry', asset: 'Diamond', quantity: 2, principal: 500, apr: 6, frequency: 12, termMonths: 12, reservedBuyer: true, lifecycleCase: 'T4', transferFeeBuyerPercent: 50, deferFee: false, lateFee: 10 },
+  { borrowerId: 'bor-cardanoair', originatorId: 'orig-airplane', asset: 'Airplane', quantity: 5, principal: 2000, apr: 4, frequency: 12, termMonths: 60, reservedBuyer: true, lifecycleCase: 'T4', transferFeeBuyerPercent: 50, deferFee: false, lateFee: 25 },
+  { borrowerId: 'bor-officeop', originatorId: 'orig-realestate', asset: 'RealEstate', quantity: 5, principal: 500, apr: 5, frequency: 4, termMonths: 8, reservedBuyer: true, lifecycleCase: 'T4', transferFeeBuyerPercent: 50, deferFee: false, lateFee: 10 },
 
   // Open market loans
-  { borrowerId: null as any, originatorId: 'orig-airplane', asset: 'Airplane', quantity: 5, principal: 2000, apr: 4.5, termMonths: 60, reservedBuyer: false, lifecycleCase: 'T4' },
-  { borrowerId: null as any, originatorId: 'orig-realestate', asset: 'RealEstate', quantity: 5, principal: 500, apr: 5.5, termMonths: 24, reservedBuyer: false, lifecycleCase: 'T4' },
-  { borrowerId: null as any, originatorId: 'orig-yacht', asset: 'Boat', quantity: 3, principal: 800, apr: 7, termMonths: 36, reservedBuyer: false, lifecycleCase: 'T4' },
+  { borrowerId: null as any, originatorId: 'orig-airplane', asset: 'Airplane', quantity: 5, principal: 2000, apr: 4.5, frequency: 12, termMonths: 60, reservedBuyer: false, lifecycleCase: 'T4', transferFeeBuyerPercent: 50, deferFee: false, lateFee: 25 },
+  { borrowerId: null as any, originatorId: 'orig-realestate', asset: 'RealEstate', quantity: 5, principal: 500, apr: 5.5, frequency: 4, termMonths: 8, reservedBuyer: false, lifecycleCase: 'T4', transferFeeBuyerPercent: 50, deferFee: false, lateFee: 10 },
+  { borrowerId: null as any, originatorId: 'orig-yacht', asset: 'Boat', quantity: 3, principal: 800, apr: 7, frequency: 12, termMonths: 36, reservedBuyer: false, lifecycleCase: 'T4', transferFeeBuyerPercent: 50, deferFee: false, lateFee: 15 },
 ]
 
 /**
@@ -81,7 +81,7 @@ export const DEFAULT_MONTE_CARLO: MonteCarloConfig = {
  * Create a full pipeline configuration
  */
 export function createPipelineConfig(options: {
-  network?: 'emulator' | 'preview'
+  network?: 'emulator' | 'preview' | 'preprod'
   wallets?: WalletConfig[]
   loans?: LoanConfig[]
   clo?: CLOConfig

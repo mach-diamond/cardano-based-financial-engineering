@@ -9,7 +9,7 @@ import { delay } from '../runner'
 import { createContractRecord } from '@/services/api'
 
 export interface CLOOptions {
-  mode: 'emulator' | 'preview'
+  mode: 'emulator' | 'preview' | 'preprod'
   identities: Ref<Identity[]>
   phases: Ref<Phase[]>
   currentStepName: Ref<string>

@@ -15,7 +15,7 @@ export interface MintConfig {
 }
 
 export interface TokenizationOptions {
-  mode?: 'emulator' | 'preview'
+  mode?: 'emulator' | 'preview' | 'preprod'
   identities: Ref<Identity[]>
   phases: Ref<Phase[]>
   currentStepName: Ref<string>

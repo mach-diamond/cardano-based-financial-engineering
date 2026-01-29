@@ -8,7 +8,7 @@ import type { Identity, Phase, LogFunction, ActionResult, LoanContract, CLOContr
 import { delay } from '../runner'
 
 export interface PaymentOptions {
-  mode?: 'emulator' | 'preview'
+  mode?: 'emulator' | 'preview' | 'preprod'
   identities: Ref<Identity[]>
   phases: Ref<Phase[]>
   currentStepName: Ref<string>

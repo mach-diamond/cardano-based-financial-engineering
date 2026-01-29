@@ -256,42 +256,54 @@
           </div>
 
           <div class="table-responsive loans-table-wide">
-            <table class="table table-dark config-table">
+            <table class="table table-dark config-table loans-table">
               <thead>
                 <tr>
-                  <th style="min-width: 130px;">Originator</th>
-                  <th style="min-width: 100px;">Agent</th>
-                  <th style="min-width: 100px;">Asset</th>
-                  <th style="width: 60px;">Qty</th>
-                  <th style="width: 100px;">Principal</th>
-                  <th style="width: 80px;">APR %</th>
-                  <th style="width: 80px;">Term (mo)</th>
-                  <th style="min-width: 130px;">Borrower</th>
-                  <th style="width: 80px;" title="Agent referral fee in ADA">Agent Fee</th>
-                  <th style="width: 75px;" title="Late payment fee in ADA">Late Fee</th>
-                  <th style="min-width: 100px;">
-                    Lifecycle
-                    <i class="fas fa-info-circle ml-1 text-info" style="cursor: help;" title="Test scenario to run for this loan"></i>
+                  <th style="width: 30px;"></th>
+                  <th style="width: 40px;" class="sortable-header" @click="sortLoans('index')" title="Loan #">
+                    # <i v-if="sortColumn === 'index'" :class="sortDirection === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down'"></i>
                   </th>
-                  <th style="width: 40px;"></th>
+                  <th style="min-width: 120px;" class="sortable-header" @click="sortLoans('originator')">
+                    Originator <i v-if="sortColumn === 'originator'" :class="sortDirection === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down'"></i>
+                  </th>
+                  <th style="min-width: 90px;">Asset</th>
+                  <th style="width: 55px;">Qty</th>
+                  <th style="width: 90px;" class="sortable-header" @click="sortLoans('principal')">
+                    Principal <i v-if="sortColumn === 'principal'" :class="sortDirection === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down'"></i>
+                  </th>
+                  <th style="width: 70px;" class="sortable-header" @click="sortLoans('apr')">
+                    APR % <i v-if="sortColumn === 'apr'" :class="sortDirection === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down'"></i>
+                  </th>
+                  <th style="width: 100px;">Frequency</th>
+                  <th style="width: 65px;">Term</th>
+                  <th style="min-width: 120px;">Borrower</th>
+                  <th style="width: 100px;" title="Transfer fee split (Buyer% / Seller%)">Fee Split</th>
+                  <th style="width: 50px;" title="Defer seller fee">Defer</th>
+                  <th style="width: 70px;" title="Late payment fee in ADA">Late Fee</th>
+                  <th style="min-width: 95px;">Lifecycle</th>
+                  <th style="width: 35px;"></th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="(loan, index) in localConfig.loans" :key="index">
+                <tr v-for="(loan, index) in sortedLoans" :key="index"
+                    draggable="true"
+                    @dragstart="dragStart($event, index)"
+                    @dragover.prevent="dragOver($event, index)"
+                    @drop="drop($event, index)"
+                    @dragend="dragEnd"
+                    :class="{ 'drag-over': dragOverIndex === index }">
+                  <td class="drag-handle" title="Drag to reorder">
+                    <i class="fas fa-grip-vertical"></i>
+                  </td>
+                  <td class="loan-index">{{ index + 1 }}</td>
                   <td>
                     <select v-model="loan.originatorId" class="form-control form-control-sm config-input" @change="onOriginatorChange(loan)">
                       <option v-for="w in originatorsWithAssets" :key="w.id" :value="w.id">{{ w.name }}</option>
                     </select>
                   </td>
                   <td>
-                    <select v-model="loan.agentId" class="form-control form-control-sm config-input">
-                      <option :value="null">None</option>
-                      <option v-for="w in allWalletOptions" :key="w.id" :value="w.id">{{ w.name }}</option>
-                    </select>
-                  </td>
-                  <td>
                     <select v-model="loan.asset" class="form-control form-control-sm config-input">
-                      <option value="">-- Select --</option>
+                      <option value="">--</option>
                       <option v-for="asset in getWalletAssets(loan.originatorId)" :key="asset" :value="asset">
                         {{ asset }}
                       </option>
@@ -307,18 +319,32 @@
                     <input v-model.number="loan.apr" type="number" step="0.1" class="form-control form-control-sm config-input input-narrow" />
                   </td>
                   <td>
-                    <input v-model.number="loan.termMonths" type="number" class="form-control form-control-sm config-input input-narrow" />
-                  </td>
-                  <td>
-                    <select v-model="loan.borrowerId" class="form-control form-control-sm config-input">
-                      <option :value="null">Open Market</option>
-                      <option v-for="b in borrowerOptions" :key="b.id" :value="b.id">
-                        {{ b.name }} ({{ b.initialFunding.toLocaleString() }} ADA)
+                    <select v-model="loan.frequency" class="form-control form-control-sm config-input frequency-select">
+                      <option v-for="freq in frequencyOptions" :key="freq.value" :value="freq.value" :class="{ 'text-danger': freq.isTest }">
+                        {{ freq.label }}
                       </option>
                     </select>
                   </td>
                   <td>
-                    <input v-model.number="loan.agentFee" type="number" min="0" step="1" class="form-control form-control-sm config-input input-narrow" placeholder="0" />
+                    <input v-model.number="loan.termMonths" type="number" class="form-control form-control-sm config-input input-narrow" />
+                  </td>
+                  <td>
+                    <select v-model="loan.borrowerId" class="form-control form-control-sm config-input">
+                      <option :value="null">Open</option>
+                      <option v-for="b in borrowerOptions" :key="b.id" :value="b.id">
+                        {{ b.name }}
+                      </option>
+                    </select>
+                  </td>
+                  <td>
+                    <div class="fee-split-compact">
+                      <input v-model.number="loan.transferFeeBuyerPercent" type="number" min="0" max="100" class="form-control form-control-sm config-input fee-input" title="Buyer %" />
+                      <span class="fee-divider">/</span>
+                      <span class="fee-seller" title="Seller %">{{ 100 - (loan.transferFeeBuyerPercent || 50) }}</span>
+                    </div>
+                  </td>
+                  <td class="text-center">
+                    <input type="checkbox" v-model="loan.deferFee" class="form-check-input" :disabled="loan.principal < 10000" :title="loan.principal < 10000 ? 'Requires principal ≥ 10k' : 'Defer seller fee'" />
                   </td>
                   <td>
                     <input v-model.number="loan.lateFee" type="number" min="0" step="1" class="form-control form-control-sm config-input input-narrow" placeholder="10" />
@@ -326,7 +352,7 @@
                   <td>
                     <select v-model="loan.lifecycleCase" class="form-control form-control-sm config-input" :class="'lifecycle-' + (loan.lifecycleCase || 'T4')">
                       <option v-for="lc in lifecycleCases" :key="lc.id" :value="lc.id" :title="lc.description">
-                        {{ lc.id }}: {{ lc.short }}
+                        {{ lc.id }}
                       </option>
                     </select>
                   </td>
@@ -340,56 +366,27 @@
             </table>
           </div>
 
-          <!-- Transfer Fee Configuration -->
-          <div class="transfer-fee-config mt-3">
-            <div class="d-flex align-items-center justify-content-between mb-2">
-              <span class="text-muted"><i class="fas fa-percentage mr-1"></i> Transfer Fee Split (applies to all loans):</span>
-              <span class="fee-display">
-                <span class="buyer-label">Buyer: {{ transferFeeBuyerPercent }}%</span>
-                <span class="mx-2">|</span>
-                <span class="seller-label">Seller: {{ 100 - transferFeeBuyerPercent }}%</span>
-              </span>
-            </div>
-            <div class="fee-slider-row">
-              <span class="slider-label buyer-label">Buyer</span>
-              <input
-                type="range"
-                v-model.number="transferFeeBuyerPercent"
-                min="0"
-                max="100"
-                step="5"
-                class="fee-slider"
-              />
-              <span class="slider-label seller-label">Seller</span>
-            </div>
-            <div v-if="hasHighPrincipalLoans" class="deferment-option mt-2">
-              <label class="form-check-inline mb-0">
-                <input type="checkbox" class="form-check-input" v-model="transferFeeDeferment" />
-                <span class="small text-muted">Defer seller's fee until payment collection (for loans ≥ 10,000 ADA principal)</span>
-              </label>
-            </div>
-          </div>
-
           <!-- Loan Calculations Summary -->
           <div class="loan-calculations mt-4">
             <h6 class="text-muted mb-2"><i class="fas fa-calculator mr-1"></i> Loan Analysis</h6>
             <div class="calculations-grid">
               <div v-for="(loan, index) in localConfig.loans" :key="'calc-' + index" class="loan-calc-card">
                 <div class="calc-header">
-                  <span class="calc-asset">{{ loan.asset || 'Loan ' + (index + 1) }}</span>
+                  <span class="calc-index">#{{ index + 1 }}</span>
+                  <span class="calc-asset">{{ loan.asset || 'Unnamed' }}</span>
                   <span class="calc-principal">{{ loan.principal.toLocaleString() }} ADA</span>
                 </div>
                 <div class="calc-body">
                   <div class="calc-row">
-                    <span class="calc-label">Term Payment</span>
-                    <span class="calc-value">{{ calculateTermPayment(loan).toFixed(2) }} ADA</span>
+                    <span class="calc-label">Payment</span>
+                    <span class="calc-value">{{ calculateTermPayment(loan).toFixed(2) }} / {{ getFrequencyLabel(loan.frequency) }}</span>
                   </div>
                   <div class="calc-row">
-                    <span class="calc-label">Total Interest</span>
-                    <span class="calc-value" :class="{ 'text-success': loan.apr > 0 }">{{ calculateTotalInterest(loan).toFixed(2) }} ADA</span>
+                    <span class="calc-label">Interest</span>
+                    <span class="calc-value" :class="{ 'text-success': loan.apr > 0 }">+{{ calculateTotalInterest(loan).toFixed(2) }}</span>
                   </div>
                   <div class="calc-row total">
-                    <span class="calc-label">Total Value</span>
+                    <span class="calc-label">Total</span>
                     <span class="calc-value text-info">{{ calculateTotalValue(loan).toFixed(2) }} ADA</span>
                   </div>
                 </div>
@@ -436,6 +433,7 @@
             <div class="loan-pills-clo">
               <div v-for="(loan, idx) in localConfig.loans" :key="idx" class="loan-pill-clo" :class="{ 'eligible': !['T1', 'T6'].includes(loan.lifecycleCase || 'T4'), 'ineligible': ['T1', 'T6'].includes(loan.lifecycleCase || 'T4') }">
                 <div class="loan-pill-clo-header">
+                  <span class="loan-pill-index">#{{ idx + 1 }}</span>
                   <span class="loan-pill-asset">{{ loan.asset || 'No Asset' }}</span>
                   <span class="loan-pill-lifecycle" :class="'lc-' + (loan.lifecycleCase || 'T4')">{{ loan.lifecycleCase || 'T4' }}</span>
                 </div>
@@ -446,7 +444,7 @@
                   </div>
                   <div class="loan-pill-row">
                     <span class="loan-pill-label">Payment</span>
-                    <span class="loan-pill-value">{{ calculateTermPayment(loan).toFixed(0) }}/mo</span>
+                    <span class="loan-pill-value">{{ calculateTermPayment(loan).toFixed(0) }}/{{ getFrequencyLabel(loan.frequency) }}</span>
                   </div>
                   <div class="loan-pill-row">
                     <span class="loan-pill-label">Interest</span>
@@ -964,6 +962,120 @@ const cloLifecycleCases = [
   { id: 'C4', short: 'Redemption', description: 'Early redemption by tranche holders' },
 ]
 
+// Payment frequency options (periods per year)
+const frequencyOptions = [
+  { value: 12, label: 'Monthly', isTest: false },
+  { value: 4, label: 'Quarterly', isTest: false },
+  { value: 2, label: 'Bi-Annual', isTest: false },
+  { value: 52, label: 'Weekly', isTest: false },
+  { value: 365, label: 'Daily', isTest: true },
+  { value: 8760, label: 'Hourly', isTest: true },
+  { value: 17531, label: '30-min', isTest: true },
+  { value: 35063, label: '15-min', isTest: true },
+  { value: 52594, label: '10-min', isTest: true },
+  { value: 105189, label: '5-min', isTest: true },
+]
+
+// Get frequency label from value
+function getFrequencyLabel(frequency?: number): string {
+  const freq = frequencyOptions.find(f => f.value === (frequency || 12))
+  if (freq) return freq.label.replace('-', '')
+  if ((frequency || 12) === 12) return 'mo'
+  if (frequency === 4) return 'qtr'
+  return 'period'
+}
+
+// Sorting state
+const sortColumn = ref<string | null>(null)
+const sortDirection = ref<'asc' | 'desc'>('asc')
+
+// Drag and drop state
+const dragIndex = ref<number | null>(null)
+const dragOverIndex = ref<number | null>(null)
+
+// Sorted loans computed
+const sortedLoans = computed(() => {
+  // If no sort column, return original order
+  if (!sortColumn.value) return localConfig.value.loans
+
+  const sorted = [...localConfig.value.loans]
+  sorted.sort((a, b) => {
+    let aVal: any, bVal: any
+
+    switch (sortColumn.value) {
+      case 'index':
+        return 0 // Keep original order
+      case 'originator':
+        aVal = a.originatorId || ''
+        bVal = b.originatorId || ''
+        break
+      case 'principal':
+        aVal = a.principal
+        bVal = b.principal
+        break
+      case 'apr':
+        aVal = a.apr
+        bVal = b.apr
+        break
+      default:
+        return 0
+    }
+
+    if (aVal < bVal) return sortDirection.value === 'asc' ? -1 : 1
+    if (aVal > bVal) return sortDirection.value === 'asc' ? 1 : -1
+    return 0
+  })
+
+  return sorted
+})
+
+// Sort loans by column
+function sortLoans(column: string) {
+  if (sortColumn.value === column) {
+    // Toggle direction or clear
+    if (sortDirection.value === 'asc') {
+      sortDirection.value = 'desc'
+    } else {
+      sortColumn.value = null
+      sortDirection.value = 'asc'
+    }
+  } else {
+    sortColumn.value = column
+    sortDirection.value = 'asc'
+  }
+}
+
+// Drag and drop handlers
+function dragStart(event: DragEvent, index: number) {
+  dragIndex.value = index
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+  }
+}
+
+function dragOver(_event: DragEvent, index: number) {
+  dragOverIndex.value = index
+}
+
+function drop(_event: DragEvent, targetIndex: number) {
+  if (dragIndex.value === null || dragIndex.value === targetIndex) return
+
+  // Clear sorting when manually reordering
+  sortColumn.value = null
+
+  const loans = localConfig.value.loans
+  const [movedLoan] = loans.splice(dragIndex.value, 1)
+  loans.splice(targetIndex, 0, movedLoan)
+
+  dragIndex.value = null
+  dragOverIndex.value = null
+}
+
+function dragEnd() {
+  dragIndex.value = null
+  dragOverIndex.value = null
+}
+
 // Simulated time for emulator
 const simulatedSlot = ref(0)
 
@@ -991,20 +1103,12 @@ const showAssetModal = ref(false)
 const editingWalletIndex = ref<number | null>(null)
 const newAsset = ref({ name: '', quantity: 1 })
 
-// Transfer fee configuration (global for all loans)
-const transferFeeBuyerPercent = ref(50)
-const transferFeeDeferment = ref(false)
-
-// Check if any loans have principal >= 10,000 ADA (eligible for deferment)
-const hasHighPrincipalLoans = computed(() => {
-  return localConfig.value.loans.some(loan => loan.principal >= 10000)
-})
-
 // Loan calculation functions
-function calculateTermPayment(loan: { principal: number; apr: number; termMonths: number }): number {
+function calculateTermPayment(loan: { principal: number; apr: number; termMonths: number; frequency?: number }): number {
   const principal = loan.principal
   const apr = loan.apr / 100 // Convert percentage to decimal
   const installments = loan.termMonths
+  const periodsPerYear = loan.frequency || 12 // Default to monthly
 
   if (installments <= 0) return 0
   if (apr === 0) {
@@ -1012,19 +1116,19 @@ function calculateTermPayment(loan: { principal: number; apr: number; termMonths
     return principal / installments
   }
 
-  // Standard loan payment formula (monthly payments)
-  const monthlyRate = apr / 12
-  const termPayment = (monthlyRate * principal) / (1 - Math.pow(1 + monthlyRate, -installments))
+  // Standard loan payment formula using frequency-adjusted rate
+  const periodRate = apr / periodsPerYear
+  const termPayment = (periodRate * principal) / (1 - Math.pow(1 + periodRate, -installments))
   return Math.round((termPayment + Number.EPSILON) * 100) / 100
 }
 
-function calculateTotalInterest(loan: { principal: number; apr: number; termMonths: number }): number {
+function calculateTotalInterest(loan: { principal: number; apr: number; termMonths: number; frequency?: number }): number {
   const termPayment = calculateTermPayment(loan)
   const totalPaid = termPayment * loan.termMonths
   return Math.max(0, Math.round((totalPaid - loan.principal + Number.EPSILON) * 100) / 100)
 }
 
-function calculateTotalValue(loan: { principal: number; apr: number; termMonths: number }): number {
+function calculateTotalValue(loan: { principal: number; apr: number; termMonths: number; frequency?: number }): number {
   return loan.principal + calculateTotalInterest(loan)
 }
 
@@ -1070,15 +1174,6 @@ const borrowerOptions = computed(() => {
       name: w.name,
       initialFunding: w.initialFunding || 0
     }))
-})
-
-// All wallets for originator dropdown (any wallet can originate)
-const allWalletOptions = computed(() => {
-  return localConfig.value.wallets.map(w => ({
-    id: NAME_TO_ID_MAP[w.name] || `wallet-${w.name.toLowerCase().replace(/\s+/g, '-')}`,
-    name: w.name,
-    role: w.role
-  }))
 })
 
 // Originators that have assets to mint (filtered for loan originator dropdown)
@@ -1347,20 +1442,6 @@ function getBorrowerName(borrowerId: string | null): string | null {
   return wallet?.name || borrowerId
 }
 
-// Get phases for lifecycle case (kept for reference)
-function getLifecyclePhases(caseId: string): string[] {
-  const phaseMap: Record<string, string[]> = {
-    T1: ['Init', 'Update', 'Cancel'],
-    T2: ['Init', 'Accept', 'Default'],
-    T3: ['Init', 'Accept', 'Pay×N', 'Complete', 'Collect'],
-    T4: ['Init', 'Accept', 'Pay×N', 'Complete', 'Collect'],
-    T5: ['Init', 'Accept', 'Pay (late)', 'Pay×N', 'Complete', 'Collect'],
-    T6: ['Init', 'Accept (reject)', '✗'],
-    T7: ['Init', 'Accept', 'Pay×N', 'Complete', 'Collect'],
-  }
-  return phaseMap[caseId] || []
-}
-
 const validationErrors = computed(() => {
   const result = validateConfig(localConfig.value)
   const errors = [...result.errors]
@@ -1422,11 +1503,13 @@ function addLoan() {
     quantity: 1,
     principal: 500,
     apr: 5,
+    frequency: 12,           // Payment frequency (periods/year): 12=Monthly, 4=Quarterly
     termMonths: 12,
     reservedBuyer: false,
     lifecycleCase: 'T4',
     agentFee: 0,             // Agent referral fee in ADA
     transferFeeBuyerPercent: 50,  // Transfer fee split (buyer %)
+    deferFee: false,         // Defer seller fee until end
     lateFee: 10,             // Late payment fee in ADA
   })
 }
@@ -2734,11 +2817,24 @@ tr.role-investor { border-left: 3px solid #fbbf24; }
 
 .loan-pill-clo-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 0.35rem;
   padding: 0.35rem 0.5rem;
   background: rgba(0, 0, 0, 0.2);
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.loan-pill-index {
+  font-weight: 700;
+  font-size: 0.7rem;
+  background: rgba(59, 130, 246, 0.3);
+  color: #93c5fd;
+  padding: 0.1rem 0.3rem;
+  border-radius: 2px;
+}
+
+.loan-pill-asset {
+  flex: 1;
 }
 
 .loan-pill-clo-body {
@@ -2765,5 +2861,114 @@ tr.role-investor { border-left: 3px solid #fbbf24; }
 
 .loan-pill-value {
   color: #e2e8f0;
+}
+
+/* Drag Handle */
+.drag-handle {
+  cursor: grab;
+  color: #475569;
+  text-align: center;
+  width: 30px;
+  padding: 0.4rem 0.25rem !important;
+}
+
+.drag-handle:hover {
+  color: #94a3b8;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+/* Drag-over state for reordering */
+tr.drag-over {
+  background: rgba(59, 130, 246, 0.15) !important;
+  border-top: 2px solid #3b82f6;
+}
+
+/* Loan Index Column */
+.loan-index {
+  font-weight: 700;
+  color: #94a3b8;
+  text-align: center;
+  font-size: 0.85rem;
+}
+
+/* Loan Index in Calc Cards */
+.calc-index {
+  font-weight: 700;
+  font-size: 0.7rem;
+  background: rgba(59, 130, 246, 0.3);
+  color: #93c5fd;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  margin-right: 0.5rem;
+}
+
+/* Sortable Headers */
+.sortable-header {
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease;
+}
+
+.sortable-header:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.sortable-header i {
+  margin-left: 0.25rem;
+  font-size: 0.65rem;
+  opacity: 0.8;
+}
+
+/* Compact Fee Split in Row */
+.fee-split-compact {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.fee-split-compact .fee-input {
+  width: 42px !important;
+  min-width: 42px;
+  text-align: center;
+  padding: 0.25rem 0.3rem;
+  font-size: 0.8rem;
+}
+
+.fee-divider {
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+.fee-seller {
+  color: #a78bfa;
+  font-size: 0.8rem;
+  font-weight: 500;
+  min-width: 28px;
+  text-align: center;
+}
+
+/* Frequency Select */
+.frequency-select {
+  font-size: 0.75rem !important;
+  padding: 0.25rem 0.4rem !important;
+}
+
+.frequency-select option.text-danger {
+  color: #ef4444 !important;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* Defer checkbox styling */
+.loans-table .form-check-input {
+  margin: 0;
+  position: relative;
+}
+
+.loans-table .form-check-input:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
 }
 </style>
