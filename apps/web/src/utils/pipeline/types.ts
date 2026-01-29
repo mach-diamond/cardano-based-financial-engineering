@@ -127,6 +127,7 @@ export interface WalletConfig {
 export type LifecycleCaseId = 'T1' | 'T2' | 'T3' | 'T4' | 'T5' | 'T6' | 'T7'
 
 export interface LoanConfig {
+  _uid?: string // Unique ID for stable v-for keys (runtime only)
   borrowerId: string
   originatorId: string
   agentId?: string | null // Agent wallet (optional)

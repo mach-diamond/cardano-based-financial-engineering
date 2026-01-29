@@ -285,13 +285,13 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="(loan, index) in sortedLoans" :key="index"
+                <tr v-for="(loan, index) in sortedLoans" :key="loan._uid || index"
                     draggable="true"
-                    @dragstart="dragStart($event, index)"
-                    @dragover.prevent="dragOver($event, index)"
-                    @drop="drop($event, index)"
+                    @dragstart="dragStart($event, loan)"
+                    @dragover.prevent="dragOver($event, loan, index)"
+                    @drop="drop($event, loan)"
                     @dragend="dragEnd"
-                    :class="{ 'drag-over': dragOverIndex === index }">
+                    :class="{ 'drag-over': dropTargetLoanUid === loan._uid }">
                   <td class="drag-handle" title="Drag to reorder">
                     <i class="fas fa-grip-vertical"></i>
                   </td>
@@ -1257,42 +1257,71 @@ function sortLoans(column: string) {
   }
 }
 
-// Drag and drop handlers
-function dragStart(event: DragEvent, index: number) {
-  dragIndex.value = index
+// Drag and drop handlers - store loan _uid instead of index for stable tracking
+const draggedLoanUid = ref<string | null>(null)
+const dropTargetLoanUid = ref<string | null>(null)
+
+function dragStart(event: DragEvent, loan: any) {
+  draggedLoanUid.value = loan._uid
+  dragIndex.value = localConfig.value.loans.findIndex(l => l._uid === loan._uid)
   if (event.dataTransfer) {
     event.dataTransfer.effectAllowed = 'move'
   }
 }
 
-function dragOver(_event: DragEvent, index: number) {
-  dragOverIndex.value = index
+function dragOver(_event: DragEvent, loan: any, visualIndex: number) {
+  dropTargetLoanUid.value = loan._uid
+  dragOverIndex.value = visualIndex
 }
 
-function drop(_event: DragEvent, targetIndex: number) {
-  if (dragIndex.value === null || dragIndex.value === targetIndex) return
+function drop(_event: DragEvent, targetLoan: any) {
+  if (!draggedLoanUid.value || draggedLoanUid.value === targetLoan._uid) return
 
   // Clear sorting when manually reordering
   sortColumn.value = null
 
   const loans = localConfig.value.loans
-  const [movedLoan] = loans.splice(dragIndex.value, 1)
+  const sourceIndex = loans.findIndex(l => l._uid === draggedLoanUid.value)
+  const targetIndex = loans.findIndex(l => l._uid === targetLoan._uid)
+
+  if (sourceIndex === -1 || targetIndex === -1) return
+
+  // Remove from source and insert at target
+  const [movedLoan] = loans.splice(sourceIndex, 1)
   loans.splice(targetIndex, 0, movedLoan)
 
+  draggedLoanUid.value = null
+  dropTargetLoanUid.value = null
   dragIndex.value = null
   dragOverIndex.value = null
 }
 
 function dragEnd() {
+  draggedLoanUid.value = null
+  dropTargetLoanUid.value = null
   dragIndex.value = null
   dragOverIndex.value = null
+}
+
+// Unique ID generator for loans
+let loanIdCounter = 0
+function generateLoanId(): string {
+  return `loan-${++loanIdCounter}-${Date.now()}`
+}
+
+// Add unique _uid to each loan for stable v-for keys
+function addLoanIds(loans: any[]): any[] {
+  return loans.map(loan => ({
+    ...loan,
+    _uid: loan._uid || generateLoanId()
+  }))
 }
 
 // Local config state
 const localConfig = ref<PipelineConfig>({
   network: 'emulator',
   wallets: JSON.parse(JSON.stringify(DEFAULT_WALLETS)),
-  loans: JSON.parse(JSON.stringify(DEFAULT_LOANS)),
+  loans: addLoanIds(JSON.parse(JSON.stringify(DEFAULT_LOANS))),
   clo: JSON.parse(JSON.stringify(DEFAULT_CLO)),
   monteCarlo: JSON.parse(JSON.stringify(DEFAULT_MONTE_CARLO)),
 })
@@ -2010,6 +2039,7 @@ function addLoan() {
   const assets = getWalletAssets(originatorId)
 
   localConfig.value.loans.push({
+    _uid: generateLoanId(),  // Unique ID for stable v-for key
     borrowerId: '',
     originatorId,
     agentId: null,           // Agent wallet (none by default)
@@ -2025,7 +2055,7 @@ function addLoan() {
     transferFeeBuyerPercent: 50,  // Transfer fee split (buyer %)
     deferFee: false,         // Defer seller fee until end
     lateFee: 10,             // Late payment fee in ADA
-  })
+  } as any)
 }
 
 function removeLoan(index: number) {
@@ -2036,7 +2066,7 @@ function resetToDefaults() {
   localConfig.value = {
     network: 'emulator',
     wallets: JSON.parse(JSON.stringify(DEFAULT_WALLETS)),
-    loans: JSON.parse(JSON.stringify(DEFAULT_LOANS)),
+    loans: addLoanIds(JSON.parse(JSON.stringify(DEFAULT_LOANS))),
     clo: JSON.parse(JSON.stringify(DEFAULT_CLO)),
     monteCarlo: JSON.parse(JSON.stringify(DEFAULT_MONTE_CARLO)),
   }
