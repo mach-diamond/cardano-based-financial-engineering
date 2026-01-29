@@ -124,14 +124,14 @@
             </template>
             <!-- Multiple actions - collapsible group -->
             <template v-else>
-              <div class="action-group" :class="{ 'group-collapsed': collapsedGroups[`group-${group.timing}`] !== false }">
+              <div class="action-group" :class="{ 'group-collapsed': collapsedGroups[`group-${group.timing}`] === true }">
                 <div class="action-group-header" @click="toggleGroup(group.timing)">
-                  <i class="fas group-chevron" :class="collapsedGroups[`group-${group.timing}`] !== false ? 'fa-chevron-right' : 'fa-chevron-down'"></i>
+                  <i class="fas group-chevron" :class="collapsedGroups[`group-${group.timing}`] === true ? 'fa-chevron-right' : 'fa-chevron-down'"></i>
                   <span class="group-summary">{{ group.summary }}</span>
                   <span class="group-count badge badge-pill badge-secondary">{{ group.actions.length }}</span>
                   <span class="step-timing">{{ group.timing }}</span>
                 </div>
-                <div v-show="collapsedGroups[`group-${group.timing}`] === false" class="action-group-items">
+                <div v-show="collapsedGroups[`group-${group.timing}`] !== true" class="action-group-items">
                   <div v-for="item in group.actions" :key="item.action.id" class="phase-step-item"
                        :class="{
                          'action-late': item.action.isLate,
@@ -765,7 +765,7 @@ const groupedPostInitActions = computed((): ActionGroup[] => {
         timingPeriod: item.action.timingPeriod,
         actions: [item],
         summary: '',
-        isCollapsed: collapsedGroups.value[groupKey] ?? true
+        isCollapsed: collapsedGroups.value[groupKey] ?? false
       }
     } else {
       currentGroup.actions.push(item)

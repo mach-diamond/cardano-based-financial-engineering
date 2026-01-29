@@ -41,6 +41,16 @@
 
       <!-- Action Timeline -->
       <div class="loan-action-timeline">
+        <!-- Balance Column Headers -->
+        <div v-if="hasBalanceData" class="action-item balance-header-row">
+          <div class="action-timing"></div>
+          <div class="action-content"></div>
+          <div class="action-balances">
+            <div class="balance-col"><span class="balance-header">Loan</span></div>
+            <div class="balance-col"><span class="balance-header">Contract</span></div>
+            <div class="balance-col"><span class="balance-header">Interest</span></div>
+          </div>
+        </div>
         <div v-for="action in actions" :key="action.id"
              class="action-item"
              :class="{
@@ -90,23 +100,20 @@
               <i class="fas fa-times-circle"></i> Expected Rejection
             </span>
           </div>
-          <div class="action-balances">
-            <div v-if="action.loanBalance !== undefined" class="balance-col">
-              <span class="balance-label">Loan:</span>
+          <div v-if="hasBalanceData" class="action-balances">
+            <div class="balance-col">
               <span class="balance-value" :class="{ 'balance-zero': action.loanBalance === 0 }">
-                {{ action.loanBalance.toFixed(2) }}
+                {{ action.loanBalance !== undefined ? action.loanBalance.toFixed(2) : '-' }}
               </span>
             </div>
-            <div v-if="action.contractBalance !== undefined" class="balance-col">
-              <span class="balance-label">Contract:</span>
+            <div class="balance-col">
               <span class="balance-value balance-contract">
-                {{ action.contractBalance.toFixed(2) }}
+                {{ action.contractBalance !== undefined ? action.contractBalance.toFixed(2) : '-' }}
               </span>
             </div>
-            <div v-if="action.interestPaid !== undefined" class="balance-col">
-              <span class="balance-label">Int:</span>
+            <div class="balance-col">
               <span class="balance-value balance-interest">
-                {{ action.interestPaid.toFixed(2) }}
+                {{ action.interestPaid !== undefined ? action.interestPaid.toFixed(2) : '-' }}
               </span>
             </div>
           </div>
@@ -184,6 +191,10 @@ const lifecycleCases = [
 ]
 
 const hasValidBuyer = computed(() => !!props.loan.borrowerId)
+
+const hasBalanceData = computed(() => {
+  return props.actions.some(a => a.loanBalance !== undefined || a.contractBalance !== undefined || a.interestPaid !== undefined)
+})
 
 const totalValue = computed(() => {
   const loan = props.loan
@@ -458,26 +469,39 @@ function onAmountChange(actionId: string, event: Event) {
 }
 
 .action-balances {
-  margin-left: auto;
   display: flex;
-  gap: 0.5rem;
+  gap: 0;
   padding-left: 0.5rem;
   border-left: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
 }
 
 .balance-col {
   font-family: 'SF Mono', monospace;
   font-size: 0.65rem;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  min-width: 50px;
+  align-items: center;
+  justify-content: flex-end;
+  width: 55px;
+  padding: 0 0.25rem;
 }
 
-.balance-col .balance-label {
-  color: #475569;
+.balance-header {
+  color: #64748b;
   font-size: 0.55rem;
+  font-weight: 600;
   text-transform: uppercase;
+}
+
+.balance-header-row {
+  border-left-color: transparent !important;
+  padding-top: 0.15rem;
+  padding-bottom: 0.15rem;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.balance-header-row:hover {
+  background: rgba(0, 0, 0, 0.15) !important;
 }
 
 .balance-col .balance-value {
