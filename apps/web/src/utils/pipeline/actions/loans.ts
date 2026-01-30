@@ -659,17 +659,17 @@ export async function executeRunContractsPhase(
 
     switch (step.actionType) {
       case 'accept': {
-        // Find the buyer
+        // Find the buyer - check step's borrowerId first (UI config), then fall back to loan's borrower
         const buyerId = step.borrowerId || loan.borrower
         const buyer = identities.value.find(i => i.id === buyerId || i.name === buyerId)
         if (!buyer) {
-          // Open market loans without a buyer - skip (they're waiting for a buyer)
-          if (loan.subtype === 'Open-Market') {
-            log(`  ⏸ ${step.name}: Open market loan - waiting for buyer`, 'info')
+          // Only skip open market loans if no buyer was assigned in the step config
+          if (loan.subtype === 'Open-Market' && !step.borrowerId) {
+            log(`  ⏸ ${step.name}: Open market loan - waiting for buyer assignment`, 'info')
             step.status = 'disabled'
             continue
           }
-          log(`  ⚠ Buyer not found for ${step.name}`, 'warning')
+          log(`  ⚠ Buyer not found for ${step.name} (buyerId: ${buyerId})`, 'warning')
           step.status = 'failed'
           failCount++
           continue

@@ -151,15 +151,15 @@ export async function createContract(input: CreateContractInput): Promise<Proces
     )
     VALUES (
       ${input.userId || null},
-      ${input.contractDatum ? JSON.stringify(input.contractDatum) : null},
-      ${input.contractData ? JSON.stringify(input.contractData) : null},
+      ${input.contractDatum ? sql.json(input.contractDatum) : null},
+      ${input.contractData ? sql.json(input.contractData) : null},
       ${input.contractAddress || null},
       ${input.policyId || null},
       ${input.contractType},
       ${input.contractSubtype || null},
       ${input.alias || null},
       ${input.networkId},
-      ${input.parameters ? JSON.stringify(input.parameters) : null},
+      ${input.parameters ? sql.json(input.parameters) : null},
       ${input.raId || null},
       ${input.testRunId || null},
       ${STATUS_CODES.DEPLOYED}
@@ -450,7 +450,7 @@ export async function updateContractDatum(
   const [contract] = await sql<ProcessSmartContract[]>`
     UPDATE process_smart_contract
     SET
-      contract_datum = ${JSON.stringify(datum)},
+      contract_datum = ${sql.json(datum)},
       modified = NOW()
       ${tx ? sql`, txs = array_append(txs, ${tx})` : sql``}
     WHERE process_id = ${processId}::uuid
