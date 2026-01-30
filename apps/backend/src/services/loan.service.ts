@@ -292,7 +292,22 @@ export async function createLoan(
   state.emulator.awaitBlock(1)
 
   // Persist to database with the parameterized script from SDK
-  const dbDatum = toDbDatum(initState)
+  // IMPORTANT: The on-chain datum has transfer_fee_seller = 0 when deferFee is false
+  // (because the fee was paid immediately during init). We must store the same value in DB.
+  const onChainState: ContractStateInput = {
+    ...initState,
+    terms: {
+      ...initState.terms,
+      fees: {
+        ...initState.terms.fees,
+        // Match the on-chain datum: seller fee is 0 if paid at init
+        transfer_fee_seller: uiData.deferFee
+          ? initState.terms.fees.transfer_fee_seller
+          : 0,
+      },
+    },
+  }
+  const dbDatum = toDbDatum(onChainState)
   const dbContract = await contractDb.createContract({
     contractType: 'Transfer',
     contractSubtype: params.buyerAddress ? 'Reserved' : 'Open-Market',
