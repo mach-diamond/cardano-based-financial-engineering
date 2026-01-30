@@ -189,6 +189,37 @@ function mintCollateralRedeemer(): string {
 }
 
 /**
+ * Spend redeemer for buyer accepting the loan
+ *
+ * SpendActions structure from plutus.json:
+ *   Buyer (index 0) { action: BuyerActionTypes }
+ *   Seller (index 1) { action: SellerActionTypes }
+ *
+ * BuyerActionTypes:
+ *   Pay (index 0) - no fields
+ *   Accept (index 1) - no fields
+ *   Transfer (index 2) - no fields
+ */
+function acceptLoanRedeemer(): string {
+  // SpendActions::Buyer { action: BuyerActionTypes::Accept }
+  // = Constr(0, [Constr(1, [])])
+  const acceptAction = new Constr(1, []) // Accept
+  const buyerAction = new Constr(0, [acceptAction]) // Buyer
+  return Data.to(buyerAction)
+}
+
+/**
+ * Spend redeemer for buyer making a payment
+ */
+function payLoanRedeemer(): string {
+  // SpendActions::Buyer { action: BuyerActionTypes::Pay }
+  // = Constr(0, [Constr(0, [])])
+  const payAction = new Constr(0, []) // Pay
+  const buyerAction = new Constr(0, [payAction]) // Buyer
+  return Data.to(buyerAction)
+}
+
+/**
  * Mint a test token for an originator
  * This simulates asset tokenization in the emulator
  */
@@ -581,31 +612,105 @@ export async function acceptLoan(
     throw new Error('Contract has no datum')
   }
 
-  // Update contract state with buyer
+  // Get the script from cache or reconstruct from DB
+  let cachedScript = scriptCache.get(params.contractAddress)
+  if (!cachedScript) {
+    // Reconstruct from contractData
+    const contractData = contract.contractData as { scriptCbor?: string; scriptHash?: string } | null
+    if (!contractData?.scriptCbor) {
+      throw new Error('Contract script not found')
+    }
+    cachedScript = {
+      Validator: { type: 'PlutusV3' as const, script: contractData.scriptCbor },
+      hash: contract.policyId,
+      address: params.contractAddress,
+    }
+    scriptCache.set(params.contractAddress, cachedScript)
+  }
+
+  // Get the contract UTxO
+  const utxos = await lucid.utxosAt(params.contractAddress)
+  if (utxos.length === 0) {
+    throw new Error('No UTxO found at contract address')
+  }
+  const contractUtxo = utxos[0] // There should be exactly one UTxO at the contract
+
+  // Calculate payment and new balance
   const paymentLovelace = params.initialPayment * 1_000_000
+  const newBalance = currentDatum.balance - paymentLovelace
+  const currentTime = Date.now()
+
+  // Build on-chain datum with buyer set and balance reduced
+  const onChainDatum: Data = {
+    buyer: paymentCredentialOf(buyerAddress).hash,
+    base_asset: {
+      policy: currentDatum.baseAsset.policyId,
+      asset_name: fromText(currentDatum.baseAsset.assetName),
+      quantity: BigInt(currentDatum.baseAsset.quantity),
+    },
+    terms: {
+      principal: BigInt(currentDatum.terms.principal),
+      apr: BigInt(currentDatum.terms.apr),
+      frequency: BigInt(currentDatum.terms.frequency),
+      installments: BigInt(currentDatum.terms.installments),
+      time: BigInt(currentTime),
+      fees: {
+        late_fee: BigInt(currentDatum.terms.fees?.lateFee || 0),
+        transfer_fee_seller: BigInt(currentDatum.terms.fees?.transferFeeSeller || 0),
+        transfer_fee_buyer: BigInt(currentDatum.terms.fees?.transferFeeBuyer || 0),
+        referral_fee: BigInt(currentDatum.terms.fees?.referralFee || 0),
+        referral_fee_addr: currentDatum.terms.fees?.referralFeeAddr || null,
+      },
+    },
+    balance: BigInt(newBalance),
+    last_payment: {
+      amount: BigInt(paymentLovelace),
+      time: BigInt(currentTime),
+    },
+  }
+
+  const newDatumCbor = Data.to(onChainDatum, StateSchema)
+
+  // Build the accept transaction
+  const tx = lucid
+    .newTx()
+    .collectFrom([contractUtxo], acceptLoanRedeemer())
+    .attach.SpendingValidator(cachedScript.Validator)
+    .pay.ToContract(
+      params.contractAddress,
+      { kind: 'inline', value: newDatumCbor },
+      {
+        lovelace: (contractUtxo.assets.lovelace || 0n) + BigInt(paymentLovelace),
+        ...Object.fromEntries(
+          Object.entries(contractUtxo.assets).filter(([k]) => k !== 'lovelace')
+        ),
+      }
+    )
+    .addSigner(buyerAddress)
+
+  const completedTx = await tx.complete()
+  const signedTx = await completedTx.sign.withWallet().complete()
+  const txHash = await signedTx.submit()
+
+  // Advance emulator to confirm tx
+  emulatorState.emulator.awaitBlock(1)
+
+  // Update database with new state
   const updatedDatum: contractDb.LoanContractDatum = {
     ...currentDatum,
     buyer: paymentCredentialOf(buyerAddress).hash,
     terms: {
       ...currentDatum.terms,
-      time: Date.now(),
+      time: currentTime,
     },
     lastPayment: {
       amount: paymentLovelace,
-      time: Date.now(),
+      time: currentTime,
     },
-    balance: currentDatum.balance - paymentLovelace,
+    balance: newBalance,
     isActive: true,
   }
-
-  // Update in database
   await contractDb.updateContractDatum(contract.processId, updatedDatum)
-
-  // TODO: Build actual accept transaction using the contract validator
-  // For now, simulate the tx
-  const txHash = `accept_${Date.now().toString(16)}_${Math.random().toString(16).slice(2, 10)}`
-
-  emulatorState.emulator.awaitBlock(1)
 
   console.log(`[LoanService] Loan accepted: ${txHash}`)
 
@@ -625,6 +730,7 @@ export async function makePayment(
   const lucid = getLucid()
   if (!lucid) throw new Error('Lucid not available')
 
+  const buyerAddress = await lucid.wallet().address()
   const contract = await contractDb.getContractByAddress(params.contractAddress)
 
   if (!contract) {
@@ -642,29 +748,101 @@ export async function makePayment(
     throw new Error('Contract has no datum')
   }
 
-  // Update contract state
+  // Get the script from cache or reconstruct from DB
+  let cachedScript = scriptCache.get(params.contractAddress)
+  if (!cachedScript) {
+    const contractData = contract.contractData as { scriptCbor?: string } | null
+    if (!contractData?.scriptCbor) {
+      throw new Error('Contract script not found')
+    }
+    cachedScript = {
+      Validator: { type: 'PlutusV3' as const, script: contractData.scriptCbor },
+      hash: contract.policyId,
+      address: params.contractAddress,
+    }
+    scriptCache.set(params.contractAddress, cachedScript)
+  }
+
+  // Get the contract UTxO
+  const utxos = await lucid.utxosAt(params.contractAddress)
+  if (utxos.length === 0) {
+    throw new Error('No UTxO found at contract address')
+  }
+  const contractUtxo = utxos[0]
+
+  // Calculate new balance
   const paymentLovelace = params.amount * 1_000_000
   const newBalance = currentDatum.balance - paymentLovelace
   const isPaidOff = newBalance <= 0
+  const currentTime = Date.now()
 
+  // Build on-chain datum with updated balance
+  const onChainDatum: Data = {
+    buyer: currentDatum.buyer,
+    base_asset: {
+      policy: currentDatum.baseAsset.policyId,
+      asset_name: fromText(currentDatum.baseAsset.assetName),
+      quantity: BigInt(currentDatum.baseAsset.quantity),
+    },
+    terms: {
+      principal: BigInt(currentDatum.terms.principal),
+      apr: BigInt(currentDatum.terms.apr),
+      frequency: BigInt(currentDatum.terms.frequency),
+      installments: BigInt(currentDatum.terms.installments),
+      time: BigInt(currentDatum.terms.time || currentTime),
+      fees: {
+        late_fee: BigInt(currentDatum.terms.fees?.lateFee || 0),
+        transfer_fee_seller: BigInt(currentDatum.terms.fees?.transferFeeSeller || 0),
+        transfer_fee_buyer: BigInt(currentDatum.terms.fees?.transferFeeBuyer || 0),
+        referral_fee: BigInt(currentDatum.terms.fees?.referralFee || 0),
+        referral_fee_addr: currentDatum.terms.fees?.referralFeeAddr || null,
+      },
+    },
+    balance: BigInt(newBalance > 0 ? newBalance : 0),
+    last_payment: {
+      amount: BigInt(paymentLovelace),
+      time: BigInt(currentTime),
+    },
+  }
+
+  const newDatumCbor = Data.to(onChainDatum, StateSchema)
+
+  // Build the payment transaction
+  const tx = lucid
+    .newTx()
+    .collectFrom([contractUtxo], payLoanRedeemer())
+    .attach.SpendingValidator(cachedScript.Validator)
+    .pay.ToContract(
+      params.contractAddress,
+      { kind: 'inline', value: newDatumCbor },
+      {
+        lovelace: (contractUtxo.assets.lovelace || 0n) + BigInt(paymentLovelace),
+        ...Object.fromEntries(
+          Object.entries(contractUtxo.assets).filter(([k]) => k !== 'lovelace')
+        ),
+      }
+    )
+    .addSigner(buyerAddress)
+
+  const completedTx = await tx.complete()
+  const signedTx = await completedTx.sign.withWallet().complete()
+  const txHash = await signedTx.submit()
+
+  // Advance emulator to confirm tx
+  emulatorState.emulator.awaitBlock(1)
+
+  // Update database with new state
   const updatedDatum: contractDb.LoanContractDatum = {
     ...currentDatum,
-    balance: newBalance,
+    balance: newBalance > 0 ? newBalance : 0,
     lastPayment: {
       amount: paymentLovelace,
-      time: Date.now(),
+      time: currentTime,
     },
     isPaidOff,
     isActive: !isPaidOff,
   }
-
-  // Update in database
   await contractDb.updateContractDatum(contract.processId, updatedDatum)
-
-  // TODO: Build actual payment transaction using the contract validator
-  const txHash = `pay_${Date.now().toString(16)}_${Math.random().toString(16).slice(2, 10)}`
-
-  emulatorState.emulator.awaitBlock(1)
 
   console.log(`[LoanService] Payment made: ${txHash}`)
   console.log(`  Remaining Balance: ${newBalance / 1_000_000} ADA`)
