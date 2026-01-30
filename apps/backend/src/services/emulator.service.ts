@@ -13,6 +13,22 @@ import {
   type UTxO,
 } from '@lucid-evolution/lucid'
 
+// Preview network slot configuration (from @lucid-evolution/plutus)
+// This must match the SLOT_CONFIG_NETWORK.Preview values
+const PREVIEW_SLOT_CONFIG = {
+  zeroTime: 1666656000000, // Oct 25, 2022 in milliseconds
+  zeroSlot: 0,
+  slotLength: 1000, // 1 second per slot
+}
+
+/**
+ * Calculate the current slot number for Preview network
+ */
+function getCurrentPreviewSlot(): number {
+  const timePassed = Date.now() - PREVIEW_SLOT_CONFIG.zeroTime
+  return Math.floor(timePassed / PREVIEW_SLOT_CONFIG.slotLength) + PREVIEW_SLOT_CONFIG.zeroSlot
+}
+
 export interface EmulatorWallet {
   name: string
   role: 'Originator' | 'Borrower' | 'Analyst' | 'Investor'
@@ -75,6 +91,15 @@ export async function initializeEmulator(
 
   // Create emulator with funded accounts
   const emulator = new Emulator(accounts as EmulatorAccount[])
+
+  // CRITICAL: Advance the emulator to the current real-world slot
+  // This ensures validity windows (which use Date.now()) will be valid
+  // The emulator starts at slot 0, but Lucid uses Preview network's slot config
+  // which maps Date.now() to a much higher slot number
+  const currentSlot = getCurrentPreviewSlot()
+  console.log(`[Emulator] Advancing to current Preview network slot: ${currentSlot}`)
+  emulator.awaitSlot(currentSlot)
+
   const lucid = await Lucid(emulator, 'Preview')
 
   emulatorState = {
@@ -82,6 +107,7 @@ export async function initializeEmulator(
     emulator,
     wallets,
     isInitialized: true,
+    currentSlot: currentSlot,
   }
 
   return { wallets }
@@ -136,9 +162,8 @@ export async function getWalletBalance(address: string): Promise<bigint> {
  */
 export function getCurrentSlot(): number {
   if (!emulatorState) return 0
-  // The emulator tracks time internally - get current slot from ledger state
-  // For now, use the emulator's internal slot counter
-  return emulatorState.currentSlot || 0
+  // Return the tracked slot which should match the emulator's internal slot
+  return emulatorState.currentSlot || getCurrentPreviewSlot()
 }
 
 /**
@@ -147,24 +172,41 @@ export function getCurrentSlot(): number {
 export function advanceTime(slots: number): { newSlot: number; timestamp: number } {
   if (!emulatorState) return { newSlot: 0, timestamp: 0 }
 
-  // Track current slot (initialize if not set)
+  // Track current slot (initialize to current Preview slot if not set)
   if (emulatorState.currentSlot === undefined) {
-    emulatorState.currentSlot = 0
+    emulatorState.currentSlot = getCurrentPreviewSlot()
   }
 
   // Advance by the specified number of slots
   emulatorState.currentSlot += slots
   emulatorState.emulator.awaitSlot(emulatorState.currentSlot)
 
-  // Calculate approximate timestamp (1 slot = 1 second in Cardano mainnet)
-  const timestamp = Date.now() + (emulatorState.currentSlot * 1000)
+  // Calculate timestamp based on Preview network slot config
+  // timestamp = zeroTime + (slot - zeroSlot) * slotLength
+  const timestamp =
+    PREVIEW_SLOT_CONFIG.zeroTime +
+    (emulatorState.currentSlot - PREVIEW_SLOT_CONFIG.zeroSlot) * PREVIEW_SLOT_CONFIG.slotLength
 
-  console.log(`[Emulator] Advanced to slot ${emulatorState.currentSlot}`)
+  console.log(`[Emulator] Advanced to slot ${emulatorState.currentSlot}, timestamp: ${timestamp}`)
 
   return {
     newSlot: emulatorState.currentSlot,
     timestamp,
   }
+}
+
+/**
+ * Get the current emulator timestamp based on the tracked slot
+ */
+export function getEmulatorTime(): number {
+  if (!emulatorState || emulatorState.currentSlot === undefined) {
+    return Date.now()
+  }
+  // Calculate timestamp from slot using Preview network config
+  return (
+    PREVIEW_SLOT_CONFIG.zeroTime +
+    (emulatorState.currentSlot - PREVIEW_SLOT_CONFIG.zeroSlot) * PREVIEW_SLOT_CONFIG.slotLength
+  )
 }
 
 /**

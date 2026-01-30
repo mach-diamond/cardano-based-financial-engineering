@@ -12,6 +12,7 @@ import {
   getWalletBalance,
   advanceTime,
   getCurrentSlot,
+  getEmulatorTime,
 } from '../services/emulator.service'
 
 const emulator = new Hono()
@@ -156,7 +157,8 @@ emulator.post('/advance-time', async (c) => {
 emulator.get('/current-slot', async (c) => {
   try {
     const slot = getCurrentSlot()
-    return c.json({ slot, timestamp: Date.now() + (slot * 1000) })
+    const timestamp = getEmulatorTime()
+    return c.json({ slot, timestamp })
   } catch (err) {
     return c.json({ error: String(err) }, 500)
   }
