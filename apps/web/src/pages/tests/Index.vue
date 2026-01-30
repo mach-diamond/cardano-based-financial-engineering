@@ -166,7 +166,7 @@ const availableTestRuns = ref<TestRun[]>([])
 
 // Breakpoint control - set to phase ID to stop before that phase
 // null = no breakpoint, 2 = stop before tokenization, 5 = stop before CLO, etc.
-const breakpointPhase = ref<number | null>(5) // Default: stop before CLO
+const breakpointPhase = ref<number | null>(null) // No breakpoint by default
 
 // Time tracking
 const currentSlot = ref(0)
@@ -347,8 +347,36 @@ async function loadAvailableTestRuns() {
   }
 }
 
-// Load a specific test run by ID
+// Load a specific test run by ID, or reset state if runId is 0
 async function loadTestRunById(runId: number) {
+  // Handle "New Run" selection - reset all state to clean slate
+  if (runId === 0) {
+    console.log('loadTestRunById: New Run selected - resetting state')
+
+    // Reset all phases and steps to pending
+    phases.value.forEach(phase => {
+      phase.status = 'pending'
+      phase.steps.forEach((step: any) => {
+        step.status = 'pending'
+        delete step.txHash
+      })
+    })
+
+    // Clear all state
+    currentTestRunId.value = null
+    identities.value = []
+    loanContracts.value = []
+    cloContracts.value = []
+    currentPhase.value = 1
+    currentStepName.value = ''
+
+    // Clear console
+    consoleLines.value = []
+    log('Starting new run - state reset', 'info')
+
+    return
+  }
+
   try {
     const run = await getTestRun(runId)
     console.log('loadTestRunById: Raw response:', run)

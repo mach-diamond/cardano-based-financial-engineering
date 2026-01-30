@@ -335,9 +335,22 @@ export async function executeStep(
         if (step.action === 'create-wallets') {
           const result = await import('./actions/setup').then(m =>
             m.createWallets({
-              mode: 'emulator',
+              mode: options.mode,
               identities,
-              phases: { value: [phase] } as any,
+              phases: options.phases,
+              currentStepName,
+              log,
+            })
+          )
+          step.status = result.success ? 'passed' : 'failed'
+          return result
+        }
+        if (step.action === 'fund-wallets') {
+          const result = await import('./actions/setup').then(m =>
+            m.fundWallets({
+              mode: options.mode,
+              identities,
+              phases: options.phases,
               currentStepName,
               log,
             })
@@ -361,6 +374,10 @@ export async function executeStep(
               })
             )
             step.status = result.success ? 'passed' : 'failed'
+            // Capture txHash from result data
+            if (result.data?.txHash) {
+              step.txHash = result.data.txHash
+            }
             return result
           }
         }
@@ -368,42 +385,141 @@ export async function executeStep(
 
       case 3:
         // Loan creation phase
-        if ('borrowerId' in step && 'originatorId' in step) {
-          // This would create a single loan
-          log(`  Manual loan creation not implemented`, 'warning')
-        }
-        break
-
-      case 4:
-        // CLO phase
-        log(`  Manual CLO step not implemented`, 'warning')
-        break
-
-      case 5:
-        // Payment phase
-        if ('borrowerId' in step && 'amount' in step) {
-          const result = await import('./actions/payments').then(m =>
-            m.processPayment({
-              borrowerId: step.borrowerId,
-              amount: step.amount,
-              installmentNumber: step.installmentNumber || 1,
-            }, {
-              identities,
-              phases: { value: [phase] } as any,
-              currentStepName,
-              log,
-              loanContracts,
-              cloContracts,
-            })
+        if ('loanIndex' in step) {
+          // Create a single loan using the loan definition from config
+          const loanIndex = step.loanIndex as number
+          const result = await import('./actions/loans').then(m =>
+            m.createLoan(
+              {
+                borrowerId: step.borrowerId || null,
+                originatorId: step.originatorId,
+                asset: step.asset,
+                qty: step.qty || 1,
+                principal: step.principal || 500,
+                apr: step.apr || 5,
+                termLength: step.termLength || '12 months',
+                reservedBuyer: !!step.borrowerId,
+              },
+              {
+                mode: options.mode,
+                identities,
+                phases: options.phases,
+                currentStepName,
+                log,
+                loanContracts,
+                testRunId: options.testRunId || { value: null } as any,
+              },
+              loanIndex
+            )
           )
           step.status = result.success ? 'passed' : 'failed'
+          if (result.data?.txHash) {
+            step.txHash = result.data.txHash
+          }
           return result
         }
-        break
+        log(`  Manual loan creation: step missing loanIndex`, 'warning')
+        step.status = 'failed'
+        return { success: false, message: 'Step missing loanIndex' }
+
+      case 4:
+        // Run Contracts phase (accept, pay, complete, collect)
+        if ('actionType' in step && 'loanIndex' in step) {
+          const actionType = step.actionType as string
+          const loanIndex = step.loanIndex as number
+          const loan = loanContracts.value.find(l => l.loanIndex === loanIndex)
+
+          if (!loan) {
+            log(`  Loan with index ${loanIndex} not found - run phase 3 first`, 'warning')
+            step.status = 'failed'
+            return { success: false, message: `Loan index ${loanIndex} not found` }
+          }
+
+          if (actionType === 'accept') {
+            // Find the buyer for this loan
+            const buyerId = step.borrowerId || loan.borrower
+            const buyer = identities.value.find(i => i.id === buyerId || i.name === buyerId)
+            if (!buyer) {
+              log(`  Buyer not found for loan acceptance`, 'warning')
+              step.status = 'failed'
+              return { success: false, message: 'Buyer not found' }
+            }
+            const result = await import('./actions/loans').then(m =>
+              m.acceptLoan(loan.id, buyer.id, {
+                mode: options.mode,
+                identities,
+                phases: options.phases,
+                currentStepName,
+                log,
+                loanContracts,
+                testRunId: options.testRunId || { value: null } as any,
+              })
+            )
+            step.status = result.success ? 'passed' : 'failed'
+            if (result.data?.txHash) {
+              step.txHash = result.data.txHash
+            }
+            return result
+          }
+
+          if (actionType === 'pay') {
+            const amount = step.amount || 100 // Default payment in ADA
+            const result = await import('./actions/loans').then(m =>
+              m.makePayment(loan.id, amount, {
+                mode: options.mode,
+                identities,
+                phases: options.phases,
+                currentStepName,
+                log,
+                loanContracts,
+                testRunId: options.testRunId || { value: null } as any,
+              })
+            )
+            step.status = result.success ? 'passed' : 'failed'
+            if (result.data?.txHash) {
+              step.txHash = result.data.txHash
+            }
+            return result
+          }
+
+          if (actionType === 'collect') {
+            const result = await import('./actions/loans').then(m =>
+              m.collectPayment(loan.id, loan.state?.balance || 0, {
+                mode: options.mode,
+                identities,
+                phases: options.phases,
+                currentStepName,
+                log,
+                loanContracts,
+                testRunId: options.testRunId || { value: null } as any,
+              })
+            )
+            step.status = result.success ? 'passed' : 'failed'
+            if (result.data?.txHash) {
+              step.txHash = result.data.txHash
+            }
+            return result
+          }
+
+          log(`  Action type '${actionType}' not implemented yet`, 'warning')
+          step.status = 'pending'
+          return { success: false, message: `Action '${actionType}' not implemented` }
+        }
+        log(`  Manual contract step: missing actionType or loanIndex`, 'warning')
+        step.status = 'failed'
+        return { success: false, message: 'Step missing actionType or loanIndex' }
+
+      case 5:
+        // CLO Bundle & Distribution phase
+        log(`  Manual CLO step not implemented yet`, 'warning')
+        step.status = 'pending'
+        return { success: false, message: 'CLO steps not implemented yet' }
     }
 
-    step.status = 'passed'
-    return { success: true, message: 'Step completed' }
+    // No handler matched - this is an error, don't mark as passed
+    log(`  Step handler not found for phase ${phase.id}, action: ${step.action || 'unknown'}`, 'warning')
+    step.status = 'failed'
+    return { success: false, message: `No handler for step in phase ${phase.id}` }
   } catch (err) {
     step.status = 'failed'
     phase.status = 'failed'

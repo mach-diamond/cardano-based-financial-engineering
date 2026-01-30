@@ -1,12 +1,22 @@
 /**
  * Loan Actions
  * Loan contract creation, acceptance, and payment operations
+ *
+ * Calls backend /api/loan/* endpoints which use Lucid Evolution for real transactions.
+ * In emulator mode, transactions are submitted to the Lucid emulator.
+ * In preview/preprod mode, transactions are submitted to the actual testnet.
  */
 
 import type { Ref } from 'vue'
 import type { Identity, Phase, LogFunction, ActionResult, LoanContract } from '../types'
-import { delay } from '../runner'
-import { createContractRecord, updateContractState } from '@/services/api'
+import {
+  createContractRecord,
+  updateContractState,
+  createLoan as apiCreateLoan,
+  acceptLoan as apiAcceptLoan,
+  makeLoanPayment as apiMakeLoanPayment,
+  collectLoanPayment as apiCollectPayment,
+} from '@/services/api'
 
 export interface LoanDefinition {
   borrowerId: string | null // null = open to market
@@ -47,12 +57,17 @@ export const DEFAULT_LOAN_DEFINITIONS: LoanDefinition[] = [
 /**
  * Create a single loan contract
  *
- * EMULATOR MODE: Creates mock loan contract in local state
- * PREVIEW MODE: FAILS - Real loan creation requires loan-contract actions
+ * Calls backend /api/loan/create which uses Lucid Evolution to build real transactions.
+ * The backend creates the contract UTxO, mints the CollateralToken, and returns txHash.
+ *
+ * @param loan - Loan definition
+ * @param options - Pipeline options
+ * @param loanIndex - Index of this loan in the config (for step status matching)
  */
 export async function createLoan(
   loan: LoanDefinition,
-  options: LoanOptions
+  options: LoanOptions,
+  loanIndex?: number
 ): Promise<ActionResult> {
   const { mode, identities, phases, currentStepName, log, loanContracts, testRunId } = options
 
@@ -69,110 +84,170 @@ export async function createLoan(
   const marketType = loan.reservedBuyer ? 'Reserved' : 'Open'
 
   currentStepName.value = `Loan: ${borrowerName} - ${loan.qty} ${loan.asset} from ${originator.name}`
-
-  // PREVIEW MODE - Cannot create contracts without real integration
-  if (mode === 'preview') {
-    log(`  Cannot create loan contract on Preview testnet`, 'error')
-    log(`    Loan: ${loan.qty} ${loan.asset} @ ${loan.principal} ADA`, 'info')
-    log(`    Originator: ${originator.name} (${originator.address})`, 'info')
-    log(`    Buyer: ${borrowerName}`, 'info')
-    log(``, 'info')
-    log(`  Real loan creation requires:`, 'info')
-    log(`  1. send_to_market action from loan-contract package`, 'info')
-    log(`  2. Collateral token locked at contract address`, 'info')
-    log(`  3. Signed transaction via Lucid Evolution`, 'info')
-    return {
-      success: false,
-      message: `Cannot create loan on Preview testnet - contract integration not implemented`,
-    }
-  }
-
-  // EMULATOR MODE - Mock contract creation
   log(`  Creating ${marketType} Loan: ${loan.qty} ${loan.asset} @ ${loan.principal} ADA`, 'info')
   log(`    Originator: ${originator.name}`, 'info')
   log(`    Buyer: ${borrowerName}${loan.reservedBuyer ? ' (Reserved)' : ' (Open to anyone)'}`, 'info')
 
-  await delay(300)
-
-  // Transfer asset from originator (escrow into contract)
+  // Find the asset in originator's wallet to get the real policyId
   const origAsset = originator.wallets[0].assets.find(a => a.assetName === loan.asset)
-  if (origAsset) {
+  if (!origAsset) {
+    log(`  ✗ Asset ${loan.asset} not found in ${originator.name}'s wallet`, 'error')
+    return { success: false, message: `Asset ${loan.asset} not found in wallet` }
+  }
+
+  try {
+    // Calculate installments from term length
+    const termMonths = parseInt(loan.termLength) || 12
+
+    // Call backend API to create loan contract via Lucid Evolution
+    const result = await apiCreateLoan({
+      sellerWalletName: originator.name,
+      asset: {
+        policyId: origAsset.policyId,
+        assetName: loan.asset,
+        quantity: loan.qty,
+      },
+      terms: {
+        principal: loan.principal, // in ADA
+        apr: Math.round(loan.apr * 100), // convert to basis points
+        frequency: 12, // monthly payments
+        installments: termMonths,
+        lateFee: 10, // default 10 ADA late fee
+        transferFeeSeller: 2_000_000, // 2 ADA
+        transferFeeBuyer: 2_000_000, // 2 ADA
+      },
+      buyerAddress: borrower?.address,
+      deferFee: false,
+    })
+
+    if (!result.success) {
+      log(`  ✗ Failed to create loan: ${result.error || 'Unknown error'}`, 'error')
+      // Update step status in phase 3 to failed
+      const phase3 = phases.value.find(p => p.id === 3)
+      if (phase3) {
+        const step = phase3.steps.find((s: any) =>
+          loanIndex !== undefined
+            ? s.loanIndex === loanIndex
+            : s.originatorId === loan.originatorId && s.asset === loan.asset
+        )
+        if (step) step.status = 'failed'
+      }
+      return { success: false, message: result.error || 'Failed to create loan' }
+    }
+
+    // Transfer asset from originator's local state (it's now in the contract)
     origAsset.quantity -= BigInt(loan.qty)
     if (origAsset.quantity <= 0n) {
       originator.wallets[0].assets = originator.wallets[0].assets.filter(a => a.assetName !== loan.asset)
     }
-  }
 
-  // Create loan contract record
-  const contractId = `LOAN-${loan.originatorId}-${loan.asset}-${Date.now()}`
-  const loanContract: LoanContract = {
-    id: contractId,
-    alias: loan.reservedBuyer
-      ? `${borrowerName} - ${loan.asset} Loan`
-      : `Open Market - ${loan.asset} Loan`,
-    subtype: loan.reservedBuyer ? 'Reserved' : 'Open-Market',
-    collateral: {
-      quantity: loan.qty,
-      assetName: loan.asset,
-      policyId: 'policy_' + loan.asset.toLowerCase(),
-    },
-    principal: loan.principal * 1_000_000, // Convert to lovelace
-    apr: loan.apr,
-    termLength: loan.termLength,
-    status: 'pending', // Waiting for Accept action
-    borrower: borrower?.name || null,
-    originator: originator.name,
-    state: {
-      balance: loan.principal * 1_000_000,
-      isActive: false, // Not active until accepted
-      isPaidOff: false,
+    // Create loan contract record for UI
+    const loanContract: LoanContract = {
+      id: result.contractAddress || `LOAN-${loan.asset}-${Date.now()}`,
+      alias: loan.reservedBuyer
+        ? `${borrowerName} - ${loan.asset} Loan`
+        : `Open Market - ${loan.asset} Loan`,
+      subtype: loan.reservedBuyer ? 'Reserved' : 'Open-Market',
+      collateral: {
+        quantity: loan.qty,
+        assetName: loan.asset,
+        policyId: result.policyId || origAsset.policyId,
+      },
+      principal: loan.principal * 1_000_000, // Convert to lovelace
+      apr: loan.apr,
+      termLength: loan.termLength,
+      status: 'pending', // Waiting for Accept action
+      borrower: borrower?.name || null,
+      originator: originator.name,
+      contractAddress: result.contractAddress,
+      txHash: result.txHash,
+      loanIndex, // Store for step matching in phase 4
+      state: {
+        balance: loan.principal * 1_000_000,
+        isActive: false, // Not active until accepted
+        isPaidOff: false,
+      }
     }
-  }
 
-  loanContracts.value.push(loanContract)
+    loanContracts.value.push(loanContract)
 
-  // Save to database
-  if (testRunId.value) {
-    try {
-      const dbContract = await createContractRecord({
-        testRunId: testRunId.value,
-        contractType: 'Transfer',
-        contractSubtype: loanContract.subtype,
-        alias: loanContract.alias,
-        contractData: {
-          collateral: loanContract.collateral,
-          principal: loanContract.principal,
-          apr: loanContract.apr,
-          termLength: loanContract.termLength,
-          borrower: loanContract.borrower,
-          originator: loanContract.originator,
-          reservedBuyer: loan.reservedBuyer,
-        },
-        contractDatum: loanContract.state,
-        policyId: 'policy_' + loan.asset.toLowerCase(),
-        networkId: mode === 'emulator' ? 0 : 1,
-      })
-      // Store the database processId for later updates
-      loanContract.id = dbContract.processId
-      log(`  Contract saved to DB: ${dbContract.processId}`, 'info')
-    } catch (err) {
-      log(`  Warning: Could not save contract to DB: ${(err as Error).message}`, 'error')
+    log(`  ✓ Loan contract created`, 'success')
+    log(`    TX: ${result.txHash}`, 'info')
+    log(`    Contract: ${result.contractAddress}`, 'info')
+    log(`    Policy: ${result.policyId}`, 'info')
+
+    // Save to test run database if applicable
+    if (testRunId.value) {
+      try {
+        const dbContract = await createContractRecord({
+          testRunId: testRunId.value,
+          contractType: 'Transfer',
+          contractSubtype: loanContract.subtype,
+          alias: loanContract.alias,
+          contractData: {
+            collateral: loanContract.collateral,
+            principal: loanContract.principal,
+            apr: loanContract.apr,
+            termLength: loanContract.termLength,
+            borrower: loanContract.borrower,
+            originator: loanContract.originator,
+            reservedBuyer: loan.reservedBuyer,
+          },
+          contractDatum: loanContract.state,
+          contractAddress: result.contractAddress,
+          policyId: result.policyId,
+          networkId: mode === 'emulator' ? 0 : 1,
+        })
+        loanContract.id = dbContract.processId
+      } catch (err) {
+        log(`  Warning: Could not save to test DB: ${(err as Error).message}`, 'warning')
+      }
     }
+
+    // Update step status in phase 3 (Initialize Loan Contracts)
+    const phase3 = phases.value.find(p => p.id === 3)
+    if (phase3) {
+      // Match by loanIndex if provided, otherwise match by originatorId + asset
+      const step = phase3.steps.find((s: any) =>
+        loanIndex !== undefined
+          ? s.loanIndex === loanIndex
+          : s.originatorId === loan.originatorId && s.asset === loan.asset
+      )
+      if (step) step.status = 'passed'
+    }
+
+    return {
+      success: true,
+      message: `Loan created: ${result.contractAddress}`,
+      data: {
+        loanContract,
+        txHash: result.txHash,
+        contractAddress: result.contractAddress,
+        policyId: result.policyId,
+      }
+    }
+  } catch (err) {
+    const error = err as Error
+    log(`  ✗ Failed to create loan: ${error.message}`, 'error')
+    // Update step status in phase 3 to failed
+    const phase3 = phases.value.find(p => p.id === 3)
+    if (phase3) {
+      const step = phase3.steps.find((s: any) =>
+        loanIndex !== undefined
+          ? s.loanIndex === loanIndex
+          : s.originatorId === loan.originatorId && s.asset === loan.asset
+      )
+      if (step) step.status = 'failed'
+    }
+    return { success: false, message: error.message, error }
   }
-
-  log(`  Collateral escrowed, awaiting Accept`, 'success')
-
-  // Update step status
-  const step = phases.value[2].steps.find((s: any) =>
-    s.borrowerId === loan.borrowerId || (s.asset === loan.asset && !s.borrowerId)
-  )
-  if (step) step.status = 'passed'
-
-  return { success: true, message: `Loan created: ${contractId}`, data: loanContract }
 }
 
 /**
  * Accept a loan contract (buyer makes first payment)
+ *
+ * Calls backend /api/loan/accept which uses Lucid Evolution to build the accept transaction.
+ * The buyer's wallet signs the transaction and makes the initial payment.
  */
 export async function acceptLoan(
   loanId: string,
@@ -196,65 +271,107 @@ export async function acceptLoan(
     return { success: false, message: `Loan is reserved for ${loan.borrower}, not ${buyer.name}` }
   }
 
-  currentStepName.value = `${buyer.name}: Accepting loan ${loanId}`
-  log(`  ${buyer.name}: Accepting loan for ${loan.collateral.assetName}...`, 'info')
-
-  await delay(400)
+  // Need contract address for backend call
+  const contractAddress = loan.contractAddress || loan.id
+  if (!contractAddress || contractAddress.startsWith('LOAN-')) {
+    log(`  ✗ No contract address found for loan ${loanId}`, 'error')
+    return { success: false, message: 'Contract address not available' }
+  }
 
   // Calculate first payment (principal / installments + interest)
   const installments = parseInt(loan.termLength) || 12
   const monthlyPayment = Math.ceil(loan.principal / installments)
   const interestPayment = Math.ceil((loan.principal * (loan.apr / 100)) / 12)
-  const firstPayment = monthlyPayment + interestPayment
+  const firstPaymentLovelace = monthlyPayment + interestPayment
+  const firstPaymentAda = firstPaymentLovelace / 1_000_000
 
-  // Deduct from buyer's wallet
-  if (buyer.wallets[0]) {
-    const paymentLovelace = BigInt(firstPayment)
-    if (buyer.wallets[0].balance < paymentLovelace) {
-      log(`  Insufficient balance: ${buyer.name} needs ${firstPayment / 1_000_000} ADA`, 'error')
-      return { success: false, message: 'Insufficient balance for first payment' }
-    }
-    buyer.wallets[0].balance -= paymentLovelace
-  }
+  currentStepName.value = `${buyer.name}: Accepting loan for ${loan.collateral.assetName}`
+  log(`  ${buyer.name}: Accepting loan for ${loan.collateral.assetName}...`, 'info')
+  log(`    Initial payment: ${firstPaymentAda.toFixed(2)} ADA`, 'info')
 
-  // Update loan state
-  loan.borrower = buyer.name
-  loan.status = 'running'
-  if (loan.state) {
-    loan.state.isActive = true
-    loan.state.balance -= firstPayment
-    loan.state.startTime = Date.now()
-    loan.state.paymentCount = 1 // First payment made on accept
-  }
-
-  log(`  First payment of ${(firstPayment / 1_000_000).toFixed(2)} ADA processed`, 'success')
-  log(`  Loan now active. Remaining: ${((loan.state?.balance || 0) / 1_000_000).toFixed(2)} ADA`, 'info')
-
-  // Persist state to database
   try {
-    await updateContractState(loan.id, {
-      contractData: {
-        borrower: buyer.name
-      },
-      contractDatum: {
-        balance: loan.state?.balance,
-        isActive: loan.state?.isActive,
-        isPaidOff: loan.state?.isPaidOff || false,
-        isDefaulted: loan.state?.isDefaulted || false,
-        startTime: loan.state?.startTime,
-        paymentCount: loan.state?.paymentCount
-      }
-    })
-    log(`  Contract state persisted to DB`, 'info')
-  } catch (err) {
-    log(`  Warning: Could not persist state: ${(err as Error).message}`, 'error')
-  }
+    // Call backend API to accept loan via Lucid Evolution
+    const result = await apiAcceptLoan(buyer.name, contractAddress, firstPaymentAda)
 
-  return { success: true, message: `Loan accepted by ${buyer.name}`, data: loan }
+    if (!result.success) {
+      log(`  ✗ Failed to accept loan: ${result.error || 'Unknown error'}`, 'error')
+      // Update step status in phase 4 to failed
+      const phase4 = options.phases.value.find(p => p.id === 4)
+      if (phase4) {
+        const step = phase4.steps.find((s: any) =>
+          s.actionType === 'accept' && s.loanIndex === (loan.loanIndex ?? -1)
+        )
+        if (step) step.status = 'failed'
+      }
+      return { success: false, message: result.error || 'Failed to accept loan' }
+    }
+
+    // Deduct from buyer's wallet in local state
+    if (buyer.wallets[0]) {
+      const paymentLovelace = BigInt(firstPaymentLovelace)
+      buyer.wallets[0].balance -= paymentLovelace
+    }
+
+    // Update loan state
+    loan.borrower = buyer.name
+    loan.status = 'running'
+    loan.txHash = result.txHash
+    if (loan.state) {
+      loan.state.isActive = true
+      loan.state.balance -= firstPaymentLovelace
+      loan.state.startTime = Date.now()
+      loan.state.paymentCount = 1 // First payment made on accept
+    }
+
+    log(`  ✓ Loan accepted by ${buyer.name}`, 'success')
+    log(`    TX: ${result.txHash}`, 'info')
+    log(`    First payment: ${firstPaymentAda.toFixed(2)} ADA`, 'info')
+    log(`    Remaining balance: ${((loan.state?.balance || 0) / 1_000_000).toFixed(2)} ADA`, 'info')
+
+    // Update step status in phase 4 (Run Contracts)
+    const phase4 = options.phases.value.find(p => p.id === 4)
+    if (phase4) {
+      const step = phase4.steps.find((s: any) =>
+        s.actionType === 'accept' && s.loanIndex === loan.loanIndex
+      )
+      if (step) step.status = 'passed'
+    }
+
+    // Persist state to test run database
+    try {
+      await updateContractState(loan.id, {
+        contractData: {
+          borrower: buyer.name
+        },
+        contractDatum: {
+          balance: loan.state?.balance,
+          isActive: loan.state?.isActive,
+          isPaidOff: loan.state?.isPaidOff || false,
+          isDefaulted: loan.state?.isDefaulted || false,
+          startTime: loan.state?.startTime,
+          paymentCount: loan.state?.paymentCount
+        }
+      })
+    } catch (err) {
+      log(`  Warning: Could not persist state: ${(err as Error).message}`, 'warning')
+    }
+
+    return {
+      success: true,
+      message: `Loan accepted by ${buyer.name}`,
+      data: { loan, txHash: result.txHash }
+    }
+  } catch (err) {
+    const error = err as Error
+    log(`  ✗ Failed to accept loan: ${error.message}`, 'error')
+    return { success: false, message: error.message, error }
+  }
 }
 
 /**
  * Make a payment on a loan
+ *
+ * Calls backend /api/loan/pay which uses Lucid Evolution to build the payment transaction.
  */
 export async function makePayment(
   loanId: string,
@@ -277,45 +394,107 @@ export async function makePayment(
     return { success: false, message: `Borrower ${loan.borrower} not found` }
   }
 
+  // Need contract address for backend call
+  const contractAddress = loan.contractAddress || loan.id
+  if (!contractAddress || contractAddress.startsWith('LOAN-')) {
+    log(`  ✗ No contract address found for loan ${loanId}`, 'error')
+    return { success: false, message: 'Contract address not available' }
+  }
+
   currentStepName.value = `${borrower.name}: Making payment of ${amount} ADA`
   log(`  ${borrower.name}: Making payment of ${amount} ADA...`, 'info')
 
-  await delay(400)
-
   const paymentLovelace = BigInt(amount * 1_000_000)
 
-  // Check balance
+  // Check balance locally first
   if (borrower.wallets[0] && borrower.wallets[0].balance < paymentLovelace) {
-    log(`  Insufficient balance: has ${Number(borrower.wallets[0].balance) / 1_000_000} ADA`, 'error')
+    log(`  ✗ Insufficient balance: has ${Number(borrower.wallets[0].balance) / 1_000_000} ADA`, 'error')
     return { success: false, message: 'Insufficient balance' }
   }
 
-  // Deduct from borrower
-  if (borrower.wallets[0]) {
-    borrower.wallets[0].balance -= paymentLovelace
-  }
+  try {
+    // Call backend API to make payment via Lucid Evolution
+    const result = await apiMakeLoanPayment(borrower.name, contractAddress, amount)
 
-  // Update loan state
-  if (loan.state) {
-    loan.state.balance -= amount * 1_000_000
-    if (loan.state.balance <= 0) {
-      loan.state.isPaidOff = true
-      loan.state.isActive = false
-      loan.status = 'passed'
-      log(`  Loan fully paid off!`, 'success')
+    if (!result.success) {
+      log(`  ✗ Failed to make payment: ${result.error || 'Unknown error'}`, 'error')
+      // Update step status in phase 4 to failed
+      const paymentNumber = (loan.state?.paymentCount || 0) + 1
+      const phase4 = options.phases.value.find(p => p.id === 4)
+      if (phase4) {
+        const step = phase4.steps.find((s: any) =>
+          s.actionType === 'pay' &&
+          s.loanIndex === loan.loanIndex &&
+          s.id.endsWith(`-pay-${paymentNumber}`)
+        )
+        if (step) step.status = 'failed'
+      }
+      return { success: false, message: result.error || 'Failed to make payment' }
     }
+
+    // Deduct from borrower's wallet in local state
+    if (borrower.wallets[0]) {
+      borrower.wallets[0].balance -= paymentLovelace
+    }
+
+    // Update loan state
+    if (loan.state) {
+      loan.state.balance -= amount * 1_000_000
+      loan.state.paymentCount = (loan.state.paymentCount || 0) + 1
+
+      if (loan.state.balance <= 0) {
+        loan.state.isPaidOff = true
+        loan.state.isActive = false
+        loan.status = 'passed'
+        log(`  ✓ Loan fully paid off!`, 'success')
+      }
+    }
+
+    log(`  ✓ Payment of ${amount} ADA processed`, 'success')
+    log(`    TX: ${result.txHash}`, 'info')
+    log(`    Remaining balance: ${((loan.state?.balance || 0) / 1_000_000).toFixed(2)} ADA`, 'info')
+
+    // Update step status in phase 4 (Run Contracts)
+    // Payment steps have IDs like `{loanIndex}-pay-{paymentNumber}`
+    const paymentNumber = loan.state?.paymentCount || 1
+    const phase4 = options.phases.value.find(p => p.id === 4)
+    if (phase4) {
+      const step = phase4.steps.find((s: any) =>
+        s.actionType === 'pay' &&
+        s.loanIndex === loan.loanIndex &&
+        s.id.endsWith(`-pay-${paymentNumber}`)
+      )
+      if (step) step.status = 'passed'
+    }
+
+    return {
+      success: true,
+      message: `Payment of ${amount} ADA processed`,
+      data: { txHash: result.txHash }
+    }
+  } catch (err) {
+    const error = err as Error
+    log(`  ✗ Failed to make payment: ${error.message}`, 'error')
+    // Update step status in phase 4 to failed
+    const paymentNumber = (loan.state?.paymentCount || 0) + 1
+    const phase4 = options.phases.value.find(p => p.id === 4)
+    if (phase4) {
+      const step = phase4.steps.find((s: any) =>
+        s.actionType === 'pay' &&
+        s.loanIndex === loan.loanIndex &&
+        s.id.endsWith(`-pay-${paymentNumber}`)
+      )
+      if (step) step.status = 'failed'
+    }
+    return { success: false, message: error.message, error }
   }
-
-  log(`  Payment of ${amount} ADA processed for ${borrower.name}`, 'success')
-
-  return { success: true, message: `Payment of ${amount} ADA processed` }
 }
 
 /**
  * Execute full loan creation phase
  *
- * EMULATOR: Creates mock loan contracts
- * PREVIEW: FAILS with clear message about what's needed
+ * Calls backend /api/loan/create for each loan definition.
+ * Works in both emulator and testnet modes.
  */
 export async function executeLoanPhase(
   options: LoanOptions,
@@ -324,36 +503,29 @@ export async function executeLoanPhase(
   const { mode, log } = options
 
   log('Phase 3: Initialize Loan Contracts', 'phase')
+  log(`  Mode: ${mode}`, 'info')
+  log(`  Creating ${loanDefs.length} loan contracts...`, 'info')
 
-  if (mode === 'preview') {
-    // Preview mode - explain what's needed
-    log(``, 'info')
-    log(`  PREVIEW MODE - Loan Contract Creation Not Implemented`, 'error')
-    log(`  ─────────────────────────────────────────`, 'info')
-    log(`  Real loan contract creation on Preview testnet requires:`, 'info')
-    log(`  1. send_to_market action from loan-contract package`, 'info')
-    log(`  2. Collateral tokens minted and available`, 'info')
-    log(`  3. Contract validator script deployed`, 'info')
-    log(`  4. Signed transactions via Lucid Evolution`, 'info')
-    log(``, 'info')
-    log(`  This functionality is not yet wired up.`, 'warning')
-    log(`  Use EMULATOR mode for full pipeline testing.`, 'info')
+  let successCount = 0
+  let failCount = 0
 
-    return {
-      success: false,
-      message: 'Loan contract creation on Preview testnet not yet implemented. Use Emulator mode.',
+  for (let i = 0; i < loanDefs.length; i++) {
+    const loan = loanDefs[i]
+    const result = await createLoan(loan, options, i)
+    if (result.success) {
+      successCount++
+    } else {
+      failCount++
+      log(`  Continuing with remaining loans...`, 'info')
     }
   }
 
-  // Emulator mode - proceed with mock creation
-  for (const loan of loanDefs) {
-    const result = await createLoan(loan, options)
-    if (!result.success) {
-      return result
-    }
+  if (failCount > 0 && successCount === 0) {
+    return { success: false, message: `All ${failCount} loan creations failed` }
   }
 
-  return { success: true, message: 'Loan contracts created' }
+  log(`  Loan creation complete: ${successCount} succeeded, ${failCount} failed`, successCount > 0 ? 'success' : 'warning')
+  return { success: true, message: `Loan contracts created (${successCount}/${successCount + failCount})` }
 }
 
 /**
@@ -407,4 +579,66 @@ export async function executeAcceptPhase(options: LoanOptions): Promise<ActionRe
   }
 
   return { success: true, message: 'Loan acceptance phase complete' }
+}
+
+/**
+ * Collect payment from a loan contract (seller collects accumulated payments)
+ *
+ * Calls backend /api/loan/collect which uses Lucid Evolution to build the collect transaction.
+ */
+export async function collectPayment(
+  loanId: string,
+  amount: number, // in lovelace
+  options: LoanOptions
+): Promise<ActionResult> {
+  const { identities, currentStepName, log, loanContracts } = options
+
+  const loan = loanContracts.value.find(l => l.id === loanId)
+  if (!loan) {
+    return { success: false, message: `Loan ${loanId} not found` }
+  }
+
+  const seller = identities.value.find(i => i.name === loan.originator)
+  if (!seller) {
+    return { success: false, message: `Seller ${loan.originator} not found` }
+  }
+
+  // Need contract address for backend call
+  const contractAddress = loan.contractAddress || loan.id
+  if (!contractAddress || contractAddress.startsWith('LOAN-')) {
+    log(`  ✗ No contract address found for loan ${loanId}`, 'error')
+    return { success: false, message: 'Contract address not available' }
+  }
+
+  const amountAda = amount / 1_000_000
+  currentStepName.value = `${seller.name}: Collecting ${amountAda.toFixed(2)} ADA`
+  log(`  ${seller.name}: Collecting ${amountAda.toFixed(2)} ADA from contract...`, 'info')
+
+  try {
+    // Call backend API to collect payment via Lucid Evolution
+    const result = await apiCollectPayment(seller.name, contractAddress, amount)
+
+    if (!result.success) {
+      log(`  ✗ Failed to collect: ${result.error || 'Unknown error'}`, 'error')
+      return { success: false, message: result.error || 'Failed to collect payment' }
+    }
+
+    // Add to seller's wallet in local state
+    if (seller.wallets[0]) {
+      seller.wallets[0].balance += BigInt(amount)
+    }
+
+    log(`  ✓ Collected ${amountAda.toFixed(2)} ADA`, 'success')
+    log(`    TX: ${result.txHash}`, 'info')
+
+    return {
+      success: true,
+      message: `Collected ${amountAda.toFixed(2)} ADA`,
+      data: { txHash: result.txHash }
+    }
+  } catch (err) {
+    const error = err as Error
+    log(`  ✗ Failed to collect: ${error.message}`, 'error')
+    return { success: false, message: error.message, error }
+  }
 }

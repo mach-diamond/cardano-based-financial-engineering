@@ -1,10 +1,13 @@
 /**
  * Payment Actions
  * Loan payment processing and distribution
+ *
+ * Calls backend /api/loan/* endpoints for real transactions.
  */
 
 import type { Ref } from 'vue'
 import type { Identity, Phase, LogFunction, ActionResult, LoanContract, CLOContract } from '../types'
+import { makePayment as loanMakePayment } from './loans'
 import { delay } from '../runner'
 
 export interface PaymentOptions {
@@ -15,6 +18,7 @@ export interface PaymentOptions {
   log: LogFunction
   loanContracts: Ref<LoanContract[]>
   cloContracts: Ref<CLOContract[]>
+  testRunId?: Ref<number | null>
 }
 
 export interface PaymentSchedule {
@@ -25,12 +29,14 @@ export interface PaymentSchedule {
 
 /**
  * Process a single payment
+ *
+ * Calls backend /api/loan/pay via the loans module.
  */
 export async function processPayment(
   schedule: PaymentSchedule,
   options: PaymentOptions
 ): Promise<ActionResult> {
-  const { identities, phases, currentStepName, log, loanContracts } = options
+  const { identities, phases, currentStepName, log, loanContracts, testRunId } = options
 
   const borrower = identities.value.find(i => i.id === schedule.borrowerId)
   if (!borrower) {
@@ -47,43 +53,20 @@ export async function processPayment(
   }
 
   currentStepName.value = `${borrower.name}: Payment #${schedule.installmentNumber} (${schedule.amount} ADA)`
-  log(`  ${borrower.name}: Making payment #${schedule.installmentNumber} of ${schedule.amount} ADA...`, 'info')
 
-  await delay(400)
+  // Use the makePayment function from loans.ts which calls the backend API
+  const result = await loanMakePayment(loan.id, schedule.amount, {
+    mode: options.mode || 'emulator',
+    identities,
+    phases,
+    currentStepName,
+    log,
+    loanContracts,
+    testRunId: testRunId || { value: null } as Ref<number | null>,
+  })
 
-  const paymentLovelace = BigInt(schedule.amount * 1_000_000)
-
-  // Check balance
-  if (borrower.wallets[0].balance < paymentLovelace) {
-    const has = Number(borrower.wallets[0].balance) / 1_000_000
-    log(`  Insufficient balance: has ${has.toFixed(2)} ADA, needs ${schedule.amount} ADA`, 'error')
-    return { success: false, message: 'Insufficient balance' }
-  }
-
-  // Deduct from borrower
-  borrower.wallets[0].balance -= paymentLovelace
-
-  // Update loan state
-  if (loan.state) {
-    loan.state.balance -= schedule.amount * 1_000_000
-
-    if (loan.state.balance <= 0) {
-      loan.state.isPaidOff = true
-      loan.state.isActive = false
-      loan.status = 'passed'
-      log(`  Loan fully paid off!`, 'success')
-    }
-  }
-
-  log(`  Payment of ${schedule.amount} ADA processed`, 'success')
-
-  // Update step status
-  const step = phases.value[4]?.steps.find(
-    (s: any) => s.borrowerId === schedule.borrowerId && s.installmentNumber === schedule.installmentNumber
-  )
-  if (step) step.status = 'passed'
-
-  return { success: true, message: `Payment processed for ${borrower.name}` }
+  // Step status is already updated by loanMakePayment in loans.ts
+  return result
 }
 
 /**
@@ -190,42 +173,21 @@ export async function executePaymentCycle(
 /**
  * Execute full payments phase
  *
- * EMULATOR: Processes mock payments and distributions
- * PREVIEW: FAILS with clear message about what's needed
+ * Calls backend /api/loan/pay for each payment.
+ * Works in both emulator and testnet modes.
  */
 export async function executePaymentsPhase(options: PaymentOptions): Promise<ActionResult> {
   const { mode = 'emulator', log } = options
 
   log('Phase 5: Payment Processing', 'phase')
+  log(`  Mode: ${mode}`, 'info')
 
-  if (mode === 'preview') {
-    // Preview mode - explain what's needed
-    log(``, 'info')
-    log(`  PREVIEW MODE - Payment Processing Not Implemented`, 'error')
-    log(`  ─────────────────────────────────────────`, 'info')
-    log(`  Real payment processing on Preview testnet requires:`, 'info')
-    log(`  1. Active loan contracts on-chain`, 'info')
-    log(`  2. pay action from loan-contract package`, 'info')
-    log(`  3. Wallet with sufficient ADA`, 'info')
-    log(`  4. Signed transactions via Lucid Evolution`, 'info')
-    log(``, 'info')
-    log(`  This functionality is not yet wired up.`, 'warning')
-    log(`  Use EMULATOR mode for full pipeline testing.`, 'info')
-
-    return {
-      success: false,
-      message: 'Payment processing on Preview testnet not yet implemented. Use Emulator mode.',
-    }
-  }
-
-  // Emulator mode - process mock payments
   // Process 3 payment cycles as demonstration
   for (let i = 1; i <= 3; i++) {
     const result = await executePaymentCycle(i, options)
     if (!result.success) {
       return result
     }
-    await delay(200)
   }
 
   return { success: true, message: 'Payment phase complete' }

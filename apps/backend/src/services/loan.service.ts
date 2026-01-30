@@ -24,7 +24,6 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import * as contractDb from './contract.service'
-import type { ContractState } from './contract.service'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -172,10 +171,21 @@ const scriptDatumStructure = Data.Object({
 
 /**
  * Mint redeemer for contract initialization
+ *
+ * MintActions structure from plutus.json:
+ *   AssetCollateral (index 0) { action: MintActionType }
+ *   LiabilityCollateral (index 1) { action: MintActionType }
+ *
+ * MintActionType:
+ *   MintToken (index 0) - no fields
+ *   BurnToken (index 1) - no fields
  */
 function mintCollateralRedeemer(): string {
-  // MintCollateral = Constr(0, [])
-  return Data.to(new Constr(0, []))
+  // AssetCollateral { action: MintToken }
+  // = Constr(0, [Constr(0, [])])
+  const mintToken = new Constr(0, []) // MintToken
+  const assetCollateral = new Constr(0, [mintToken]) // AssetCollateral
+  return Data.to(assetCollateral)
 }
 
 /**
@@ -451,14 +461,18 @@ export async function createLoanContract(
 
   // Store contract in database
   await contractDb.createContract({
-    address: scriptAddress,
+    contractAddress: scriptAddress,
     policyId: scriptPolicyId,
     alias: params.asset.assetName,
-    seller: sellerAddress,
-    scriptHash: scriptPolicyId,
-    scriptCbor: parameterizedScript.script,
-    state: dbState,
-    metadata: collateralMetadata,
+    contractType: 'Transfer',
+    contractSubtype: 'Asset-Backed',
+    contractDatum: dbState,
+    contractData: {
+      seller: sellerAddress,
+      scriptHash: scriptPolicyId,
+      scriptCbor: parameterizedScript.script,
+      metadata: collateralMetadata,
+    },
     networkId: 0, // emulator
   })
 
@@ -561,25 +575,31 @@ export async function acceptLoan(
   console.log(`  Contract: ${params.contractAddress}`)
   console.log(`  Initial Payment: ${params.initialPayment} ADA`)
 
+  // Get current contract datum from database
+  const currentDatum = contract.contractDatum as contractDb.LoanContractDatum | null
+  if (!currentDatum) {
+    throw new Error('Contract has no datum')
+  }
+
   // Update contract state with buyer
   const paymentLovelace = params.initialPayment * 1_000_000
-  const updatedState: ContractState = {
-    ...contract.state,
+  const updatedDatum: contractDb.LoanContractDatum = {
+    ...currentDatum,
     buyer: paymentCredentialOf(buyerAddress).hash,
     terms: {
-      ...contract.state.terms,
+      ...currentDatum.terms,
       time: Date.now(),
     },
     lastPayment: {
       amount: paymentLovelace,
       time: Date.now(),
     },
-    balance: contract.state.balance - paymentLovelace,
+    balance: currentDatum.balance - paymentLovelace,
     isActive: true,
   }
 
   // Update in database
-  await contractDb.updateContractState(params.contractAddress, updatedState)
+  await contractDb.updateContractDatum(contract.processId, updatedDatum)
 
   // TODO: Build actual accept transaction using the contract validator
   // For now, simulate the tx
@@ -616,13 +636,19 @@ export async function makePayment(
   console.log(`  Contract: ${params.contractAddress}`)
   console.log(`  Amount: ${params.amount} ADA`)
 
+  // Get current contract datum from database
+  const currentDatum = contract.contractDatum as contractDb.LoanContractDatum | null
+  if (!currentDatum) {
+    throw new Error('Contract has no datum')
+  }
+
   // Update contract state
   const paymentLovelace = params.amount * 1_000_000
-  const newBalance = contract.state.balance - paymentLovelace
+  const newBalance = currentDatum.balance - paymentLovelace
   const isPaidOff = newBalance <= 0
 
-  const updatedState: ContractState = {
-    ...contract.state,
+  const updatedDatum: contractDb.LoanContractDatum = {
+    ...currentDatum,
     balance: newBalance,
     lastPayment: {
       amount: paymentLovelace,
@@ -633,7 +659,7 @@ export async function makePayment(
   }
 
   // Update in database
-  await contractDb.updateContractState(params.contractAddress, updatedState)
+  await contractDb.updateContractDatum(contract.processId, updatedDatum)
 
   // TODO: Build actual payment transaction using the contract validator
   const txHash = `pay_${Date.now().toString(16)}_${Math.random().toString(16).slice(2, 10)}`

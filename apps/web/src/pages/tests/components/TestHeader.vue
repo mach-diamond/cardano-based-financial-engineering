@@ -190,6 +190,9 @@ function handleTestRunChange(event: Event) {
   const runId = parseInt(target.value, 10)
   if (runId && !isNaN(runId)) {
     emit('loadTestRun', runId)
+  } else {
+    // "New Run" selected - emit with 0 to trigger state reset
+    emit('loadTestRun', 0)
   }
 }
 

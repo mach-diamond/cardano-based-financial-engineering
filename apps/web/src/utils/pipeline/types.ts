@@ -73,6 +73,8 @@ export interface LoanContract {
   originator: string
   contractAddress?: string
   policyId?: string
+  txHash?: string // Latest transaction hash
+  loanIndex?: number // Index in config for step matching
   state?: {
     balance: number
     isActive: boolean
