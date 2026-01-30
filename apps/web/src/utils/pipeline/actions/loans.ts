@@ -25,8 +25,41 @@ export interface LoanDefinition {
   qty: number
   principal: number // in ADA
   apr: number
+  frequency?: number // Payment periods per year (12=Monthly, 4=Quarterly, etc.)
   termLength: string
   reservedBuyer: boolean // true = reserved for borrowerId, false = open market
+  // Fee configuration
+  transferFeeBuyerPercent?: number // Buyer's share of transfer fee (0-100), default 50
+  lateFee?: number // Late payment fee in ADA, default 10
+  deferFee?: boolean // Defer seller fee until end of loan, default false
+}
+
+/**
+ * Calculate transfer fee based on contract requirements
+ * Contract requires: 1% of principal, minimum 5 ADA, maximum 25,000 ADA
+ *
+ * @param principalAda - Principal amount in ADA
+ * @param buyerPercent - Buyer's share of the fee (0-100)
+ * @returns Object with buyer and seller fees in lovelace
+ */
+function calculateTransferFees(
+  principalAda: number,
+  buyerPercent: number = 50
+): { buyer: number; seller: number } {
+  // Calculate 1% of principal
+  const onePercent = principalAda * 0.01
+
+  // Apply min (5 ADA) and max (25,000 ADA) constraints
+  const totalFeeAda = Math.max(5, Math.min(25000, onePercent))
+
+  // Convert to lovelace
+  const totalFeeLovelace = totalFeeAda * 1_000_000
+
+  // Split according to buyerPercent
+  const buyerFee = Math.floor((totalFeeLovelace * buyerPercent) / 100)
+  const sellerFee = totalFeeLovelace - buyerFee
+
+  return { buyer: buyerFee, seller: sellerFee }
 }
 
 export interface LoanOptions {
@@ -99,6 +132,15 @@ export async function createLoan(
     // Calculate installments from term length
     const termMonths = parseInt(loan.termLength) || 12
 
+    // Calculate transfer fees based on contract requirements (1% of principal, min 5 ADA, max 25k ADA)
+    const buyerPercent = loan.transferFeeBuyerPercent ?? 50
+    const transferFees = calculateTransferFees(loan.principal, buyerPercent)
+    const lateFee = loan.lateFee ?? 10 // Default 10 ADA late fee
+    const frequency = loan.frequency ?? 12 // Default monthly payments
+    const deferFee = loan.deferFee ?? false
+
+    log(`    Transfer fees: Buyer ${transferFees.buyer / 1_000_000} ADA, Seller ${transferFees.seller / 1_000_000} ADA (${buyerPercent}/${100 - buyerPercent} split)`, 'info')
+
     // Call backend API to create loan contract via Lucid Evolution
     const result = await apiCreateLoan({
       sellerWalletName: originator.name,
@@ -110,14 +152,14 @@ export async function createLoan(
       terms: {
         principal: loan.principal, // in ADA
         apr: Math.round(loan.apr * 100), // convert to basis points
-        frequency: 12, // monthly payments
+        frequency,
         installments: termMonths,
-        lateFee: 10, // default 10 ADA late fee
-        transferFeeSeller: 2_000_000, // 2 ADA
-        transferFeeBuyer: 2_000_000, // 2 ADA
+        lateFee, // in ADA
+        transferFeeSeller: transferFees.seller, // in lovelace
+        transferFeeBuyer: transferFees.buyer, // in lovelace
       },
       buyerAddress: borrower?.address,
-      deferFee: false,
+      deferFee,
     })
 
     if (!result.success) {

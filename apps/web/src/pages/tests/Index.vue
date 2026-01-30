@@ -905,8 +905,15 @@ function updatePhasesFromConfig(config: PipelineConfig) {
         asset: loan.asset,
         qty: loan.quantity,
         principal: loan.principal,
+        apr: loan.apr,
+        frequency: loan.frequency || 12,
+        termLength: `${loan.termMonths} months`,
         reservedBuyer: isReserved,
-        lifecycleCase: loan.lifecycleCase || 'T4'
+        lifecycleCase: loan.lifecycleCase || 'T4',
+        // Fee configuration
+        transferFeeBuyerPercent: loan.transferFeeBuyerPercent ?? 50,
+        lateFee: loan.lateFee ?? 10,
+        deferFee: loan.deferFee ?? false,
       }
     })
   }

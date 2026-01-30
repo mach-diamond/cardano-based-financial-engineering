@@ -149,7 +149,7 @@ function toDbDatum(
   extras: { isActive?: boolean; isPaidOff?: boolean; isDefaulted?: boolean } = {}
 ): contractDb.LoanContractDatum {
   return {
-    buyer: state.buyer,
+    buyer: state.buyer ?? null, // Ensure null not undefined
     baseAsset: {
       policyId: state.base_asset.policy,
       assetName:
@@ -170,7 +170,7 @@ function toDbDatum(
         transferFeeSeller: Number(state.terms.fees.transfer_fee_seller),
         transferFeeBuyer: Number(state.terms.fees.transfer_fee_buyer),
         referralFee: Number(state.terms.fees.referral_fee),
-        referralFeeAddr: state.terms.fees.referral_fee_addr,
+        referralFeeAddr: state.terms.fees.referral_fee_addr ?? null, // Ensure null not undefined
       },
     },
     balance: Number(state.balance),
@@ -190,11 +190,18 @@ function toDbDatum(
  * Build LoadedContract from DB record for SDK actions
  */
 function buildLoadedContract(contract: any): LoadedContract {
+  // Script may be in parameters (new) or contractData (old format)
+  const parameters = contract.parameters as {
+    scriptCbor?: string
+    scriptHash?: string
+  } | null
   const contractData = contract.contractData as {
     scriptCbor?: string
     scriptHash?: string
   } | null
-  if (!contractData?.scriptCbor) {
+
+  const scriptCbor = parameters?.scriptCbor || contractData?.scriptCbor
+  if (!scriptCbor) {
     throw new Error('Contract script not found in database')
   }
 
@@ -205,7 +212,7 @@ function buildLoadedContract(contract: any): LoadedContract {
 
   return {
     script: {
-      Validator: { type: 'PlutusV3', script: contractData.scriptCbor },
+      Validator: { type: 'PlutusV3', script: scriptCbor },
       hash: contract.policyId,
       address: contract.contractAddress,
     },
@@ -286,15 +293,29 @@ export async function createLoan(
 
   // Persist to database with the parameterized script from SDK
   const dbDatum = toDbDatum(initState)
-  const processId = await contractDb.createContract({
-    sellerId: params.sellerWalletName,
-    buyerId: params.buyerAddress ? 'reserved' : null,
-    contractType: 'loan',
+  const dbContract = await contractDb.createContract({
+    contractType: 'Transfer',
+    contractSubtype: params.buyerAddress ? 'Reserved' : 'Open-Market',
     policyId: result.policy_id,
     contractAddress: result.address,
     contractDatum: dbDatum,
     contractData: {
-      scriptCbor: result.script?.script || '', // Use parameterized script from SDK
+      collateral: {
+        policyId: params.asset.policyId,
+        assetName: params.asset.assetName,
+        quantity: params.asset.quantity,
+      },
+      principal: params.terms.principal * 1_000_000,
+      apr: params.terms.apr,
+      termLength: `${params.terms.installments} months`,
+      installments: params.terms.installments,
+      originator: params.sellerWalletName,
+      borrower: params.buyerAddress ? 'reserved' : null,
+    },
+    alias: `${params.asset.assetName} Loan`,
+    networkId: 0, // Emulator mode
+    parameters: {
+      scriptCbor: result.script?.script || '',
       scriptHash: result.policy_id,
     },
   })

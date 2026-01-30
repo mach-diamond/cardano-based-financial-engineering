@@ -261,8 +261,13 @@ export async function runPipeline(options: PipelineOptions): Promise<void> {
     qty: step.qty || 1,
     principal: step.principal || 500,
     apr: step.apr || 5,
+    frequency: step.frequency || 12,
     termLength: step.termLength || '12 months',
     reservedBuyer: step.reservedBuyer !== false,
+    // Fee configuration from UI
+    transferFeeBuyerPercent: step.transferFeeBuyerPercent ?? 50,
+    lateFee: step.lateFee ?? 10,
+    deferFee: step.deferFee ?? false,
   })) || DEFAULT_LOAN_DEFINITIONS
 
   result = await runPhase(2, 'Initialize Loan Contracts', async () => {

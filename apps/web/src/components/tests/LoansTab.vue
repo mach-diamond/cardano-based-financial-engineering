@@ -50,7 +50,9 @@
             <th style="min-width: 120px;" class="sortable-header" @click="sortLoans('originator')">
               Originator <i v-if="sortColumn === 'originator'" :class="sortDirection === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down'"></i>
             </th>
-            <th style="min-width: 90px;">Asset</th>
+            <th style="min-width: 90px;" class="sortable-header" @click="sortLoans('asset')">
+              Asset <i v-if="sortColumn === 'asset'" :class="sortDirection === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down'"></i>
+            </th>
             <th style="width: 55px;">Qty</th>
             <th style="width: 90px;" class="sortable-header" @click="sortLoans('principal')">
               Principal <i v-if="sortColumn === 'principal'" :class="sortDirection === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down'"></i>
@@ -59,7 +61,9 @@
               APR % <i v-if="sortColumn === 'apr'" :class="sortDirection === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down'"></i>
             </th>
             <th style="width: 100px;">Frequency</th>
-            <th style="width: 65px;">Term</th>
+            <th style="width: 65px;" class="sortable-header" @click="sortLoans('term')">
+              Term <i v-if="sortColumn === 'term'" :class="sortDirection === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down'"></i>
+            </th>
             <th style="min-width: 120px;">Borrower</th>
             <th style="width: 100px;" title="Transfer fee split (Buyer% / Seller%)">Fee Split</th>
             <th style="width: 50px;" title="Defer seller fee">Defer</th>
@@ -69,20 +73,30 @@
           </tr>
         </thead>
         <tbody>
-          <tr
-            v-for="(loan, index) in sortedLoans"
-            :key="loan._uid || index"
-            draggable="true"
-            @dragstart="onDragStart($event, loan)"
-            @dragover.prevent="onDragOver($event, loan)"
-            @drop="onDrop($event, loan)"
-            @dragend="onDragEnd"
-            :class="{ 'drag-over': dropTargetUid === loan._uid }"
-          >
-            <td class="drag-handle" title="Drag to reorder">
-              <i class="fas fa-grip-vertical"></i>
-            </td>
-            <td class="loan-index">{{ index + 1 }}</td>
+          <template v-for="(loan, index) in sortedLoans" :key="loan._uid || index">
+            <tr
+              draggable="true"
+              @dragstart="onDragStart($event, loan)"
+              @dragover.prevent="onDragOver($event, loan)"
+              @drop="onDrop($event, loan)"
+              @dragend="onDragEnd"
+              :class="{ 'drag-over': dropTargetUid === loan._uid }"
+            >
+              <td class="drag-handle" title="Drag to reorder">
+                <i class="fas fa-grip-vertical"></i>
+              </td>
+              <td class="loan-index">
+                <div class="d-flex align-items-center gap-1">
+                  <button
+                    class="btn btn-sm btn-icon expand-btn"
+                    @click.stop="toggleExpanded(loan._uid || String(index))"
+                    :title="isExpanded(loan._uid || String(index)) ? 'Collapse JSON' : 'Expand JSON'"
+                  >
+                    <i :class="isExpanded(loan._uid || String(index)) ? 'fas fa-chevron-down' : 'fas fa-chevron-right'"></i>
+                  </button>
+                  <span>{{ index + 1 }}</span>
+                </div>
+              </td>
             <td>
               <select v-model="loan.originatorId" class="form-control form-control-sm config-input" @change="onOriginatorChange(loan)">
                 <option v-for="w in originatorsWithAssets" :key="w.id" :value="w.id">{{ w.name }}</option>
@@ -149,6 +163,19 @@
               </button>
             </td>
           </tr>
+          <!-- Expandable JSON Row -->
+          <tr v-if="isExpanded(loan._uid || String(index))" class="json-row">
+            <td colspan="15">
+              <div class="json-container">
+                <div class="json-header">
+                  <span class="json-title">Initial Contract Datum</span>
+                  <span class="json-note">(Preview - actual policy ID assigned on mint)</span>
+                </div>
+                <pre class="json-content">{{ JSON.stringify(getLoanDatum(loan), null, 2) }}</pre>
+              </div>
+            </td>
+          </tr>
+          </template>
         </tbody>
       </table>
     </div>
@@ -200,6 +227,60 @@ const sortColumn = ref<string | null>(null)
 const sortDirection = ref<'asc' | 'desc'>('asc')
 const draggedUid = ref<string | null>(null)
 const dropTargetUid = ref<string | null>(null)
+const expandedLoans = ref<Set<string>>(new Set())
+
+function toggleExpanded(loanUid: string) {
+  if (expandedLoans.value.has(loanUid)) {
+    expandedLoans.value.delete(loanUid)
+  } else {
+    expandedLoans.value.add(loanUid)
+  }
+}
+
+function isExpanded(loanUid: string): boolean {
+  return expandedLoans.value.has(loanUid)
+}
+
+/**
+ * Generate the initial datum/state for a loan config
+ * This shows what the contract state will look like when initialized
+ */
+function getLoanDatum(loan: LoanConfig): object {
+  const buyerPercent = loan.transferFeeBuyerPercent ?? 50
+  const principalLovelace = loan.principal * 1_000_000
+
+  // Calculate transfer fees (1% of principal, min 5 ADA, max 25k ADA)
+  const onePercent = loan.principal * 0.01
+  const totalFeeAda = Math.max(5, Math.min(25000, onePercent))
+  const totalFeeLovelace = totalFeeAda * 1_000_000
+  const buyerFee = Math.floor((totalFeeLovelace * buyerPercent) / 100)
+  const sellerFee = totalFeeLovelace - buyerFee
+
+  return {
+    buyer: loan.borrowerId || null,
+    base_asset: {
+      policy: '<minted_policy_id>',
+      asset_name: loan.asset,
+      quantity: loan.quantity,
+    },
+    terms: {
+      principal: principalLovelace,
+      apr: Math.round(loan.apr * 100), // basis points
+      frequency: loan.frequency || 12,
+      installments: loan.termMonths,
+      time: null, // set on accept
+      fees: {
+        late_fee: (loan.lateFee ?? 10) * 1_000_000,
+        transfer_fee_seller: sellerFee,
+        transfer_fee_buyer: buyerFee,
+        referral_fee: 0,
+        referral_fee_addr: null,
+      },
+    },
+    balance: principalLovelace,
+    last_payment: null,
+  }
+}
 
 const lifecycleCases = [
   { id: 'T1', short: 'Cancel', description: 'Init, Update, Cancel - Seller manages contract before buyer acceptance' },
@@ -238,6 +319,10 @@ const sortedLoans = computed(() => {
         aVal = a.originatorId || ''
         bVal = b.originatorId || ''
         break
+      case 'asset':
+        aVal = (a.asset || '').toLowerCase()
+        bVal = (b.asset || '').toLowerCase()
+        break
       case 'principal':
         aVal = a.principal
         bVal = b.principal
@@ -245,6 +330,10 @@ const sortedLoans = computed(() => {
       case 'apr':
         aVal = a.apr
         bVal = b.apr
+        break
+      case 'term':
+        aVal = a.termMonths || 0
+        bVal = b.termMonths || 0
         break
       default:
         return 0
@@ -689,5 +778,108 @@ tr.drag-over {
 .loans-table .form-check-input:disabled {
   opacity: 0.3;
   cursor: not-allowed;
+}
+
+/* Expand button and JSON view */
+.expand-btn {
+  padding: 0.1rem 0.25rem;
+  font-size: 0.65rem;
+  background: transparent;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.expand-btn:hover {
+  color: #94a3b8;
+}
+
+.expand-btn i {
+  font-size: 0.6rem;
+}
+
+.loan-index .d-flex {
+  justify-content: center;
+}
+
+.loan-index .gap-1 {
+  gap: 0.25rem;
+}
+
+.json-row {
+  background: rgba(0, 0, 0, 0.3) !important;
+}
+
+.json-row:hover {
+  background: rgba(0, 0, 0, 0.3) !important;
+}
+
+.json-row td {
+  padding: 0 !important;
+  border-top: none !important;
+}
+
+.json-container {
+  padding: 0.75rem 1rem;
+  margin: 0.5rem 1rem 1rem 1rem;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 0.375rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.json-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.json-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #38bdf8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.json-note {
+  font-size: 0.7rem;
+  color: #64748b;
+  font-style: italic;
+}
+
+.json-content {
+  margin: 0;
+  padding: 0.5rem;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  color: #a5f3fc;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 0.25rem;
+  max-height: 300px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.json-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.json-content::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+.json-content::-webkit-scrollbar-thumb {
+  background: rgba(56, 189, 248, 0.3);
+  border-radius: 3px;
+}
+
+.json-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(56, 189, 248, 0.5);
 }
 </style>
