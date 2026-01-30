@@ -27,6 +27,7 @@ import {
   type LoanOptions,
   type CLOOptions,
   type PaymentOptions,
+  type LoanDefinition,
   DEFAULT_LOAN_DEFINITIONS,
 } from './actions'
 import { advanceEmulatorTime } from '@/services/api'
@@ -241,8 +242,21 @@ export async function runPipeline(options: PipelineOptions): Promise<void> {
   // ========================================
   // Phase 3: Initialize Loan Contracts
   // ========================================
+  // Derive loan definitions from Phase 3 steps (generated from UI config)
+  const phase3 = phases.value.find(p => p.id === 3)
+  const loanDefs: LoanDefinition[] = phase3?.steps.map((step: any) => ({
+    borrowerId: step.borrowerId || null,
+    originatorId: step.originatorId,
+    asset: step.asset,
+    qty: step.qty || 1,
+    principal: step.principal || 500,
+    apr: step.apr || 5,
+    termLength: step.termLength || '12 months',
+    reservedBuyer: step.reservedBuyer !== false,
+  })) || DEFAULT_LOAN_DEFINITIONS
+
   result = await runPhase(2, 'Initialize Loan Contracts', async () => {
-    return executeLoanPhase(loanOpts, DEFAULT_LOAN_DEFINITIONS)
+    return executeLoanPhase(loanOpts, loanDefs)
   }, options)
 
   if (!result.success) {

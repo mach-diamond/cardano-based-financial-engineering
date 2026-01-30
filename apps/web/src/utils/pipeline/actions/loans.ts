@@ -421,7 +421,8 @@ export async function makePayment(
   currentStepName.value = `${borrower.name}: Making payment of ${amount} ADA`
   log(`  ${borrower.name}: Making payment of ${amount} ADA...`, 'info')
 
-  const paymentLovelace = BigInt(amount * 1_000_000)
+  // Round to avoid floating point issues when converting to BigInt
+  const paymentLovelace = BigInt(Math.round(amount * 1_000_000))
 
   // Check balance locally first
   if (borrower.wallets[0] && borrower.wallets[0].balance < paymentLovelace) {
@@ -662,6 +663,12 @@ export async function executeRunContractsPhase(
         const buyerId = step.borrowerId || loan.borrower
         const buyer = identities.value.find(i => i.id === buyerId || i.name === buyerId)
         if (!buyer) {
+          // Open market loans without a buyer - skip (they're waiting for a buyer)
+          if (loan.subtype === 'Open-Market') {
+            log(`  ⏸ ${step.name}: Open market loan - waiting for buyer`, 'info')
+            step.status = 'disabled'
+            continue
+          }
           log(`  ⚠ Buyer not found for ${step.name}`, 'warning')
           step.status = 'failed'
           failCount++

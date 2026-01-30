@@ -456,8 +456,8 @@ export async function createLoanContract(
     address: scriptAddress,
   })
 
-  // Build state for database storage
-  const dbState: ContractState = {
+  // Build state for database storage (using LoanContractDatum from contract.service)
+  const dbState: contractDb.LoanContractDatum = {
     buyer: contractState.buyer,
     baseAsset: {
       policyId: contractState.base_asset.policy,
@@ -612,6 +612,16 @@ export async function acceptLoan(
     throw new Error('Contract has no datum')
   }
 
+  // Validate datum structure
+  if (!currentDatum.baseAsset || !currentDatum.baseAsset.policyId) {
+    console.error('[LoanService] Invalid datum structure:', JSON.stringify(currentDatum, null, 2))
+    throw new Error('Contract datum is missing baseAsset data')
+  }
+
+  if (!currentDatum.terms) {
+    throw new Error('Contract datum is missing terms data')
+  }
+
   // Get the script from cache or reconstruct from DB
   let cachedScript = scriptCache.get(params.contractAddress)
   if (!cachedScript) {
@@ -748,6 +758,16 @@ export async function makePayment(
     throw new Error('Contract has no datum')
   }
 
+  // Validate datum structure
+  if (!currentDatum.baseAsset || !currentDatum.baseAsset.policyId) {
+    console.error('[LoanService] Invalid datum structure:', JSON.stringify(currentDatum, null, 2))
+    throw new Error('Contract datum is missing baseAsset data')
+  }
+
+  if (!currentDatum.terms) {
+    throw new Error('Contract datum is missing terms data')
+  }
+
   // Get the script from cache or reconstruct from DB
   let cachedScript = scriptCache.get(params.contractAddress)
   if (!cachedScript) {
@@ -770,8 +790,8 @@ export async function makePayment(
   }
   const contractUtxo = utxos[0]
 
-  // Calculate new balance
-  const paymentLovelace = params.amount * 1_000_000
+  // Calculate new balance (round to avoid floating point issues)
+  const paymentLovelace = Math.round(params.amount * 1_000_000)
   const newBalance = currentDatum.balance - paymentLovelace
   const isPaidOff = newBalance <= 0
   const currentTime = Date.now()
