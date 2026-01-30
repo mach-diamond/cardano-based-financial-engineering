@@ -653,25 +653,26 @@ export async function mintTestToken(
   const {
     scriptFromNative,
     mintingPolicyToId,
-    unixTimeToSlot,
   } = await import('@lucid-evolution/lucid')
 
   const userAddress = await lucid.wallet().address()
-  const network = lucid.config().network
 
   // Capture current time for consistent slot calculations
   const now = Date.now()
 
+  // Use Lucid instance's unixTimeToSlot method - it uses the correct internal config
+  // The imported function from the module has issues with slot config
+  const toSlot = (time: number) => lucid.unixTimeToSlot(time)
+
   // Create a simple minting policy with a generous time window
   // The 'before' slot should be well after the transaction's validTo
-  const beforeSlot = unixTimeToSlot(network, now + 3_600_000) // 1 hour from now
+  const beforeSlot = toSlot(now + 3_600_000) // 1 hour from now
   const validToTime = now + 900_000 // 15 minutes from now
 
-  console.log('[Mint] Network:', network)
   console.log('[Mint] Current time:', now)
   console.log('[Mint] Before slot:', beforeSlot)
   console.log('[Mint] ValidTo time:', validToTime)
-  console.log('[Mint] ValidTo slot:', unixTimeToSlot(network, validToTime))
+  console.log('[Mint] ValidTo slot:', toSlot(validToTime))
   console.log('[Mint] Tracked slot:', emulatorState.currentSlot)
   console.log('[Mint] Emulator internal slot:', emulatorState.emulator.slot)
 
@@ -692,7 +693,7 @@ export async function mintTestToken(
   // Set both validFrom and validTo for a complete validity interval
   const validFromTime = now - 60_000 // 1 minute ago
   console.log('[Mint] ValidFrom time:', validFromTime)
-  console.log('[Mint] ValidFrom slot:', unixTimeToSlot(network, validFromTime))
+  console.log('[Mint] ValidFrom slot:', toSlot(validFromTime))
 
   const tx = await lucid
     .newTx()
