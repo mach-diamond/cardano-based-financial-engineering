@@ -17,9 +17,6 @@
         <span v-else-if="hasFailed" class="badge badge-danger mr-2">Failed</span>
         <span v-else-if="hasRunning" class="badge badge-warning mr-2">Running</span>
         <span v-else class="badge badge-secondary mr-2">Pending</span>
-        <button v-if="contracts.length > 0" @click.stop="$emit('runAll')" class="btn btn-sm btn-outline-success mr-2" :disabled="hasRunning">
-          <i class="fas fa-play mr-1"></i> Run All
-        </button>
         <span class="collapse-icon">{{ expanded ? '▲' : '▼' }}</span>
       </div>
     </div>
@@ -149,9 +146,6 @@
             <button @click="$emit('viewContract', contract)" class="btn btn-sm btn-outline-info">
               View
             </button>
-            <button @click="$emit('executeContract', contract)" class="btn btn-sm btn-outline-success" :disabled="contract.status === 'running'" title="Execute">
-              <i class="fas fa-bolt"></i>
-            </button>
           </div>
 
           <hr class="contract-divider">
@@ -199,8 +193,6 @@ const props = defineProps<{
 
 defineEmits<{
   viewContract: [contract: CLOContract]
-  executeContract: [contract: CLOContract]
-  runAll: []
 }>()
 
 const expanded = ref(false)

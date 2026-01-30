@@ -17,9 +17,6 @@
         <span v-else-if="hasFailed" class="badge badge-danger mr-2">Failed</span>
         <span v-else-if="hasRunning" class="badge badge-warning mr-2">Running</span>
         <span v-else class="badge badge-secondary mr-2">Pending</span>
-        <button v-if="contracts.length > 0" @click.stop="$emit('runAll')" class="btn btn-sm btn-outline-success mr-2" :disabled="hasRunning">
-          <i class="fas fa-play mr-1"></i> Run All
-        </button>
         <span class="collapse-icon">{{ expanded ? '▲' : '▼' }}</span>
       </div>
     </div>
@@ -102,12 +99,87 @@
             <button @click="$emit('viewContract', contract)" class="btn btn-sm btn-outline-info">
               View
             </button>
-            <button @click="$emit('executeContract', contract)" class="btn btn-sm btn-outline-success" :disabled="contract.status === 'running'" title="Execute">
-              <i class="fas fa-bolt"></i>
+            <button @click="toggleContractDetails(contract.id)" class="btn btn-sm btn-outline-secondary" title="Show Datum">
+              <i :class="expandedContracts.has(contract.id) ? 'fas fa-chevron-up' : 'fas fa-chevron-down'"></i>
             </button>
           </div>
 
           <hr class="contract-divider">
+
+          <!-- Expanded Details with Datum History -->
+          <div v-if="expandedContracts.has(contract.id)" class="contract-details-expanded">
+            <div class="datum-section">
+              <h6 class="datum-header">
+                <i class="fas fa-database mr-2"></i>Contract Datum
+                <button @click="fetchDatumHistory(contract)" class="btn btn-xs btn-outline-info ml-2">
+                  <i class="fas fa-sync-alt"></i>
+                </button>
+              </h6>
+
+              <!-- Datum Card Carousel -->
+              <div class="datum-carousel" v-if="datumHistory.get(contract.id)?.length">
+                <div
+                  v-for="(datum, idx) in datumHistory.get(contract.id)"
+                  :key="idx"
+                  class="datum-card"
+                  :class="{ active: idx === 0 }"
+                >
+                  <div class="datum-card-header">
+                    <span class="badge" :class="idx === 0 ? 'badge-success' : 'badge-secondary'">
+                      {{ idx === 0 ? 'Current' : `v${datumHistory.get(contract.id)!.length - idx}` }}
+                    </span>
+                  </div>
+                  <div class="datum-card-body">
+                    <div class="datum-field">
+                      <label>Status:</label>
+                      <span :class="datum.buyer ? 'text-success' : 'text-warning'">
+                        {{ datum.buyer ? 'Active' : 'Pending' }}
+                      </span>
+                    </div>
+                    <div class="datum-field" v-if="datum.buyer">
+                      <label>Buyer:</label>
+                      <span>{{ datum.buyer?.slice(0, 16) }}...</span>
+                    </div>
+                    <div class="datum-field" v-if="datum.base_asset">
+                      <label>Asset:</label>
+                      <span>{{ formatAssetName(datum.base_asset?.asset_name) }}</span>
+                    </div>
+                    <div class="datum-field" v-if="datum.balance !== undefined">
+                      <label>Balance:</label>
+                      <span>{{ formatLovelace(datum.balance) }} ₳</span>
+                    </div>
+                    <div class="datum-field" v-if="datum.terms">
+                      <label>Principal:</label>
+                      <span>{{ formatLovelace(datum.terms.principal) }} ₳</span>
+                    </div>
+                    <div class="datum-field" v-if="datum.terms">
+                      <label>Installments:</label>
+                      <span>{{ datum.terms.installments || '?' }}</span>
+                    </div>
+                    <div class="datum-field" v-if="datum.last_payment">
+                      <label>Last Payment:</label>
+                      <span>{{ formatLovelace(datum.last_payment.amount) }} ₳</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Loading or Empty State -->
+              <div v-else class="datum-empty">
+                <i class="fas fa-info-circle text-muted"></i>
+                <span>Click refresh to load datum from database</span>
+              </div>
+
+              <!-- Raw JSON Toggle -->
+              <div class="datum-raw-toggle mt-2">
+                <button @click="toggleRawJson(contract.id)" class="btn btn-xs btn-outline-secondary">
+                  <i class="fas fa-code mr-1"></i>
+                  {{ showRawJson.has(contract.id) ? 'Hide' : 'Show' }} Raw JSON
+                </button>
+              </div>
+              <pre v-if="showRawJson.has(contract.id) && datumHistory.get(contract.id)?.[0]" class="datum-raw-json">{{ JSON.stringify(datumHistory.get(contract.id)?.[0], null, 2) }}</pre>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -115,7 +187,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, reactive } from 'vue'
 
 export interface LoanContractState {
   isActive: boolean
@@ -153,17 +225,86 @@ export interface LoanContract {
   state?: LoanContractState
 }
 
+interface ContractDatum {
+  buyer?: string | null
+  base_asset?: {
+    policy?: string
+    asset_name?: string
+    quantity?: number | string
+  }
+  balance?: number | string
+  terms?: {
+    principal?: number | string
+    apr?: number | string
+    frequency?: number | string
+    installments?: number | string
+    time?: number | string | null
+    fees?: {
+      late_fee?: number | string
+      transfer_fee_seller?: number | string
+      transfer_fee_buyer?: number | string
+      referral_fee?: number | string
+      referral_fee_addr?: string | null
+    }
+  }
+  last_payment?: {
+    amount?: number | string
+    time?: number | string
+  } | null
+}
+
 const props = defineProps<{
   contracts: LoanContract[]
 }>()
 
 defineEmits<{
   viewContract: [contract: LoanContract]
-  executeContract: [contract: LoanContract]
-  runAll: []
 }>()
 
 const expanded = ref(false)
+const expandedContracts = reactive(new Set<string>())
+const datumHistory = reactive(new Map<string, ContractDatum[]>())
+const showRawJson = reactive(new Set<string>())
+
+function toggleContractDetails(contractId: string) {
+  if (expandedContracts.has(contractId)) {
+    expandedContracts.delete(contractId)
+  } else {
+    expandedContracts.add(contractId)
+  }
+}
+
+function toggleRawJson(contractId: string) {
+  if (showRawJson.has(contractId)) {
+    showRawJson.delete(contractId)
+  } else {
+    showRawJson.add(contractId)
+  }
+}
+
+async function fetchDatumHistory(contract: LoanContract) {
+  if (!contract.contractAddress) {
+    console.warn('No contract address to fetch datum for')
+    return
+  }
+
+  try {
+    const response = await fetch(`/api/loan/debug/datum/${encodeURIComponent(contract.contractAddress)}`)
+    const data = await response.json()
+
+    if (data.success && data.contractDatum) {
+      // Store as array (future: could track history)
+      datumHistory.set(contract.id, [data.contractDatum])
+    } else {
+      console.warn('No datum in response:', data)
+      // Store empty array to show "no datum" state
+      datumHistory.set(contract.id, [])
+    }
+  } catch (err) {
+    console.error('Failed to fetch datum:', err)
+    datumHistory.set(contract.id, [])
+  }
+}
 
 const passedCount = computed(() => props.contracts.filter(c => c.status === 'passed').length)
 const allPassed = computed(() => props.contracts.length > 0 && props.contracts.every(c => c.status === 'passed'))
@@ -182,6 +323,33 @@ function formatAda(lovelace?: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   })
+}
+
+function formatLovelace(value?: number | string): string {
+  if (value === undefined || value === null) return '0'
+  const num = typeof value === 'string' ? parseInt(value) : value
+  if (isNaN(num)) return '0'
+  return (num / 1_000_000).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })
+}
+
+function formatAssetName(hexOrText?: string): string {
+  if (!hexOrText) return 'Unknown'
+  // If it looks like hex (all hex chars and even length), try to decode
+  if (/^[0-9a-fA-F]+$/.test(hexOrText) && hexOrText.length % 2 === 0) {
+    try {
+      const decoded = Buffer.from(hexOrText, 'hex').toString('utf8')
+      // Only return decoded if it looks like readable text
+      if (/^[\x20-\x7E]+$/.test(decoded)) {
+        return decoded
+      }
+    } catch {
+      // Fall through to return original
+    }
+  }
+  return hexOrText
 }
 
 function getProgressPercent(contract: LoanContract): number {
@@ -403,6 +571,130 @@ function getInstallments(contract: LoanContract): number {
   padding: 0;
 }
 
+/* Expanded contract details */
+.contract-details-expanded {
+  grid-column: 1 / -1;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.datum-section {
+  width: 100%;
+}
+
+.datum-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.datum-header .btn-xs {
+  padding: 0.15rem 0.4rem;
+  font-size: 0.7rem;
+}
+
+/* Datum carousel */
+.datum-carousel {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.datum-carousel::-webkit-scrollbar {
+  height: 6px;
+}
+
+.datum-carousel::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.datum-card {
+  min-width: 220px;
+  max-width: 280px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.datum-card.active {
+  border-color: rgba(16, 185, 129, 0.4);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.datum-card-header {
+  padding: 0.5rem 0.75rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.datum-card-body {
+  padding: 0.75rem;
+}
+
+.datum-field {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.datum-field:last-child {
+  margin-bottom: 0;
+}
+
+.datum-field label {
+  color: #94a3b8;
+  margin: 0;
+  font-weight: 500;
+}
+
+.datum-field span {
+  color: #e2e8f0;
+  font-family: monospace;
+  font-size: 0.75rem;
+}
+
+/* Empty and loading states */
+.datum-empty {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.85rem;
+}
+
+/* Raw JSON display */
+.datum-raw-toggle .btn-xs {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.7rem;
+}
+
+.datum-raw-json {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.375rem;
+  font-size: 0.7rem;
+  color: #a5d6ff;
+  max-height: 300px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 /* Responsive */
 @media (max-width: 992px) {
   .contract-row {
@@ -413,6 +705,16 @@ function getInstallments(contract: LoanContract): number {
   .contract-asset-section,
   .contract-state-section {
     display: none;
+  }
+
+  .datum-carousel {
+    flex-direction: column;
+  }
+
+  .datum-card {
+    min-width: unset;
+    max-width: unset;
+    width: 100%;
   }
 }
 </style>
