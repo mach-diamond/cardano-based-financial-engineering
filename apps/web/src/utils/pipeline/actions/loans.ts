@@ -141,6 +141,23 @@ export async function createLoan(
       originator.wallets[0].assets = originator.wallets[0].assets.filter(a => a.assetName !== loan.asset)
     }
 
+    // Add collateral token to originator's wallet (minted during contract creation)
+    const collateralTokenName = `${loan.asset}Collateral`
+    const existingCollateral = originator.wallets[0].assets.find(
+      a => a.policyId === result.policyId && a.assetName === collateralTokenName
+    )
+    if (existingCollateral) {
+      existingCollateral.quantity += 1n
+    } else {
+      originator.wallets[0].assets.push({
+        policyId: result.policyId || '',
+        assetName: collateralTokenName,
+        quantity: 1n,
+      })
+    }
+
+    log(`  ✓ Collateral token minted to ${originator.name}`, 'success')
+
     // Create loan contract record for UI
     const loanContract: LoanContract = {
       id: result.contractAddress || `LOAN-${loan.asset}-${Date.now()}`,
@@ -579,6 +596,160 @@ export async function executeAcceptPhase(options: LoanOptions): Promise<ActionRe
   }
 
   return { success: true, message: 'Loan acceptance phase complete' }
+}
+
+/**
+ * Execute Phase 4: Run Contracts
+ *
+ * Iterates through Phase 4 steps (accept, pay, complete, collect) in order.
+ * Steps are sorted by timing period, so we execute them in the correct order.
+ * Supports emulator time advancement between timing periods.
+ */
+export async function executeRunContractsPhase(
+  options: LoanOptions,
+  advanceTime?: (period: number) => Promise<void>
+): Promise<ActionResult> {
+  const { identities, phases, loanContracts, log, currentStepName } = options
+
+  log('Phase 4: Run Contracts', 'phase')
+
+  const phase4 = phases.value.find(p => p.id === 4)
+  if (!phase4) {
+    return { success: false, message: 'Phase 4 not found' }
+  }
+
+  const steps = phase4.steps
+  if (steps.length === 0) {
+    log('  No contract actions to execute', 'info')
+    return { success: true, message: 'No contract actions' }
+  }
+
+  let successCount = 0
+  let failCount = 0
+  let currentTimingPeriod = -999
+
+  for (const step of steps) {
+    // Skip disabled steps
+    if (step.disabled || step.status === 'disabled') {
+      continue
+    }
+
+    // Advance emulator time if timing period changed
+    if (advanceTime && step.timingPeriod !== currentTimingPeriod) {
+      if (currentTimingPeriod !== -999) {
+        log(`  ⏱ Advancing time to period T+${step.timingPeriod}`, 'info')
+        await advanceTime(step.timingPeriod)
+      }
+      currentTimingPeriod = step.timingPeriod
+    }
+
+    step.status = 'running'
+    currentStepName.value = step.name
+
+    const loan = loanContracts.value.find(l => l.loanIndex === step.loanIndex)
+    if (!loan) {
+      log(`  ⚠ Loan with index ${step.loanIndex} not found, skipping ${step.name}`, 'warning')
+      step.status = 'failed'
+      failCount++
+      continue
+    }
+
+    let result: ActionResult
+
+    switch (step.actionType) {
+      case 'accept': {
+        // Find the buyer
+        const buyerId = step.borrowerId || loan.borrower
+        const buyer = identities.value.find(i => i.id === buyerId || i.name === buyerId)
+        if (!buyer) {
+          log(`  ⚠ Buyer not found for ${step.name}`, 'warning')
+          step.status = 'failed'
+          failCount++
+          continue
+        }
+        result = await acceptLoan(loan.id, buyer.id, options)
+        break
+      }
+
+      case 'pay': {
+        const amount = step.amount || 100
+        result = await makePayment(loan.id, amount, options)
+        break
+      }
+
+      case 'collect': {
+        const collectAmount = loan.state?.balance || 0
+        result = await collectPayment(loan.id, collectAmount, options)
+        break
+      }
+
+      case 'complete': {
+        // Complete is similar to collect - mark loan as done
+        log(`  ${step.name}: Completing loan...`, 'info')
+        if (loan.state) {
+          loan.state.isPaidOff = true
+          loan.state.isActive = false
+        }
+        loan.status = 'passed'
+        result = { success: true, message: 'Loan completed' }
+        break
+      }
+
+      case 'default': {
+        // Claim default - mark loan as defaulted
+        log(`  ${step.name}: Claiming default...`, 'info')
+        if (loan.state) {
+          loan.state.isDefaulted = true
+          loan.state.isActive = false
+        }
+        loan.status = 'failed'
+        result = { success: true, message: 'Default claimed' }
+        break
+      }
+
+      case 'cancel': {
+        log(`  ${step.name}: Canceling loan...`, 'info')
+        loan.status = 'failed'
+        result = { success: true, message: 'Loan canceled' }
+        break
+      }
+
+      case 'update': {
+        log(`  ${step.name}: Updating terms (not implemented)`, 'warning')
+        result = { success: true, message: 'Terms updated (simulated)' }
+        break
+      }
+
+      default:
+        log(`  Unknown action type: ${step.actionType}`, 'warning')
+        step.status = 'failed'
+        failCount++
+        continue
+    }
+
+    if (result.success) {
+      step.status = 'passed'
+      if (result.data?.txHash) {
+        step.txHash = result.data.txHash
+      }
+      successCount++
+    } else {
+      step.status = 'failed'
+      failCount++
+      log(`  ✗ ${step.name}: ${result.message}`, 'error')
+    }
+  }
+
+  // Update phase status
+  const allPassed = steps.every((s: any) => s.status === 'passed' || s.status === 'disabled')
+  const anyFailed = steps.some((s: any) => s.status === 'failed')
+  phase4.status = allPassed ? 'passed' : anyFailed ? 'failed' : 'pending'
+
+  log(`  Run Contracts complete: ${successCount} succeeded, ${failCount} failed`, successCount > 0 ? 'success' : 'warning')
+  return {
+    success: failCount === 0,
+    message: `Run Contracts phase complete (${successCount}/${successCount + failCount})`
+  }
 }
 
 /**

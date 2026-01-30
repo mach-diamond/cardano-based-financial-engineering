@@ -11,6 +11,7 @@ import {
   getWalletUtxos,
   getWalletBalance,
   advanceTime,
+  getCurrentSlot,
 } from '../services/emulator.service'
 
 const emulator = new Hono()
@@ -131,8 +132,24 @@ emulator.get('/balance/:address', async (c) => {
 emulator.post('/advance-time', async (c) => {
   try {
     const { slots } = await c.req.json()
-    advanceTime(slots || 1)
-    return c.json({ success: true })
+    const result = advanceTime(slots || 1)
+    return c.json({
+      success: true,
+      slot: result.newSlot,
+      timestamp: result.timestamp,
+    })
+  } catch (err) {
+    return c.json({ error: String(err) }, 500)
+  }
+})
+
+/**
+ * GET /api/emulator/current-slot - Get current emulator slot
+ */
+emulator.get('/current-slot', async (c) => {
+  try {
+    const slot = getCurrentSlot()
+    return c.json({ slot, timestamp: Date.now() + (slot * 1000) })
   } catch (err) {
     return c.json({ error: String(err) }, 500)
   }

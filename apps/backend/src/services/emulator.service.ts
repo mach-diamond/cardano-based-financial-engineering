@@ -27,6 +27,7 @@ export interface EmulatorState {
   emulator: Emulator
   wallets: EmulatorWallet[]
   isInitialized: boolean
+  currentSlot?: number // Track emulator slot for time simulation
 }
 
 // Global emulator state (single instance per server)
@@ -131,11 +132,39 @@ export async function getWalletBalance(address: string): Promise<bigint> {
 }
 
 /**
- * Advance emulator time
+ * Get current emulator slot
  */
-export function advanceTime(slots: number): void {
-  if (!emulatorState) return
-  emulatorState.emulator.awaitSlot(slots)
+export function getCurrentSlot(): number {
+  if (!emulatorState) return 0
+  // The emulator tracks time internally - get current slot from ledger state
+  // For now, use the emulator's internal slot counter
+  return emulatorState.currentSlot || 0
+}
+
+/**
+ * Advance emulator time by N slots
+ */
+export function advanceTime(slots: number): { newSlot: number; timestamp: number } {
+  if (!emulatorState) return { newSlot: 0, timestamp: 0 }
+
+  // Track current slot (initialize if not set)
+  if (emulatorState.currentSlot === undefined) {
+    emulatorState.currentSlot = 0
+  }
+
+  // Advance by the specified number of slots
+  emulatorState.currentSlot += slots
+  emulatorState.emulator.awaitSlot(emulatorState.currentSlot)
+
+  // Calculate approximate timestamp (1 slot = 1 second in Cardano mainnet)
+  const timestamp = Date.now() + (emulatorState.currentSlot * 1000)
+
+  console.log(`[Emulator] Advanced to slot ${emulatorState.currentSlot}`)
+
+  return {
+    newSlot: emulatorState.currentSlot,
+    timestamp,
+  }
 }
 
 /**

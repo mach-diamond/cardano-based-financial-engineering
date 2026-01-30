@@ -19,7 +19,7 @@ import {
   executeSetupPhase,
   executeTokenizationPhase,
   executeLoanPhase,
-  executeAcceptPhase,
+  executeRunContractsPhase,
   executeCLOPhase,
   executePaymentsPhase,
   type SetupOptions,
@@ -29,6 +29,7 @@ import {
   type PaymentOptions,
   DEFAULT_LOAN_DEFINITIONS,
 } from './actions'
+import { advanceEmulatorTime } from '@/services/api'
 
 /**
  * Delay utility
@@ -252,22 +253,36 @@ export async function runPipeline(options: PipelineOptions): Promise<void> {
   if (await checkBreakpoint(4, 'Initialize Loan Contracts', options)) return
 
   // ========================================
-  // Phase 3.5: Accept Loans (new phase)
+  // Phase 4: Run Contracts (Accept, Pay, Complete, Collect)
   // ========================================
-  // Note: This could be a separate phase or combined
-  log('\n── Loan Acceptance Phase ──', 'phase')
-  result = await executeAcceptPhase(loanOpts)
+  // Create time advancement function for emulator mode
+  const advanceTime = mode === 'emulator'
+    ? async (period: number) => {
+        try {
+          // Advance emulator by 1 month per timing period (30 days * 24 hours * 60 minutes)
+          const slots = period * 30 * 24 * 60 // ~1 month in slots (1 slot per minute)
+          await advanceEmulatorTime(slots)
+          log(`  ⏱ Emulator time advanced to period ${period}`, 'info')
+        } catch (err) {
+          log(`  ⚠ Failed to advance time: ${(err as Error).message}`, 'warning')
+        }
+      }
+    : undefined
+
+  result = await runPhase(3, 'Run Contracts', async () => {
+    return executeRunContractsPhase(loanOpts, advanceTime)
+  }, options)
 
   if (!result.success) {
-    log(`  Warning: Some loans not accepted: ${result.message}`, 'warning')
+    log(`  Warning: Some contract actions failed: ${result.message}`, 'warning')
   }
 
-  if (await checkBreakpoint(5, 'Loan Acceptance', options)) return
+  if (await checkBreakpoint(5, 'Run Contracts', options)) return
 
   // ========================================
-  // Phase 4: CLO Bundle & Distribution
+  // Phase 5: CLO Bundle & Distribution
   // ========================================
-  result = await runPhase(3, 'Collateral Bundle & CLO', async () => {
+  result = await runPhase(4, 'Collateral Bundle & CLO', async () => {
     return executeCLOPhase(cloOpts)
   }, options)
 
@@ -277,16 +292,6 @@ export async function runPipeline(options: PipelineOptions): Promise<void> {
   }
 
   if (await checkBreakpoint(6, 'CLO Bundle & Distribution', options)) return
-
-  // ========================================
-  // Phase 5: Payment Processing (optional)
-  // ========================================
-  // Only run if not paused at breakpoint
-  if (phases.value.length > 4) {
-    result = await runPhase(4, 'Payment Processing', async () => {
-      return executePaymentsPhase(paymentOpts)
-    }, options)
-  }
 
   // Finalize
   finalizePipeline(options, true)
