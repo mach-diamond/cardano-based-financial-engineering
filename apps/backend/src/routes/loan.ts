@@ -225,4 +225,28 @@ loan.post('/clear', async (c) => {
   }
 })
 
+/**
+ * GET /debug/datum/:address - Debug: show raw datum from database
+ */
+loan.get('/debug/datum/:address', async (c) => {
+  try {
+    const address = c.req.param('address')
+    const contract = await getContractState(address)
+    if (!contract) {
+      return c.json({ error: 'Contract not found' }, 404)
+    }
+    return c.json({
+      success: true,
+      address,
+      dbRecord: contract.dbRecord,
+      contractDatum: contract.dbRecord?.contractDatum,
+      contractDatumType: typeof contract.dbRecord?.contractDatum,
+      contractDatumKeys: contract.dbRecord?.contractDatum ? Object.keys(contract.dbRecord.contractDatum) : [],
+    })
+  } catch (err) {
+    console.error('Debug datum error:', err)
+    return c.json({ error: String(err) }, 500)
+  }
+})
+
 export default loan

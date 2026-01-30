@@ -71,10 +71,17 @@ emulator.get('/status', (c) => {
 })
 
 /**
- * POST /api/emulator/reset - Reset emulator
+ * POST /api/emulator/reset - Reset emulator and clear contracts
  */
-emulator.post('/reset', (c) => {
+emulator.post('/reset', async (c) => {
   resetEmulator()
+  // Also clear contracts from database - import at top if needed
+  try {
+    const { clearContractStore } = await import('../services/loan.service')
+    await clearContractStore()
+  } catch (err) {
+    console.warn('Could not clear contract store:', err)
+  }
   return c.json({ success: true })
 })
 
