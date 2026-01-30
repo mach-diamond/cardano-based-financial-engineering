@@ -28,6 +28,7 @@ import {
   type CLOOptions,
   type PaymentOptions,
   type LoanDefinition,
+  type MintConfig,
   DEFAULT_LOAN_DEFINITIONS,
 } from './actions'
 import { advanceEmulatorTime } from '@/services/api'
@@ -228,8 +229,17 @@ export async function runPipeline(options: PipelineOptions): Promise<void> {
   // ========================================
   // Phase 2: Asset Tokenization
   // ========================================
+  // Derive mint configs from Phase 2 steps (generated from UI config)
+  const phase2 = phases.value.find(p => p.id === 2)
+  const mintConfigs: MintConfig[] = phase2?.steps.map((step: any) => ({
+    id: step.originatorId,
+    asset: step.asset,
+    qty: BigInt(step.qty || 1),
+    type: 'custom',
+  })) || []
+
   result = await runPhase(1, 'Asset Tokenization', async () => {
-    return executeTokenizationPhase(tokenOpts)
+    return executeTokenizationPhase(tokenOpts, mintConfigs)
   }, options)
 
   if (!result.success) {

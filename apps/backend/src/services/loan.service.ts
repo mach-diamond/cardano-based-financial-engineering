@@ -491,6 +491,7 @@ export async function createLoanContract(
   }
 
   // Store contract in database
+  console.log(`[LoanService] Storing contract datum:`, JSON.stringify(dbState, null, 2))
   await contractDb.createContract({
     contractAddress: scriptAddress,
     policyId: scriptPolicyId,
@@ -607,6 +608,10 @@ export async function acceptLoan(
   console.log(`  Initial Payment: ${params.initialPayment} ADA`)
 
   // Get current contract datum from database
+  // Debug: log the raw contract data
+  console.log(`[LoanService] Raw contractDatum type:`, typeof contract.contractDatum)
+  console.log(`[LoanService] Raw contractDatum:`, JSON.stringify(contract.contractDatum, null, 2))
+
   const currentDatum = contract.contractDatum as contractDb.LoanContractDatum | null
   if (!currentDatum) {
     throw new Error('Contract has no datum')
@@ -614,7 +619,8 @@ export async function acceptLoan(
 
   // Validate datum structure
   if (!currentDatum.baseAsset || !currentDatum.baseAsset.policyId) {
-    console.error('[LoanService] Invalid datum structure:', JSON.stringify(currentDatum, null, 2))
+    console.error('[LoanService] Invalid datum structure - baseAsset:', currentDatum.baseAsset)
+    console.error('[LoanService] Full datum:', JSON.stringify(currentDatum, null, 2))
     throw new Error('Contract datum is missing baseAsset data')
   }
 
