@@ -31,15 +31,25 @@ export async function createWallets(options: SetupOptions): Promise<ActionResult
     const config = await ctx.loadTestConfig()
     const expectedWalletCount = config.wallets.length
 
-    if (existingWallets.exists && existingWallets.count === expectedWalletCount) {
+    // Check if emulator is already initialized with these wallets
+    const state = ctx.getContextState()
+    const emulatorInitialized = state.isInitialized && state.wallets.length === expectedWalletCount
+
+    if (existingWallets.exists && existingWallets.count === expectedWalletCount && emulatorInitialized) {
       log(`  Found ${existingWallets.count} existing wallets in database`, 'success')
-      log(`  Skipping wallet creation (already exists)`, 'info')
+      log(`  Emulator already initialized - skipping wallet creation`, 'info')
 
       if (identities.value.length === 0) {
         identities.value = ctx.walletsToIdentities(existingWallets.wallets)
       }
       step.status = 'passed'
       return { success: true, message: 'Wallets already exist' }
+    }
+
+    // If DB has wallets but emulator not initialized, we need to recreate
+    // to ensure seeds are consistent (emulator seeds are in-memory only)
+    if (existingWallets.exists && existingWallets.count === expectedWalletCount && !emulatorInitialized) {
+      log(`  Found wallets in DB but emulator not initialized - recreating for consistency`, 'info')
     }
 
     log(`  Creating ${expectedWalletCount} wallets...`, 'info')
