@@ -30,7 +30,22 @@
 
       <!-- Contract List -->
       <div v-else class="contracts-list">
-        <div v-for="contract in contracts" :key="contract.id" class="contract-row">
+        <!-- Sortable Headers -->
+        <div class="contracts-header">
+          <div class="header-cell header-icon"></div>
+          <div class="header-cell header-info">Contract</div>
+          <div class="header-cell header-asset sortable" @click="toggleSort('asset')">
+            Asset
+            <i :class="getSortIcon('asset')"></i>
+          </div>
+          <div class="header-cell header-term sortable" @click="toggleSort('term')">
+            Term
+            <i :class="getSortIcon('term')"></i>
+          </div>
+          <div class="header-cell header-status">Status</div>
+          <div class="header-cell header-actions">Actions</div>
+        </div>
+        <div v-for="contract in sortedContracts" :key="contract.id" class="contract-row">
           <!-- Icon -->
           <div class="contract-type-icon">
             <i class="fas fa-exchange-alt"></i>
@@ -266,6 +281,50 @@ const expandedContracts = reactive(new Set<string>())
 const datumHistory = reactive(new Map<string, ContractDatum[]>())
 const showRawJson = reactive(new Set<string>())
 
+// Sorting state
+const sortField = ref<'asset' | 'term' | null>(null)
+const sortDirection = ref<'asc' | 'desc'>('asc')
+
+function toggleSort(field: 'asset' | 'term') {
+  if (sortField.value === field) {
+    // Toggle direction or clear
+    if (sortDirection.value === 'asc') {
+      sortDirection.value = 'desc'
+    } else {
+      sortField.value = null
+      sortDirection.value = 'asc'
+    }
+  } else {
+    sortField.value = field
+    sortDirection.value = 'asc'
+  }
+}
+
+function getSortIcon(field: 'asset' | 'term'): string {
+  if (sortField.value !== field) return 'fas fa-sort text-muted'
+  return sortDirection.value === 'asc' ? 'fas fa-sort-up' : 'fas fa-sort-down'
+}
+
+const sortedContracts = computed(() => {
+  if (!sortField.value) return props.contracts
+
+  return [...props.contracts].sort((a, b) => {
+    let comparison = 0
+
+    if (sortField.value === 'asset') {
+      const assetA = (a.collateral?.assetName || '').toLowerCase()
+      const assetB = (b.collateral?.assetName || '').toLowerCase()
+      comparison = assetA.localeCompare(assetB)
+    } else if (sortField.value === 'term') {
+      const termA = getInstallments(a)
+      const termB = getInstallments(b)
+      comparison = termA - termB
+    }
+
+    return sortDirection.value === 'asc' ? comparison : -comparison
+  })
+})
+
 function toggleContractDetails(contractId: string) {
   if (expandedContracts.has(contractId)) {
     expandedContracts.delete(contractId)
@@ -443,6 +502,43 @@ function getInstallments(contract: LoanContract): number {
 .contracts-list {
   display: flex;
   flex-direction: column;
+}
+
+/* Sortable headers */
+.contracts-header {
+  display: grid;
+  grid-template-columns: 40px 1.5fr 2fr 1fr 40px auto;
+  gap: 1rem;
+  padding: 0.5rem 0.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 0.5rem;
+  border-radius: 0.375rem 0.375rem 0 0;
+}
+
+.header-cell {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.header-cell.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s;
+}
+
+.header-cell.sortable:hover {
+  color: #e2e8f0;
+}
+
+.header-cell.sortable i {
+  font-size: 0.65rem;
 }
 
 .contract-row {
