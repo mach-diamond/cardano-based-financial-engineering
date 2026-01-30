@@ -657,50 +657,27 @@ export async function mintTestToken(
 
   const userAddress = await lucid.wallet().address()
 
-  // Capture current time for consistent slot calculations
-  const now = Date.now()
+  console.log('[Mint] User address:', userAddress)
+  console.log('[Mint] Emulator slot:', emulatorState.emulator.slot)
 
-  // Use Lucid instance's unixTimeToSlot method - it uses the correct internal config
-  // The imported function from the module has issues with slot config
-  const toSlot = (time: number) => lucid.unixTimeToSlot(time)
-
-  // Create a simple minting policy with a generous time window
-  // The 'before' slot should be well after the transaction's validTo
-  const beforeSlot = toSlot(now + 3_600_000) // 1 hour from now
-  const validToTime = now + 900_000 // 15 minutes from now
-
-  console.log('[Mint] Current time:', now)
-  console.log('[Mint] Before slot:', beforeSlot)
-  console.log('[Mint] ValidTo time:', validToTime)
-  console.log('[Mint] ValidTo slot:', toSlot(validToTime))
-  console.log('[Mint] Tracked slot:', emulatorState.currentSlot)
-  console.log('[Mint] Emulator internal slot:', emulatorState.emulator.slot)
-
+  // Create a simple signature-only minting policy
+  // No time constraints - just requires the user's signature
   const mintingPolicy = scriptFromNative({
-    type: 'all',
-    scripts: [
-      { type: 'sig', keyHash: paymentCredentialOf(userAddress).hash },
-      {
-        type: 'before',
-        slot: beforeSlot,
-      },
-    ],
+    type: 'sig',
+    keyHash: paymentCredentialOf(userAddress).hash,
   })
 
   const mintPolicyId = mintingPolicyToId(mintingPolicy)
   const assetId = mintPolicyId + fromText(assetName)
 
-  // Set both validFrom and validTo for a complete validity interval
-  const validFromTime = now - 60_000 // 1 minute ago
-  console.log('[Mint] ValidFrom time:', validFromTime)
-  console.log('[Mint] ValidFrom slot:', toSlot(validFromTime))
+  console.log('[Mint] Policy ID:', mintPolicyId)
+  console.log('[Mint] Asset ID:', assetId)
 
+  // Build transaction - no validity bounds needed for signature-only policy
   const tx = await lucid
     .newTx()
     .mintAssets({ [assetId]: BigInt(quantity) })
     .pay.ToAddress(userAddress, { [assetId]: BigInt(quantity) })
-    .validFrom(validFromTime)
-    .validTo(validToTime)
     .attach.MintingPolicy(mintingPolicy)
     .complete()
 
