@@ -44,6 +44,7 @@ export interface EmulatorState {
   wallets: EmulatorWallet[]
   isInitialized: boolean
   currentSlot?: number // Track emulator slot for time simulation
+  initialEmulatorNow?: number // The emulator.now() value when Lucid was initialized (Lucid's zeroTime)
 }
 
 // Global emulator state (single instance per server)
@@ -100,6 +101,14 @@ export async function initializeEmulator(
   console.log(`[Emulator] Advancing to current Preview network slot: ${currentSlot}`)
   emulator.awaitSlot(currentSlot)
 
+  // IMPORTANT: Capture emulator.now() BEFORE creating Lucid
+  // When Lucid is initialized with Emulator, it sets:
+  //   SLOT_CONFIG['Preview'] = { zeroTime: emulator.now(), zeroSlot: 0, slotLength: 1000 }
+  // This zeroTime is used for all slot conversions, so we must use the same value
+  // for our validity window calculations, even after time is advanced.
+  const initialEmulatorNow = emulator.now()
+  console.log(`[Emulator] Initial emulator.now() (Lucid's zeroTime): ${initialEmulatorNow}`)
+
   const lucid = await Lucid(emulator, 'Preview')
 
   emulatorState = {
@@ -108,6 +117,7 @@ export async function initializeEmulator(
     wallets,
     isInitialized: true,
     currentSlot: currentSlot,
+    initialEmulatorNow: initialEmulatorNow,
   }
 
   return { wallets }
@@ -177,9 +187,10 @@ export function advanceTime(slots: number): { newSlot: number; timestamp: number
     emulatorState.currentSlot = getCurrentPreviewSlot()
   }
 
-  // Advance by the specified number of slots
+  // IMPORTANT: awaitSlot is CUMULATIVE - it adds to the current emulator slot
+  // So we pass just the delta, not the target slot
   emulatorState.currentSlot += slots
-  emulatorState.emulator.awaitSlot(emulatorState.currentSlot)
+  emulatorState.emulator.awaitSlot(slots)
 
   // Calculate timestamp based on Preview network slot config
   // timestamp = zeroTime + (slot - zeroSlot) * slotLength
@@ -214,4 +225,23 @@ export function getEmulatorTime(): number {
  */
 export function getLucid(): LucidEvolution | null {
   return emulatorState?.lucid || null
+}
+
+/**
+ * Advance emulator by one block and update tracked slot
+ * awaitBlock(1) advances by approximately 20 seconds (20 slots)
+ */
+export function awaitBlockAndTrack(blocks: number = 1): void {
+  if (!emulatorState) return
+
+  // Each block is approximately 20 seconds = 20 slots
+  const slotsPerBlock = 20
+  const slotsAdvanced = blocks * slotsPerBlock
+
+  emulatorState.emulator.awaitBlock(blocks)
+
+  // Update tracked slot
+  if (emulatorState.currentSlot !== undefined) {
+    emulatorState.currentSlot += slotsAdvanced
+  }
 }

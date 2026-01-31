@@ -59,8 +59,22 @@ app.notFound((c) => {
 
 const port = Number(process.env.PORT) || 3005
 
-// Bun uses the default export, Node uses explicit serve
-console.log(`🚀 MintMatrix API running on http://localhost:${port}`)
+// Start the server based on runtime environment
+const isBun = typeof Bun !== 'undefined'
+
+if (isBun) {
+  // Bun uses the default export
+  console.log(`🚀 MintMatrix API running on http://localhost:${port} (Bun)`)
+} else {
+  // Node.js uses @hono/node-server
+  import('@hono/node-server').then(({ serve }) => {
+    serve({
+      fetch: app.fetch,
+      port,
+    })
+    console.log(`🚀 MintMatrix API running on http://localhost:${port} (Node.js)`)
+  })
+}
 
 // Export for Bun
 export default {

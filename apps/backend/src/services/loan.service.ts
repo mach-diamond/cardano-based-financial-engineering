@@ -8,7 +8,7 @@
  * - DB state persistence
  */
 
-import { getLucid, getEmulatorState, selectWallet } from './emulator.service'
+import { getLucid, getEmulatorState, selectWallet, awaitBlockAndTrack } from './emulator.service'
 import { fromText, toText, paymentCredentialOf } from '@lucid-evolution/lucid'
 import * as contractDb from './contract.service'
 
@@ -30,7 +30,16 @@ import type {
 import {
   calculateNominalTermPayment,
   calculateInterest,
+  loadBlueprint,
+  getValidator,
 } from '../../../../packages/loan-contract/src/lib/index'
+import path from 'path'
+import { fileURLToPath } from 'url'
+
+// Path to the loan-contract package (for loading blueprints)
+// Use import.meta.url with fileURLToPath for cross-runtime compatibility (Bun/Node)
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const LOAN_CONTRACT_ROOT = path.resolve(__dirname, '../../../../packages/loan-contract')
 
 // =============================================================================
 // API Types (for REST endpoints)
@@ -200,9 +209,14 @@ function buildLoadedContract(contract: any): LoadedContract {
     scriptHash?: string
   } | null
 
-  const scriptCbor = parameters?.scriptCbor || contractData?.scriptCbor
+  let scriptCbor = parameters?.scriptCbor || contractData?.scriptCbor
+
+  // Fallback: load from blueprint if not in database (for old contracts)
   if (!scriptCbor) {
-    throw new Error('Contract script not found in database')
+    console.log(`[buildLoadedContract] Script not in DB, loading from blueprint for contract: ${contract.contractAddress}`)
+    const blueprint = loadBlueprint(LOAN_CONTRACT_ROOT)
+    const validator = getValidator(blueprint, 'transfer_test.transfer_test.mint')
+    scriptCbor = validator.compiledCode
   }
 
   const datum = contract.contractDatum
@@ -283,13 +297,22 @@ export async function createLoan(
   const initState = toContractStateInput(params)
   const uiData: InitUIData = { deferFee: params.deferFee ?? false }
 
-  // Call SDK action (isEmulator=true skips validity window)
+  // Load the test validator for emulator mode
+  // The test validator has relaxed checks that work in the emulator environment
+  const blueprint = loadBlueprint(LOAN_CONTRACT_ROOT)
+  const validator = getValidator(blueprint, 'transfer_test.transfer_test.mint')
+  const scriptCbor = validator.compiledCode
+
+  console.log(`[LoanService] Using test validator for emulator mode`)
+
+  // Call SDK action with the test validator script
   const result = await send_to_market(lucid, initState, uiData, true, {
     isEmulator: true,
+    scriptCbor,
   })
 
   // Advance emulator
-  state.emulator.awaitBlock(1)
+  awaitBlockAndTrack(1)
 
   // Persist to database with the parameterized script from SDK
   // IMPORTANT: The on-chain datum has transfer_fee_seller = 0 when deferFee is false
@@ -370,6 +393,7 @@ export async function acceptLoan(
   console.log(`  Buyer: ${params.buyerWalletName}`)
   console.log(`  Contract: ${params.contractAddress}`)
   console.log(`  Initial Payment: ${params.initialPayment} ADA`)
+  console.log(`  Lucid network: ${lucid.config().network}`)
 
   // Build LoadedContract for SDK
   const loadedContract = buildLoadedContract(dbContract)
@@ -396,13 +420,22 @@ export async function acceptLoan(
     timestamp,
   }
 
-  // Call SDK action
+  // Use the INITIAL emulator.now() value (Lucid's zeroTime), not the current one
+  // After time is advanced, emulator.now() changes but Lucid's zeroTime stays the same
+  const initialEmulatorNow = emulatorState.initialEmulatorNow!
+  console.log(`[DEBUG] Emulator state:`)
+  console.log(`  initialEmulatorNow (Lucid zeroTime): ${initialEmulatorNow}`)
+  console.log(`  currentSlot: ${emulatorState.currentSlot}`)
+
+  // Call SDK action with emulator state for validity workaround
   const result = await accept(lucid, loadedContract, uiData, true, {
     isEmulator: true,
+    emulatorNow: initialEmulatorNow,
+    emulatorSlot: emulatorState.currentSlot,
   })
 
   // Advance emulator
-  emulatorState.emulator.awaitBlock(1)
+  awaitBlockAndTrack(1)
 
   // Update database
   const updatedDatum = toDbDatum(
@@ -492,13 +525,19 @@ export async function makePayment(
     timestamp,
   }
 
-  // Call SDK action
+  // Use the INITIAL emulator.now() value (Lucid's zeroTime), not the current one
+  // After time is advanced, emulator.now() changes but Lucid's zeroTime stays the same
+  const initialEmulatorNow = emulatorState.initialEmulatorNow!
+
+  // Call SDK action with emulator state for validity workaround
   const result = await pay(lucid, loadedContract, uiData, true, {
     isEmulator: true,
+    emulatorNow: initialEmulatorNow,
+    emulatorSlot: emulatorState.currentSlot,
   })
 
   // Advance emulator
-  emulatorState.emulator.awaitBlock(1)
+  awaitBlockAndTrack(1)
 
   // Update database
   const newBalance = Number(loadedContract.state.balance)
@@ -587,7 +626,7 @@ export async function collectPayment(
   })
 
   // Advance emulator
-  emulatorState.emulator.awaitBlock(1)
+  awaitBlockAndTrack(1)
 
   console.log(`[LoanService] Payment collected: ${result.tx_id}`)
 
@@ -684,7 +723,7 @@ export async function mintTestToken(
   const signedTx = await tx.sign.withWallet().complete()
   const txHash = await signedTx.submit()
 
-  emulatorState.emulator.awaitBlock(1)
+  awaitBlockAndTrack(1)
 
   return { txHash, policyId: mintPolicyId, assetId }
 }
