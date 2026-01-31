@@ -944,7 +944,7 @@ export async function executeRunContractsPhase(
             principal: updateTerms.principal ?? loan.principalAda ?? (loan.principal / 1_000_000), // Convert back to ADA if needed
             apr: updateTerms.apr ?? loan.apr,
             frequency: updateTerms.frequency ?? loan.frequency ?? 12, // Default to monthly
-            installments: updateTerms.installments ?? loan.installments ?? parseInt(loan.termLength) || 12,
+            installments: updateTerms.installments ?? loan.installments ?? (parseInt(loan.termLength) || 12),
             lateFee: updateTerms.lateFee ?? loan.lateFee ?? 10, // Default 10 ADA
             buyerAddress: updateTerms.buyerReservation ?? null,
             deferFee: updateTerms.feeDeferment ?? loan.deferFee ?? false,
