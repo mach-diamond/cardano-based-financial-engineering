@@ -43,8 +43,8 @@
       <div class="loan-action-timeline">
         <!-- Column Headers -->
         <div class="action-item balance-header-row">
-          <div class="action-timing"></div>
-          <div class="action-content"></div>
+          <div class="action-timing"><span class="balance-header">Time</span></div>
+          <div class="action-content"><span class="balance-header">Action</span></div>
           <div v-if="hasBalanceData" class="action-balances">
             <div class="balance-col"><span class="balance-header">Loan</span></div>
             <div class="balance-col"><span class="balance-header">Contract</span></div>
