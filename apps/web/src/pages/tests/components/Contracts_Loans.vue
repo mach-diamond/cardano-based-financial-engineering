@@ -131,30 +131,37 @@
                 </button>
               </h6>
 
-              <!-- Datum Card Carousel (left-to-right: oldest first) -->
-              <div class="datum-carousel" v-if="datumHistory.get(contract.id)?.length">
+              <!-- Datum Card Carousel (left-to-right: oldest first, filtered for valid entries) -->
+              <div class="datum-carousel" v-if="getValidHistory(contract.id).length">
                 <div
-                  v-for="(datum, idx) in getReversedHistory(contract.id)"
+                  v-for="(datum, idx) in getValidHistory(contract.id)"
                   :key="idx"
                   class="datum-card"
-                  :class="{ active: idx === getReversedHistory(contract.id).length - 1 }"
+                  :class="{ active: idx === getValidHistory(contract.id).length - 1 }"
                 >
-                  <!-- Header: Version, Action with Party, Timestamp -->
+                  <!-- Header: Version badge, Raw JSON toggle, Action flow, Timestamp -->
                   <div class="datum-card-header">
                     <div class="header-top">
-                      <span class="badge" :class="idx === getReversedHistory(contract.id).length - 1 ? 'badge-success' : 'badge-secondary'">
-                        {{ idx === getReversedHistory(contract.id).length - 1 ? 'Current' : `v${idx + 1}` }}
+                      <span class="badge" :class="idx === getValidHistory(contract.id).length - 1 ? 'badge-success' : 'badge-secondary'">
+                        {{ idx === getValidHistory(contract.id).length - 1 ? 'Current' : `v${idx + 1}` }}
                       </span>
+                      <label class="raw-json-switch ml-auto">
+                        <input type="checkbox" :checked="showRawJson.has(contract.id)" @change="toggleRawJson(contract.id)">
+                        <span class="switch-label">Raw</span>
+                      </label>
                     </div>
-                    <div class="header-action" v-if="datum._action">
-                      <span class="action-text">{{ formatActionWithParty(datum._action, contract) }}</span>
+                    <!-- Action flow: Party → ACTION → Contract -->
+                    <div class="action-flow" v-if="datum._action">
+                      <span class="action-party">{{ getActionParty(datum._action, contract) }}</span>
+                      <span class="action-badge" :class="getActionBadgeClass(datum._action)">{{ datum._action.toUpperCase() }}</span>
+                      <span class="action-target">Contract</span>
                     </div>
                     <div class="header-time" v-if="datum._timestamp">
                       {{ formatTimestampFull(datum._timestamp) }}
                     </div>
                   </div>
 
-                  <!-- Body: Datum fields OR Raw JSON -->
+                  <!-- Body: Contract Datum fields OR Raw JSON -->
                   <div class="datum-card-body">
                     <template v-if="!showRawJson.has(contract.id)">
                       <div class="datum-field" v-if="datum.buyer">
@@ -162,7 +169,7 @@
                         <span class="mono">{{ formatAddress(datum.buyer) }}</span>
                       </div>
                       <div class="datum-field" v-if="datum.base_asset || datum.baseAsset">
-                        <label>Asset:</label>
+                        <label>Base Asset:</label>
                         <span>{{ formatAssetName((datum.base_asset || datum.baseAsset)?.asset_name || (datum.base_asset || datum.baseAsset)?.assetName) }}</span>
                       </div>
                       <div class="datum-field" v-if="datum.balance !== undefined">
@@ -183,23 +190,22 @@
                       </div>
                       <div class="datum-field" v-if="datum.last_payment || datum.lastPayment">
                         <label>Last Payment:</label>
-                        <span>{{ formatLovelace((datum.last_payment || datum.lastPayment)?.amount) }} ₳</span>
+                        <span>{{ formatLastPayment(datum.last_payment || datum.lastPayment) }}</span>
                       </div>
                     </template>
                     <template v-else>
-                      <pre class="datum-raw-inline">{{ JSON.stringify(datum, null, 2) }}</pre>
+                      <pre class="datum-raw-inline">{{ formatCleanDatum(datum) }}</pre>
                     </template>
                   </div>
 
-                  <!-- Footer: Raw JSON toggle + TX Hash -->
+                  <!-- Footer: Full TX Hash -->
                   <div class="datum-card-footer">
-                    <label class="raw-json-switch">
-                      <input type="checkbox" :checked="showRawJson.has(contract.id)" @change="toggleRawJson(contract.id)">
-                      <span class="switch-label">Raw JSON</span>
-                    </label>
-                    <div v-if="datum._txHash" class="tx-hash" :title="datum._txHash">
+                    <div v-if="datum._txHash" class="tx-hash-full">
                       <i class="fas fa-link"></i>
-                      <span class="mono">{{ datum._txHash.slice(0, 8) }}...{{ datum._txHash.slice(-6) }}</span>
+                      <span class="mono">{{ datum._txHash }}</span>
+                    </div>
+                    <div v-else class="tx-hash-empty">
+                      <span class="text-muted">No TX</span>
                     </div>
                   </div>
                 </div>
@@ -485,18 +491,21 @@ function formatAddress(addr?: string): string {
   return `${addr.slice(0, 12)}...${addr.slice(-8)}`
 }
 
-function getReversedHistory(contractId: string) {
+function getValidHistory(contractId: string) {
   const history = datumHistory.get(contractId)
   if (!history) return []
-  // History comes newest-first, reverse for left-to-right (oldest first)
-  return [...history].reverse()
+  // Filter out empty datums (those without action or without any datum fields)
+  // Then reverse for left-to-right (oldest first)
+  return [...history]
+    .filter(d => d._action && (d.balance !== undefined || d.terms || d.buyer || d.base_asset || d.baseAsset))
+    .reverse()
 }
 
-function formatActionWithParty(action: string, contract: LoanContract): string {
+function getActionParty(action: string, contract: LoanContract): string {
   const originator = contract.originator || 'Originator'
   const borrower = contract.borrower || 'Borrower'
 
-  // Extract just the wallet name if it's a full name like "Alice (alice)"
+  // Extract just the name part
   const formatName = (name: string) => {
     const match = name.match(/^([^(]+)/)
     return match ? match[1].trim() : name
@@ -507,22 +516,77 @@ function formatActionWithParty(action: string, contract: LoanContract): string {
 
   switch (action.toLowerCase()) {
     case 'create':
-      return `${orig} INITIALIZE Contract`
-    case 'accept':
-      return `${borr} ACCEPT Contract`
-    case 'pay':
-      return `${borr} PAY Contract`
-    case 'collect':
-      return `${orig} COLLECT from Contract`
-    case 'complete':
-      return `${borr} COMPLETE Contract`
     case 'cancel':
-      return `${orig} CANCEL Contract`
+    case 'collect':
     case 'default':
-      return `${orig} CLAIM DEFAULT`
+      return orig
+    case 'accept':
+    case 'pay':
+    case 'complete':
+      return borr
     default:
-      return action.toUpperCase()
+      return 'Unknown'
   }
+}
+
+function getActionBadgeClass(action: string): string {
+  switch (action.toLowerCase()) {
+    case 'create':
+      return 'action-create'
+    case 'accept':
+      return 'action-accept'
+    case 'pay':
+      return 'action-pay'
+    case 'collect':
+      return 'action-collect'
+    case 'complete':
+      return 'action-complete'
+    case 'cancel':
+      return 'action-cancel'
+    case 'default':
+      return 'action-default'
+    default:
+      return ''
+  }
+}
+
+function formatLastPayment(payment: any): string {
+  if (!payment) return '--'
+  const amount = formatLovelace(payment.amount)
+  const time = payment.time ? formatTimestampShort(payment.time) : ''
+  return time ? `${amount} ₳ @ ${time}` : `${amount} ₳`
+}
+
+function formatTimestampShort(timestamp: number | string): string {
+  try {
+    // If it's a POSIX timestamp in seconds, convert to ms
+    const ts = typeof timestamp === 'string' ? parseInt(timestamp) : timestamp
+    const ms = ts < 1e12 ? ts * 1000 : ts
+    const date = new Date(ms)
+    return date.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    })
+  } catch {
+    return ''
+  }
+}
+
+function formatCleanDatum(datum: any): string {
+  // Only include actual contract datum fields, not our tracking metadata
+  const cleanDatum: Record<string, any> = {}
+
+  // Standard Transfer contract datum fields
+  if (datum.buyer !== undefined) cleanDatum.buyer = datum.buyer
+  if (datum.base_asset || datum.baseAsset) cleanDatum.base_asset = datum.base_asset || datum.baseAsset
+  if (datum.terms) cleanDatum.terms = datum.terms
+  if (datum.balance !== undefined) cleanDatum.balance = datum.balance
+  if (datum.last_payment || datum.lastPayment) cleanDatum.last_payment = datum.last_payment || datum.lastPayment
+
+  return JSON.stringify(cleanDatum, null, 2)
 }
 
 function getProgressPercent(contract: LoanContract): number {
@@ -852,7 +916,7 @@ function getInstallments(contract: LoanContract): number {
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.35rem;
 }
 
 .datum-card-header .header-top {
@@ -861,23 +925,48 @@ function getInstallments(contract: LoanContract): number {
   gap: 0.5rem;
 }
 
-.datum-card-header .header-action {
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: #fbbf24;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
+.datum-card-header .raw-json-switch {
+  margin-left: auto;
 }
 
-.datum-card-header .action-text {
-  display: block;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* Action flow: Party → ACTION → Contract */
+.action-flow {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.action-party {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.action-badge {
+  font-size: 0.6rem;
+  font-weight: 700;
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.action-create { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+.action-accept { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+.action-pay { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+.action-collect { background: rgba(167, 139, 250, 0.2); color: #a78bfa; }
+.action-complete { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+.action-cancel { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+.action-default { background: rgba(220, 38, 38, 0.3); color: #fca5a5; }
+
+.action-target {
+  font-size: 0.7rem;
+  color: #94a3b8;
 }
 
 .datum-card-header .header-time {
-  font-size: 0.65rem;
+  font-size: 0.6rem;
   color: #64748b;
   font-family: monospace;
 }
@@ -916,49 +1005,53 @@ function getInstallments(contract: LoanContract): number {
 
 /* Datum card footer */
 .datum-card-footer {
-  padding: 0.5rem 0.75rem;
+  padding: 0.4rem 0.75rem;
   background: rgba(0, 0, 0, 0.15);
   border-top: 1px solid rgba(255, 255, 255, 0.05);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.5rem;
 }
 
-.raw-json-switch {
+.tx-hash-full {
   display: flex;
   align-items: center;
   gap: 0.35rem;
+  font-size: 0.55rem;
+  color: #64748b;
+}
+
+.tx-hash-full i {
+  font-size: 0.5rem;
+  flex-shrink: 0;
+}
+
+.tx-hash-full .mono {
+  font-family: monospace;
+  word-break: break-all;
+  line-height: 1.3;
+}
+
+.tx-hash-empty {
+  font-size: 0.55rem;
+}
+
+/* Raw JSON switch (now in header) */
+.raw-json-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
   cursor: pointer;
-  font-size: 0.65rem;
+  font-size: 0.6rem;
   color: #64748b;
   margin: 0;
 }
 
 .raw-json-switch input {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   cursor: pointer;
 }
 
 .raw-json-switch:hover {
   color: #94a3b8;
-}
-
-.tx-hash {
-  font-size: 0.6rem;
-  color: #64748b;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.tx-hash i {
-  font-size: 0.55rem;
-}
-
-.tx-hash .mono {
-  font-family: monospace;
 }
 
 /* Raw JSON inline display */
