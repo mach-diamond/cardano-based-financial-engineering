@@ -372,6 +372,28 @@ export async function acceptLoan(
       loan.state.paymentCount = 1 // First payment made on accept
     }
 
+    // Add liability token to buyer's wallet (minted during accept)
+    const liabilityTokenName = 'LiabilityToken'
+    const policyId = loan.collateral?.policyId || ''
+    if (policyId && buyer.wallets?.[0]) {
+      const existingLiability = buyer.wallets[0].assets?.find(
+        a => a.policyId === policyId && a.assetName === liabilityTokenName
+      )
+      if (existingLiability) {
+        existingLiability.quantity += 1n
+      } else {
+        if (!buyer.wallets[0].assets) {
+          buyer.wallets[0].assets = []
+        }
+        buyer.wallets[0].assets.push({
+          policyId,
+          assetName: liabilityTokenName,
+          quantity: 1n,
+        })
+      }
+      log(`  ✓ Liability token minted to ${buyer.name}`, 'success')
+    }
+
     log(`  ✓ Loan accepted by ${buyer.name}`, 'success')
     log(`    TX: ${result.txHash}`, 'info')
     log(`    First payment: ${firstPaymentAda.toFixed(2)} ADA`, 'info')
@@ -738,8 +760,18 @@ export async function executeRunContractsPhase(
       }
 
       case 'collect': {
-        const collectAmount = loan.state?.balance || 0
-        result = await collectPayment(loan.id, collectAmount, options)
+        // Collect amount is the accumulated payments in the contract (principal - remaining balance)
+        // NOT the remaining balance (which is what the buyer still owes)
+        const principal = loan.principal || 0
+        const remainingBalance = Math.max(0, loan.state?.balance || 0) // Don't allow negative
+        const collectAmount = step.amount || Math.max(0, principal - remainingBalance)
+
+        if (collectAmount <= 0) {
+          log(`  ⚠ No funds to collect (principal: ${principal / 1_000_000} ADA, balance: ${remainingBalance / 1_000_000} ADA)`, 'warning')
+          result = { success: true, message: 'No funds to collect' }
+        } else {
+          result = await collectPayment(loan.id, collectAmount, options)
+        }
         break
       }
 
