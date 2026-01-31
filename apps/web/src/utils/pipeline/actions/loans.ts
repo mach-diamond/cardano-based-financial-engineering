@@ -203,8 +203,13 @@ export async function createLoan(
         policyId: result.policyId || origAsset.policyId,
       },
       principal: loan.principal * 1_000_000, // Convert to lovelace
+      principalAda: loan.principal, // Store original ADA value for update actions
       apr: loan.apr,
+      frequency, // Store frequency for update actions
       termLength: loan.termLength,
+      installments: termMonths,
+      lateFee, // Store late fee for update actions
+      deferFee, // Store defer fee setting
       status: 'pending', // Waiting for Accept action
       borrower: borrower?.name || null,
       originator: originator.name,
@@ -431,8 +436,14 @@ export async function makePayment(
     return { success: false, message: `Loan ${loanId} not found` }
   }
 
+  // Check if loan has been accepted - borrower is set during Accept
   if (!loan.borrower) {
     return { success: false, message: 'Loan has no borrower - accept loan first' }
+  }
+
+  // Check if loan is active (Accept must have run successfully)
+  if (loan.state && !loan.state.isActive) {
+    return { success: false, message: 'Loan is not active - cannot make payment' }
   }
 
   const borrower = identities.value.find(i => i.name === loan.borrower)
@@ -927,17 +938,19 @@ export async function executeRunContractsPhase(
           const updateTerms = step.updateTerms || {}
 
           // Build new terms, using step values or keeping current values
+          // IMPORTANT: Use principalAda (not principal which is in lovelace) for fallback
+          // Also use installments (number) not termLength (string)
           const newTerms = {
-            principal: updateTerms.principal ?? loan.principal,
+            principal: updateTerms.principal ?? loan.principalAda ?? (loan.principal / 1_000_000), // Convert back to ADA if needed
             apr: updateTerms.apr ?? loan.apr,
-            frequency: updateTerms.frequency ?? loan.frequency,
-            installments: updateTerms.installments ?? loan.termLength,
-            lateFee: updateTerms.lateFee ?? loan.lateFee,
-            buyerAddress: updateTerms.buyerReservation ?? loan.reservedBuyerAddress,
-            deferFee: updateTerms.feeDeferment ?? loan.deferFee,
+            frequency: updateTerms.frequency ?? loan.frequency ?? 12, // Default to monthly
+            installments: updateTerms.installments ?? loan.installments ?? parseInt(loan.termLength) || 12,
+            lateFee: updateTerms.lateFee ?? loan.lateFee ?? 10, // Default 10 ADA
+            buyerAddress: updateTerms.buyerReservation ?? null,
+            deferFee: updateTerms.feeDeferment ?? loan.deferFee ?? false,
           }
 
-          log(`    New terms: Principal=${newTerms.principal} ADA, APR=${newTerms.apr}%, Freq=${newTerms.frequency}, Term=${newTerms.installments}`, 'info')
+          log(`    New terms: Principal=${newTerms.principal} ADA, APR=${newTerms.apr}%, Freq=${newTerms.frequency}, Term=${newTerms.installments} periods`, 'info')
 
           const updateResult = await apiUpdateTerms(updateSeller.name, updateContractAddress, newTerms)
           if (!updateResult.success) {
@@ -951,10 +964,18 @@ export async function executeRunContractsPhase(
           log(`  ✓ Seller wallet refreshed`, 'success')
 
           // Update local loan state with new terms
-          if (newTerms.principal !== undefined) loan.principal = newTerms.principal
+          if (newTerms.principal !== undefined) {
+            loan.principal = newTerms.principal * 1_000_000 // Store in lovelace
+            loan.principalAda = newTerms.principal // Also store ADA value
+          }
           if (newTerms.apr !== undefined) loan.apr = newTerms.apr
           if (newTerms.frequency !== undefined) loan.frequency = newTerms.frequency
-          if (newTerms.installments !== undefined) loan.termLength = newTerms.installments
+          if (newTerms.installments !== undefined) {
+            loan.installments = newTerms.installments
+            loan.termLength = `${newTerms.installments} periods`
+          }
+          if (newTerms.lateFee !== undefined) loan.lateFee = newTerms.lateFee
+          if (newTerms.deferFee !== undefined) loan.deferFee = newTerms.deferFee
 
           log(`  ✓ Contract terms updated`, 'success')
           log(`    TX: ${updateResult.txHash}`, 'info')

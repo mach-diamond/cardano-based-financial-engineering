@@ -580,13 +580,15 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         buyerName,
         description: `Buyer accepts and pays first installment`
       })
+      // Get custom timing for default action (default to period 2)
+      const defaultTiming = getCustomTiming(loan, `${loanIndex}-default`, 2)
       actions.push({
         id: `${loanIndex}-default`,
         loanIndex,
         actionType: 'default',
         label: 'Claim Default',
-        timing: formatTimingLabel(2, loan.frequency),
-        timingPeriod: 2,
+        timing: formatTimingLabel(defaultTiming.period, loan.frequency),
+        timingPeriod: defaultTiming.period,
         loanBalance,
         contractBalance,
         interestPaid,

@@ -65,9 +65,13 @@ export interface LoanContract {
     policyId: string
   }
   principal: number // in lovelace
+  principalAda?: number // in ADA (for update actions)
   apr: number
+  frequency?: number // Payment periods per year: 12=Monthly, 4=Quarterly, etc.
   termLength: string
   installments?: number
+  lateFee?: number // Late fee in ADA
+  deferFee?: boolean // Defer seller fee
   status: PhaseStatus
   borrower: string | null // null = open to market
   originator: string
@@ -80,6 +84,7 @@ export interface LoanContract {
     isActive: boolean
     isPaidOff: boolean
     isDefaulted?: boolean
+    isCancelled?: boolean
     startTime?: number
     paymentCount?: number
     lastPayment?: {

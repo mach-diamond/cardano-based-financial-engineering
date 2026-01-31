@@ -298,6 +298,23 @@ const defaultContractParams = {
   },
 }
 
+interface LoanConfig {
+  _uid?: string
+  borrowerId?: string | null
+  originatorId: string
+  asset: string
+  quantity: number
+  principal: number // in ADA
+  apr: number
+  frequency?: number
+  termMonths: number
+  lateFee?: number
+  deferFee?: boolean
+  transferFeeBuyerPercent?: number
+  lifecycleCase?: string
+  lifecycleBuyerId?: string | null
+}
+
 const props = defineProps<{
   config: {
     wallets: Array<{
@@ -325,6 +342,7 @@ const props = defineProps<{
     address: string
   }>
   contracts?: typeof defaultContractParams
+  loans?: LoanConfig[] // Actual loan configs from Config page
   savedConfigs?: Array<{ id: string; name: string }>
   selectedConfigId?: string
   loanCount?: number
@@ -390,6 +408,29 @@ const formattedPhases = computed(() => {
 })
 
 const formattedContracts = computed(() => {
+  // Prefer actual loan configs from Config page
+  if (props.loans && props.loans.length > 0) {
+    // Format loans to show relevant config details
+    const formattedLoans = props.loans.map((loan, index) => ({
+      id: `L${index + 1}`,
+      originator: loan.originatorId,
+      borrower: loan.borrowerId || 'Open Market',
+      asset: { type: loan.asset, quantity: loan.quantity },
+      terms: {
+        principal: loan.principal,
+        apr: Math.round(loan.apr * 100) / 100, // Show as percentage
+        frequency: loan.frequency || 12,
+        installments: loan.termMonths,
+        lateFee: loan.lateFee ?? 10,
+        transferFeeSplit: `${loan.transferFeeBuyerPercent ?? 50}/${100 - (loan.transferFeeBuyerPercent ?? 50)}`,
+        deferFee: loan.deferFee ?? false,
+      },
+      lifecycle: loan.lifecycleCase || 'T4',
+      lifecycleBuyer: loan.lifecycleBuyerId || loan.borrowerId || 'Open Market',
+    }))
+    return JSON.stringify({ loanContracts: formattedLoans }, bigIntReplacer, 2)
+  }
+  // Fall back to legacy contracts prop or defaults
   const contracts = props.contracts || defaultContractParams
   return JSON.stringify(contracts, bigIntReplacer, 2)
 })

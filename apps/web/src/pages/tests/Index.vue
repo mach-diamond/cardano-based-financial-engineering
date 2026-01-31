@@ -32,6 +32,7 @@
       :identities="identities"
       :saved-configs="savedConfigs"
       :selected-config-id="selectedConfigId"
+      :loans="pipelineConfig.loans"
       :loan-count="pipelineConfig.loans.length"
       @import-config="handleImportConfig"
       @config-change="handleConfigChange"
