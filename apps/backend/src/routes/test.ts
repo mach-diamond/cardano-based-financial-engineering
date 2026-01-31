@@ -469,6 +469,25 @@ test.delete('/contracts/:id', async (c) => {
 })
 
 /**
+ * GET /api/test/contracts/:id/history - Get datum history for a contract
+ */
+test.get('/contracts/:id/history', async (c) => {
+  try {
+    const id = c.req.param('id')
+    const history = await contractService.getDatumHistory(id)
+
+    return c.json({
+      success: true,
+      history,
+      count: history.length
+    })
+  } catch (err) {
+    console.error('Get datum history error:', err)
+    return c.json({ error: String(err) }, 500)
+  }
+})
+
+/**
  * DELETE /api/test/contracts - Delete all contracts (for test reset)
  */
 test.delete('/contracts', async (c) => {

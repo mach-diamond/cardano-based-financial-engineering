@@ -143,6 +143,12 @@
                     <span class="badge" :class="idx === 0 ? 'badge-success' : 'badge-secondary'">
                       {{ idx === 0 ? 'Current' : `v${datumHistory.get(contract.id)!.length - idx}` }}
                     </span>
+                    <span v-if="datum._action" class="badge badge-outline-info ml-2">
+                      {{ datum._action }}
+                    </span>
+                    <small v-if="datum._timestamp" class="text-muted ml-2">
+                      {{ formatTimestamp(datum._timestamp) }}
+                    </small>
                   </div>
                   <div class="datum-card-body">
                     <div class="datum-field">
@@ -348,21 +354,37 @@ function toggleRawJson(contractId: string) {
 }
 
 async function fetchDatumHistory(contract: LoanContract) {
-  if (!contract.contractAddress) {
-    console.warn('No contract address to fetch datum for')
+  const contractId = contract.contractAddress || contract.id
+  if (!contractId) {
+    console.warn('No contract ID to fetch datum for')
     return
   }
 
   try {
-    const response = await fetch(`/api/loan/debug/datum/${encodeURIComponent(contract.contractAddress)}`)
+    // First try to get full history from the new endpoint
+    const historyResponse = await fetch(`/api/test/contracts/${encodeURIComponent(contractId)}/history`)
+    const historyData = await historyResponse.json()
+
+    if (historyData.success && historyData.history && historyData.history.length > 0) {
+      // Extract datum from each history entry (history is already newest-first)
+      const datums = historyData.history.map((entry: any) => ({
+        ...entry.datum,
+        _action: entry.action,
+        _timestamp: entry.timestamp,
+        _txHash: entry.txHash
+      }))
+      datumHistory.set(contract.id, datums)
+      return
+    }
+
+    // Fall back to debug endpoint for current datum only
+    const response = await fetch(`/api/loan/debug/datum/${encodeURIComponent(contractId)}`)
     const data = await response.json()
 
     if (data.success && data.contractDatum) {
-      // Store as array (future: could track history)
       datumHistory.set(contract.id, [data.contractDatum])
     } else {
       console.warn('No datum in response:', data)
-      // Store empty array to show "no datum" state
       datumHistory.set(contract.id, [])
     }
   } catch (err) {
@@ -415,6 +437,22 @@ function formatAssetName(hexOrText?: string): string {
     }
   }
   return hexOrText
+}
+
+function formatTimestamp(isoString?: string): string {
+  if (!isoString) return ''
+  try {
+    const date = new Date(isoString)
+    return date.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    })
+  } catch {
+    return isoString
+  }
 }
 
 function getProgressPercent(contract: LoanContract): number {

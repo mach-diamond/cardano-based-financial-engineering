@@ -522,7 +522,7 @@ export async function acceptLoan(
     { isActive: true }
   )
 
-  await contractDb.updateContractDatum(dbContract.processId, updatedDatum)
+  await contractDb.updateContractDatum(dbContract.processId, updatedDatum, result.tx_id, 'accept')
 
   console.log(`[LoanService] Loan accepted: ${result.tx_id}`)
 
@@ -629,7 +629,7 @@ export async function makePayment(
     { isActive: !isPaidOff, isPaidOff }
   )
 
-  await contractDb.updateContractDatum(dbContract.processId, updatedDatum)
+  await contractDb.updateContractDatum(dbContract.processId, updatedDatum, result.tx_id, 'pay')
 
   console.log(`[LoanService] Payment made: ${result.tx_id}`)
   if (isPaidOff) {
@@ -732,7 +732,8 @@ export async function completeLoan(
       isPaidOff: true,
     },
     statusCode: 4, // Completed
-  })
+    action: 'complete',
+  }, result.tx_id)
 
   console.log(`[LoanService] Loan completed: ${result.tx_id}`)
 
@@ -781,7 +782,8 @@ export async function cancelLoan(
       isActive: false,
     },
     statusCode: 5, // Canceled
-  })
+    action: 'cancel',
+  }, result.tx_id)
 
   console.log(`[LoanService] Loan canceled: ${result.tx_id}`)
 
@@ -830,7 +832,8 @@ export async function claimDefault(
       isDefaulted: true,
     },
     statusCode: 6, // Defaulted
-  })
+    action: 'default',
+  }, result.tx_id)
 
   console.log(`[LoanService] Default claimed: ${result.tx_id}`)
 

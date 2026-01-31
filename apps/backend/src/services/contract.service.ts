@@ -102,6 +102,14 @@ export interface ContractData {
   manager?: string
 }
 
+// Datum history entry with timestamp and action
+export interface DatumHistoryEntry {
+  datum: LoanContractDatum | CLOContractDatum | Record<string, unknown>
+  timestamp: string // ISO date
+  action: string // 'create', 'accept', 'pay', 'collect', 'complete', 'cancel', 'default'
+  txHash?: string
+}
+
 export interface ProcessSmartContract {
   processId: string // UUID
   userId: number | null
@@ -120,6 +128,7 @@ export interface ProcessSmartContract {
   contractSubtype: ContractSubtype | null
   alias: string | null
   txs: string[]
+  datumHistory: DatumHistoryEntry[] | null // History of datum changes
   parameters: Record<string, unknown> | null
   raId: string | null // Reference to asset
   testRunId: number | null // Reference to test run
@@ -144,10 +153,17 @@ export interface CreateContractInput {
  * Create a new contract in the database
  */
 export async function createContract(input: CreateContractInput): Promise<ProcessSmartContract> {
+  // Initialize datum history with the creation entry if datum is provided
+  const initialHistory: DatumHistoryEntry[] = input.contractDatum ? [{
+    datum: input.contractDatum,
+    timestamp: new Date().toISOString(),
+    action: 'create'
+  }] : []
+
   const [contract] = await sql<ProcessSmartContract[]>`
     INSERT INTO process_smart_contract (
       user_id, contract_datum, contract_data, contract_address, policy_id,
-      contract_type, contract_subtype, alias, network_id, parameters, ra_id, test_run_id, status_code
+      contract_type, contract_subtype, alias, network_id, parameters, ra_id, test_run_id, status_code, datum_history
     )
     VALUES (
       ${input.userId || null},
@@ -162,7 +178,8 @@ export async function createContract(input: CreateContractInput): Promise<Proces
       ${input.parameters ? sql.json(input.parameters) : null},
       ${input.raId || null},
       ${input.testRunId || null},
-      ${STATUS_CODES.DEPLOYED}
+      ${STATUS_CODES.DEPLOYED},
+      ${sql.json(initialHistory)}
     )
     RETURNING
       process_id as "processId",
@@ -182,6 +199,7 @@ export async function createContract(input: CreateContractInput): Promise<Proces
       contract_subtype as "contractSubtype",
       alias,
       txs,
+      datum_history as "datumHistory",
       parameters,
       ra_id as "raId",
       test_run_id as "testRunId"
@@ -240,6 +258,7 @@ export async function getAllContracts(networkId?: number): Promise<ProcessSmartC
       contract_subtype as "contractSubtype",
       alias,
       txs,
+      datum_history as "datumHistory",
       parameters,
       ra_id as "raId",
       test_run_id as "testRunId"
@@ -271,6 +290,7 @@ export async function getContractsByTestRunId(testRunId: number): Promise<Proces
       contract_subtype as "contractSubtype",
       alias,
       txs,
+      datum_history as "datumHistory",
       parameters,
       ra_id as "raId",
       test_run_id as "testRunId"
@@ -334,6 +354,7 @@ export async function getContractsByType(
       contract_subtype as "contractSubtype",
       alias,
       txs,
+      datum_history as "datumHistory",
       parameters,
       ra_id as "raId",
       test_run_id as "testRunId"
@@ -366,6 +387,7 @@ export async function getContractByProcessId(processId: string): Promise<Process
       contract_subtype as "contractSubtype",
       alias,
       txs,
+      datum_history as "datumHistory",
       parameters,
       ra_id as "raId",
       test_run_id as "testRunId"
@@ -400,6 +422,7 @@ export async function getContractByAddress(address: string): Promise<ProcessSmar
       contract_subtype as "contractSubtype",
       alias,
       txs,
+      datum_history as "datumHistory",
       parameters,
       ra_id as "raId",
       test_run_id as "testRunId"
@@ -434,6 +457,7 @@ export async function getContractByPolicyId(policyId: string): Promise<ProcessSm
       contract_subtype as "contractSubtype",
       alias,
       txs,
+      datum_history as "datumHistory",
       parameters,
       ra_id as "raId",
       test_run_id as "testRunId"
@@ -449,12 +473,22 @@ export async function getContractByPolicyId(policyId: string): Promise<ProcessSm
 export async function updateContractDatum(
   processId: string,
   datum: LoanContractDatum | CLOContractDatum,
-  tx?: string
+  tx?: string,
+  action?: string // 'accept', 'pay', 'collect', 'complete', 'cancel', 'default'
 ): Promise<ProcessSmartContract | null> {
+  // Create history entry
+  const historyEntry: DatumHistoryEntry = {
+    datum,
+    timestamp: new Date().toISOString(),
+    action: action || 'update',
+    txHash: tx
+  }
+
   const [contract] = await sql<ProcessSmartContract[]>`
     UPDATE process_smart_contract
     SET
       contract_datum = ${sql.json(datum)},
+      datum_history = COALESCE(datum_history, '[]'::jsonb) || ${sql.json([historyEntry])}::jsonb,
       modified = NOW()
       ${tx ? sql`, txs = array_append(txs, ${tx})` : sql``}
     WHERE process_id = ${processId}::uuid
@@ -476,6 +510,7 @@ export async function updateContractDatum(
       contract_subtype as "contractSubtype",
       alias,
       txs,
+      datum_history as "datumHistory",
       parameters,
       ra_id as "raId",
       test_run_id as "testRunId"
@@ -494,6 +529,7 @@ export async function updateContractState(
     contractData?: ContractData
     contractDatum?: LoanContractDatum | CLOContractDatum | Record<string, unknown>
     statusCode?: StatusCode
+    action?: string // 'accept', 'pay', 'collect', 'complete', 'cancel', 'default'
   },
   tx?: string
 ): Promise<ProcessSmartContract | null> {
@@ -559,6 +595,17 @@ export async function updateContractState(
     setClauses.push(`contract_datum = $${paramIndex}::json`)
     values.push(JSON.stringify(mergedDatum))
     paramIndex++
+
+    // Append to datum history
+    const historyEntry: DatumHistoryEntry = {
+      datum: mergedDatum,
+      timestamp: new Date().toISOString(),
+      action: updates.action || 'update',
+      txHash: tx
+    }
+    setClauses.push(`datum_history = COALESCE(datum_history, '[]'::jsonb) || $${paramIndex}::jsonb`)
+    values.push(JSON.stringify([historyEntry]))
+    paramIndex++
   }
 
   if (updates.statusCode) {
@@ -597,6 +644,7 @@ export async function updateContractState(
       contract_subtype as "contractSubtype",
       alias,
       txs,
+      datum_history as "datumHistory",
       parameters,
       ra_id as "raId",
       test_run_id as "testRunId"
@@ -639,6 +687,7 @@ export async function updateContractStatus(
       contract_subtype as "contractSubtype",
       alias,
       txs,
+      datum_history as "datumHistory",
       parameters,
       ra_id as "raId",
       test_run_id as "testRunId"
@@ -683,11 +732,38 @@ export async function deployContract(
       contract_subtype as "contractSubtype",
       alias,
       txs,
+      datum_history as "datumHistory",
       parameters,
       ra_id as "raId",
       test_run_id as "testRunId"
   `
   return contract || null
+}
+
+/**
+ * Get datum history for a contract
+ */
+export async function getDatumHistory(contractAddressOrProcessId: string): Promise<DatumHistoryEntry[]> {
+  // Try to find by process ID first, then by address
+  let contract: ProcessSmartContract | null = null
+
+  // Check if it looks like a UUID
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(contractAddressOrProcessId)
+
+  if (isUuid) {
+    contract = await getContractByProcessId(contractAddressOrProcessId)
+  }
+
+  if (!contract) {
+    contract = await getContractByAddress(contractAddressOrProcessId)
+  }
+
+  if (!contract || !contract.datumHistory) {
+    return []
+  }
+
+  // Return history in reverse chronological order (newest first)
+  return [...contract.datumHistory].reverse()
 }
 
 /**
@@ -743,10 +819,24 @@ export async function initContractsTable(): Promise<void> {
       contract_subtype VARCHAR(50),
       alias VARCHAR(255),
       txs TEXT[] DEFAULT '{}',
+      datum_history JSONB DEFAULT '[]',
       parameters JSONB,
       ra_id UUID,
       test_run_id INTEGER REFERENCES test_runs(id) ON DELETE SET NULL
     )
+  `
+
+  // Add datum_history column if it doesn't exist (for existing tables)
+  await sql`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'process_smart_contract' AND column_name = 'datum_history'
+      ) THEN
+        ALTER TABLE process_smart_contract ADD COLUMN datum_history JSONB DEFAULT '[]';
+      END IF;
+    END $$;
   `
 
   // Create indexes
