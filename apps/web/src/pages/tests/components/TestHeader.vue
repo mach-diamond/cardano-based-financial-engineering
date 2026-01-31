@@ -7,8 +7,8 @@
         <p class="text-muted mb-0">Assets → Loans → Collateral → CLO Bundle</p>
       </div>
 
-      <!-- Test Run Selector - Top Right Corner -->
-      <div class="test-run-selector" v-if="availableTestRuns && availableTestRuns.length > 0">
+      <!-- Test Run Selector - Top Right Corner (always visible) -->
+      <div class="test-run-selector">
         <div class="network-label">Load Test Run ({{ networkMode }})</div>
         <select
           class="form-control form-control-sm test-run-dropdown"
@@ -21,8 +21,11 @@
             #{{ run.id }} - {{ formatRunName(run) }}
           </option>
         </select>
-        <div v-if="otherModeRunCount > 0" class="other-runs-hint">
-          {{ otherModeRunCount }} run(s) on {{ networkMode === 'emulator' ? 'preview' : 'emulator' }}
+        <div v-if="filteredTestRuns.length === 0 && availableTestRuns && availableTestRuns.length > 0" class="other-runs-hint">
+          {{ availableTestRuns.length }} run(s) on other networks
+        </div>
+        <div v-else-if="otherModeRunCount > 0" class="other-runs-hint">
+          {{ otherModeRunCount }} run(s) on {{ networkMode === 'emulator' ? 'preview/preprod' : 'emulator' }}
         </div>
       </div>
     </div>

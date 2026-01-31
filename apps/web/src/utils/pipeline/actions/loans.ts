@@ -889,7 +889,10 @@ export async function executeRunContractsPhase(
             log(`  ✓ Borrower wallet refreshed`, 'success')
           }
 
-          if (loan.state) loan.state.isActive = false
+          if (loan.state) {
+            loan.state.isActive = false
+            loan.state.isCancelled = true
+          }
           loan.status = 'failed'
           result = { success: true, message: 'Loan canceled', data: { txHash: cancelResult.txHash } }
         } catch (err) {

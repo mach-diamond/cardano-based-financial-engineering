@@ -47,6 +47,7 @@ export interface LoanState {
   isActive: boolean;
   isDefaulted: boolean;
   isPaidOff: boolean;
+  isCancelled?: boolean;
 }
 
 export interface PaymentRecord {
