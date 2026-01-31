@@ -520,8 +520,8 @@ function displayValueToPeriod(displayValue: number): number {
   align-items: center;
   gap: 0.5rem;
   flex: 1;
-  min-width: 0; /* Allow flexbox to shrink below content size */
-  overflow: hidden; /* Prevent content from pushing balance columns */
+  min-width: 120px; /* Ensure minimum width for action content */
+  max-width: 250px; /* Prevent action content from expanding too much */
 }
 
 .action-type-badge {
@@ -622,12 +622,6 @@ function displayValueToPeriod(displayValue: number): number {
 
 .balance-header-row:hover {
   background: rgba(0, 0, 0, 0.15) !important;
-}
-
-/* Ensure headers are visible in timing and content columns */
-.balance-header-row .action-timing,
-.balance-header-row .action-content {
-  overflow: visible;
 }
 
 .balance-header-row .action-timing .balance-header {
