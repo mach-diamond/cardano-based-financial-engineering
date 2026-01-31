@@ -407,10 +407,24 @@ async function loadTestRunById(runId: number) {
 
   try {
     const run = await getTestRun(runId)
-    console.log('loadTestRunById: Raw response:', run)
-    console.log('loadTestRunById: State:', run?.state)
-    console.log('loadTestRunById: loanContracts in state:', run?.state?.loanContracts)
-    console.log('loadTestRunById: cloContracts in state:', run?.state?.cloContracts)
+    // Detailed logging for debugging
+    const firstIdentity = run?.state?.identities?.[0]
+    const firstWallet = firstIdentity?.wallets?.[0]
+    const firstContract = run?.state?.loanContracts?.[0]
+    console.log('loadTestRunById: State summary:', {
+      runId: run?.id,
+      hasState: !!run?.state,
+      identitiesCount: run?.state?.identities?.length || 0,
+      loanContractsCount: run?.state?.loanContracts?.length || 0,
+      cloContractsCount: run?.state?.cloContracts?.length || 0,
+      phasesCount: run?.state?.phases?.length || 0,
+      firstIdentityId: firstIdentity?.id,
+      firstWalletName: firstWallet?.name,
+      firstWalletBalance: firstWallet?.balance,
+      firstContractId: firstContract?.id,
+      firstContractCollateral: firstContract?.collateral,
+      firstContractStatus: firstContract?.status
+    })
 
     if (run && run.state) {
       // Reset all phases to pending first
@@ -455,6 +469,13 @@ async function loadTestRunById(runId: number) {
             })) || []
           })) || []
         }))
+        console.log('loadTestRunById: Restored identities:', {
+          count: identities.value.length,
+          firstWallet: identities.value[0]?.wallets?.[0]?.name,
+          firstWalletBalance: identities.value[0]?.wallets?.[0]?.balance?.toString()
+        })
+      } else {
+        console.log('loadTestRunById: No identities to restore')
       }
 
       // Restore loan contracts
@@ -579,11 +600,23 @@ async function saveTestState() {
   const contractsCopy = JSON.parse(JSON.stringify(loanContracts.value))
   const cloContractsCopy = JSON.parse(JSON.stringify(cloContracts.value))
 
+  // Log detailed state info for debugging
+  const firstIdentity = identities.value[0]
+  const firstWallet = firstIdentity?.wallets?.[0]
   console.log('saveTestState: Saving state with:', {
     testRunId: currentTestRunId.value,
     loanContractsCount: contractsCopy.length,
     cloContractsCount: cloContractsCopy.length,
-    identitiesCount: identities.value.length
+    identitiesCount: identities.value.length,
+    firstIdentityId: firstIdentity?.id,
+    firstWalletName: firstWallet?.name,
+    firstWalletBalance: firstWallet?.balance?.toString(),
+    sampleContract: contractsCopy[0] ? {
+      id: contractsCopy[0].id,
+      alias: contractsCopy[0].alias,
+      status: contractsCopy[0].status,
+      collateral: contractsCopy[0].collateral
+    } : null
   })
 
   const state: TestRunState = {
@@ -1300,6 +1333,9 @@ async function handleRunTests(mode: 'emulator' | 'preview' | 'preprod' = network
     const status = lifecycleStatus.value === 'failed' ? 'failed' : 'passed'
     await completeTestRun(currentTestRunId.value, status)
   }
+
+  // Refresh the test runs dropdown so the new run appears
+  await loadAvailableTestRuns()
 }
 
 async function handleExecutePhase(phase: Phase) {

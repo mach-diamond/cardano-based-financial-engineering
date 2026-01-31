@@ -216,7 +216,7 @@
     <!-- Contract Reference -->
     <ContractReference
       :is-collapsed="localCollapsed.contractReference"
-      @toggle="localCollapsed.contractReference = !localCollapsed.contractReference"
+      @toggle="toggleContractReference"
       class="mt-4"
     />
   </div>
@@ -293,26 +293,22 @@ const emit = defineEmits<{
   'update:action-timing': [loanIndex: number, actionId: string, timingPeriod: number]
 }>()
 
-// Local state synced with props
+// Local state synced with props - use simple refs without deep two-way sync to avoid recursion
 const localCollapsed = ref({ ...props.collapsedSections })
 const localCollapsedLoans = ref({ ...props.collapsedLoanSchedules })
 const collapsedGroups = ref<Record<string, boolean>>({})
 
+// Only sync from props to local on mount and when props change (one-way)
+// Don't use deep watchers with two-way sync as they cause infinite loops
 watch(() => props.collapsedSections, (val) => {
-  localCollapsed.value = { ...val }
-}, { deep: true })
+  // Simple shallow copy - no emit back
+  Object.assign(localCollapsed.value, val)
+}, { deep: false })
 
 watch(() => props.collapsedLoanSchedules, (val) => {
-  localCollapsedLoans.value = { ...val }
-}, { deep: true })
-
-watch(localCollapsed, (val) => {
-  emit('update:collapsed-sections', { ...val })
-}, { deep: true })
-
-watch(localCollapsedLoans, (val) => {
-  emit('update:collapsed-loan-schedules', { ...val })
-}, { deep: true })
+  // Simple shallow copy - no emit back
+  Object.assign(localCollapsedLoans.value, val)
+}, { deep: false })
 
 const frequencyOptions = [
   { value: 12, label: 'mo', fullLabel: 'Monthly' },
@@ -470,8 +466,9 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
 
   switch (lifecycleCase) {
     case 'T1': {
-      const updateTiming = getCustomTiming(loan, 'update', -1)
-      const cancelTiming = getCustomTiming(loan, 'cancel', -1)
+      // Use full action ID format (loanIndex-actionType) to match what's stored in actionTimings
+      const updateTiming = getCustomTiming(loan, `${loanIndex}-update`, 0)
+      const cancelTiming = getCustomTiming(loan, `${loanIndex}-cancel`, 0)
       actions.push({
         id: `${loanIndex}-update`,
         loanIndex,
@@ -580,13 +577,16 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
           description: `Installment ${i} of ${totalPayments}`
         })
       }
+      // Complete and Collect use custom timing if set, default to after last payment
+      const completeTiming = getCustomTiming(loan, `${loanIndex}-complete`, totalPayments)
+      const collectTiming = getCustomTiming(loan, `${loanIndex}-collect`, totalPayments)
       actions.push({
         id: `${loanIndex}-complete`,
         loanIndex,
         actionType: 'complete',
         label: 'Complete',
-        timing: `T+${totalPayments}${freqLabel}`,
-        timingPeriod: totalPayments,
+        timing: formatTimingLabel(completeTiming.period, freqLabel),
+        timingPeriod: completeTiming.period,
         loanBalance: 0,
         contractBalance,
         interestPaid,
@@ -598,8 +598,8 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         loanIndex,
         actionType: 'collect',
         label: 'Collect',
-        timing: `T+${totalPayments}${freqLabel}`,
-        timingPeriod: totalPayments,
+        timing: formatTimingLabel(collectTiming.period, freqLabel),
+        timingPeriod: collectTiming.period,
         loanBalance: 0,
         contractBalance: 0,
         interestPaid,
@@ -675,13 +675,16 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
           expectedResult: 'success'
         })
       }
+      // Complete and Collect use custom timing if set, default to after last payment
+      const completeTiming5 = getCustomTiming(loan, `${loanIndex}-complete`, totalPayments)
+      const collectTiming5 = getCustomTiming(loan, `${loanIndex}-collect`, totalPayments)
       actions.push({
         id: `${loanIndex}-complete`,
         loanIndex,
         actionType: 'complete',
         label: 'Complete',
-        timing: `T+${totalPayments}${freqLabel}`,
-        timingPeriod: totalPayments,
+        timing: formatTimingLabel(completeTiming5.period, freqLabel),
+        timingPeriod: completeTiming5.period,
         loanBalance: 0,
         contractBalance,
         interestPaid,
@@ -693,8 +696,8 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         loanIndex,
         actionType: 'collect',
         label: 'Collect',
-        timing: `T+${totalPayments}${freqLabel}`,
-        timingPeriod: totalPayments,
+        timing: formatTimingLabel(collectTiming5.period, freqLabel),
+        timingPeriod: collectTiming5.period,
         loanBalance: 0,
         contractBalance: 0,
         interestPaid,
@@ -840,6 +843,13 @@ function toggleGroup(timing: string) {
 
 function toggleLoanSchedule(uid: string) {
   localCollapsedLoans.value[uid] = !localCollapsedLoans.value[uid]
+  // Emit update to parent without triggering watcher loop
+  emit('update:collapsed-loan-schedules', { ...localCollapsedLoans.value })
+}
+
+function toggleContractReference() {
+  localCollapsed.value.contractReference = !localCollapsed.value.contractReference
+  emit('update:collapsed-sections', { ...localCollapsed.value })
 }
 
 function updateLoanLifecycleCase(loanIndex: number, value: string) {

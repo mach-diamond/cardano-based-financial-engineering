@@ -230,6 +230,7 @@ export async function createLoan(
       try {
         // Update the existing contract record with testRunId and additional data
         await updateContractState(result.processId, {
+          testRunId: testRunId.value,
           contractData: {
             borrower: loanContract.borrower,
             originator: loanContract.originator,
@@ -380,9 +381,10 @@ export async function acceptLoan(
       if (step) step.status = 'passed'
     }
 
-    // Persist state to test run database
+    // Persist state to test run database with status code 4 (Active)
     try {
       await updateContractState(loan.id, {
+        statusCode: 4, // Active - contract is now being serviced
         contractData: {
           borrower: buyer.name
         },

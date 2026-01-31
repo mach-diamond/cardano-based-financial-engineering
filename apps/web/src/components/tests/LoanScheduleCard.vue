@@ -63,17 +63,18 @@
              }">
           <div class="action-timing" :class="{ 'timing-editable': isTimingEditable(action) }">
             <template v-if="isTimingEditable(action)">
+              <span class="timing-prefix">T+</span>
               <input
                 type="number"
-                :value="action.timingPeriod"
+                :value="getTimingDisplayValue(action.timingPeriod)"
                 @change="onTimingChange(action.id, $event)"
                 class="timing-input"
-                step="0.5"
-                min="-10"
-                max="100"
-                :title="'Edit timing (period number)'"
+                step="1"
+                min="0"
+                max="1000"
+                :title="'Edit timing in ' + getFreqUnit()"
               />
-              <span class="timing-suffix">{{ getFreqLabel() }}</span>
+              <span class="timing-suffix">{{ getFreqUnit() }}</span>
             </template>
             <template v-else>{{ action.timing }}</template>
           </div>
@@ -249,7 +250,10 @@ function onAmountChange(actionId: string, event: Event) {
 
 function onTimingChange(actionId: string, event: Event) {
   const target = event.target as HTMLInputElement
-  emit('update:timing', actionId, parseFloat(target.value))
+  const displayValue = parseFloat(target.value)
+  // Convert display value (e.g., 30m) back to timing period (e.g., 3 periods of 10m)
+  const timingPeriod = displayValueToPeriod(displayValue)
+  emit('update:timing', actionId, timingPeriod)
 }
 
 // Determine if an action's timing is editable
@@ -259,29 +263,47 @@ function isTimingEditable(action: LoanAction): boolean {
   // - update and cancel actions (pre-acceptance)
   // - payment actions (to test late payments)
   // - default action (to test different default timing)
-  const editableTypes = ['update', 'cancel', 'pay', 'default']
+  // - complete and collect actions (post-payment lifecycle)
+  const editableTypes = ['update', 'cancel', 'pay', 'default', 'complete', 'collect']
   return editableTypes.includes(action.actionType)
 }
 
-// Get frequency label for timing display
-function getFreqLabel(): string {
+// Get frequency info: multiplier (for display) and unit (suffix)
+function getFrequencyInfo(): { multiplier: number; unit: string } {
   const frequency = props.loan.frequency || 12
   switch (frequency) {
-    case 52: return 'wk'
-    case 26: return '2wk'
-    case 12: return 'mo'
-    case 4: return 'qtr'
-    case 2: return 'semi'
-    case 1: return 'yr'
-    // High frequency for testing
-    case 365: return 'd'
-    case 8760: return 'hr'
-    case 17531: return '30m'
-    case 35063: return '15m'
-    case 52594: return '10m'
-    case 105189: return '5m'
-    default: return 'p'
+    case 52: return { multiplier: 1, unit: 'wk' }
+    case 26: return { multiplier: 2, unit: 'wk' }
+    case 12: return { multiplier: 1, unit: 'mo' }
+    case 4: return { multiplier: 1, unit: 'qtr' }
+    case 2: return { multiplier: 1, unit: 'semi' }
+    case 1: return { multiplier: 1, unit: 'yr' }
+    // High frequency for testing (minutes)
+    case 365: return { multiplier: 1, unit: 'd' }
+    case 8760: return { multiplier: 1, unit: 'hr' }
+    case 17531: return { multiplier: 30, unit: 'm' }
+    case 35063: return { multiplier: 15, unit: 'm' }
+    case 52594: return { multiplier: 10, unit: 'm' }
+    case 105189: return { multiplier: 5, unit: 'm' }
+    default: return { multiplier: 1, unit: 'p' }
   }
+}
+
+// Get just the unit for the suffix
+function getFreqUnit(): string {
+  return getFrequencyInfo().unit
+}
+
+// Convert timing period to display value (period × multiplier)
+function getTimingDisplayValue(timingPeriod: number): number {
+  const { multiplier } = getFrequencyInfo()
+  return timingPeriod * multiplier
+}
+
+// Convert display value back to timing period (value ÷ multiplier)
+function displayValueToPeriod(displayValue: number): number {
+  const { multiplier } = getFrequencyInfo()
+  return displayValue / multiplier
 }
 </script>
 
@@ -431,16 +453,23 @@ function getFreqLabel(): string {
   justify-content: flex-end;
 }
 
+.timing-prefix {
+  color: #64748b;
+  font-size: 0.65rem;
+  font-weight: 500;
+}
+
 .timing-input {
-  width: 38px;
-  padding: 0.1rem 0.2rem;
+  width: 32px;
+  padding: 0.1rem 0.15rem;
   font-family: 'SF Mono', monospace;
   font-size: 0.7rem;
   background: rgba(59, 130, 246, 0.15);
   border: 1px solid rgba(59, 130, 246, 0.4);
   border-radius: 3px;
   color: #93c5fd;
-  text-align: right;
+  text-align: center;
+  -moz-appearance: textfield; /* Firefox */
 }
 
 .timing-input:focus {
@@ -449,9 +478,12 @@ function getFreqLabel(): string {
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 
+/* Hide spinners completely */
 .timing-input::-webkit-inner-spin-button,
 .timing-input::-webkit-outer-spin-button {
-  opacity: 0.5;
+  -webkit-appearance: none;
+  margin: 0;
+  display: none;
 }
 
 .timing-suffix {

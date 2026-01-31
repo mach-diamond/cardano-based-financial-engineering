@@ -9,6 +9,20 @@ import * as contractService from '../services/contract.service'
 const test = new Hono()
 
 // Helper function to transform contracts to frontend format
+// Status codes: 1=Draft, 2=Pending, 3=Deployed, 4=Active, 5=Closed
+function getContractStatus(statusCode: number, datum: any): string {
+  if (datum?.isPaidOff) return 'passed'
+  if (datum?.isDefaulted) return 'failed'
+  if (datum?.isCancelled) return 'failed'
+  // Map status codes to frontend status
+  switch (statusCode) {
+    case 5: return 'passed'  // Closed
+    case 4: return 'running' // Active - being paid
+    case 3: return 'running' // Deployed - awaiting acceptance
+    default: return 'pending' // Draft or Pending
+  }
+}
+
 function transformLoanContracts(contracts: contractService.ProcessSmartContract[]) {
   return contracts.map(c => {
     const datum = c.contractDatum as any || {}
@@ -22,19 +36,21 @@ function transformLoanContracts(contracts: contractService.ProcessSmartContract[
       apr: c.contractData?.apr || 0,
       termLength: c.contractData?.termLength,
       installments: c.contractData?.installments,
-      status: c.statusCode >= 3 ? 'passed' : 'pending',
+      status: getContractStatus(c.statusCode, datum),
       borrower: c.contractData?.borrower,
       originator: c.contractData?.originator,
       contractAddress: c.contractAddress,
       policyId: c.policyId,
+      datumHistory: c.datumHistory || [],
       state: {
         balance: datum.balance ?? principal,
         isActive: datum.isActive ?? false,
         isPaidOff: datum.isPaidOff ?? false,
         isDefaulted: datum.isDefaulted ?? false,
+        isCancelled: datum.isCancelled ?? false,
         startTime: datum.startTime || null,
         paymentCount: datum.paymentCount ?? 0,
-        lastPayment: datum.lastPayment || null
+        lastPayment: datum.lastPayment || datum.last_payment || null
       }
     }
   })
@@ -88,20 +104,32 @@ test.get('/runs/latest', async (c) => {
       id: run.id,
       status: run.status,
       loanContractsFromDB: loanContracts.length,
-      cloContractsFromDB: cloContracts.length
+      cloContractsFromDB: cloContracts.length,
+      loanContractsFromState: run.state?.loanContracts?.length || 0,
+      cloContractsFromState: run.state?.cloContracts?.length || 0
     })
 
     // Transform contracts to frontend format
     const loanContractsForFrontend = transformLoanContracts(loanContracts)
     const cloContractsForFrontend = transformCLOContracts(cloContracts)
 
-    // Augment run.state with contracts from DB
+    // ALWAYS prefer saved state contracts over DB contracts
+    // Saved state has the complete frontend representation with all computed fields
+    // DB contracts are mainly for persistence and may lose data during transformation
+    const finalLoanContracts = (run.state?.loanContracts?.length > 0)
+      ? run.state.loanContracts
+      : loanContractsForFrontend
+    const finalCloContracts = (run.state?.cloContracts?.length > 0)
+      ? run.state.cloContracts
+      : cloContractsForFrontend
+
+    // Augment run.state with contracts from DB (or fallback to saved state)
     const augmentedRun = {
       ...run,
       state: {
         ...run.state,
-        loanContracts: loanContractsForFrontend,
-        cloContracts: cloContractsForFrontend
+        loanContracts: finalLoanContracts,
+        cloContracts: finalCloContracts
       }
     }
 
@@ -133,23 +161,43 @@ test.get('/runs/:id', async (c) => {
     const loanContracts = contracts.filter(c => c.contractType === 'Transfer')
     const cloContracts = contracts.filter(c => c.contractType === 'CLO')
 
+    // Detailed logging to debug state restoration
+    const firstIdentity = run.state?.identities?.[0]
+    const firstWallet = firstIdentity?.wallets?.[0]
     console.log('Get test run by ID:', {
       id: run.id,
       loanContractsFromDB: loanContracts.length,
-      cloContractsFromDB: cloContracts.length
+      cloContractsFromDB: cloContracts.length,
+      loanContractsFromState: run.state?.loanContracts?.length || 0,
+      cloContractsFromState: run.state?.cloContracts?.length || 0,
+      identitiesCount: run.state?.identities?.length || 0,
+      phasesCount: run.state?.phases?.length || 0,
+      firstIdentityId: firstIdentity?.id,
+      firstWalletName: firstWallet?.name,
+      firstWalletBalance: firstWallet?.balance
     })
 
     // Transform contracts to frontend format
     const loanContractsForFrontend = transformLoanContracts(loanContracts)
     const cloContractsForFrontend = transformCLOContracts(cloContracts)
 
-    // Augment run.state with contracts from DB
+    // ALWAYS prefer saved state contracts over DB contracts
+    // Saved state has the complete frontend representation with all computed fields
+    // DB contracts are mainly for persistence and may lose data during transformation
+    const finalLoanContracts = (run.state?.loanContracts?.length > 0)
+      ? run.state.loanContracts
+      : loanContractsForFrontend
+    const finalCloContracts = (run.state?.cloContracts?.length > 0)
+      ? run.state.cloContracts
+      : cloContractsForFrontend
+
+    // Augment run.state with contracts from DB (or fallback to saved state)
     const augmentedRun = {
       ...run,
       state: {
         ...run.state,
-        loanContracts: loanContractsForFrontend,
-        cloContracts: cloContractsForFrontend
+        loanContracts: finalLoanContracts,
+        cloContracts: finalCloContracts
       }
     }
 
@@ -420,16 +468,17 @@ test.put('/contracts/:id/datum', async (c) => {
 test.patch('/contracts/:id', async (c) => {
   try {
     const id = c.req.param('id')
-    const { contractData, contractDatum, statusCode, tx } = await c.req.json()
+    const { contractData, contractDatum, statusCode, testRunId, tx } = await c.req.json()
 
-    if (!contractData && !contractDatum && !statusCode) {
-      return c.json({ error: 'At least one of contractData, contractDatum, or statusCode is required' }, 400)
+    if (!contractData && !contractDatum && statusCode === undefined && testRunId === undefined) {
+      return c.json({ error: 'At least one of contractData, contractDatum, statusCode, or testRunId is required' }, 400)
     }
 
     const contract = await contractService.updateContractState(id, {
       contractData,
       contractDatum,
-      statusCode
+      statusCode,
+      testRunId
     }, tx)
 
     if (!contract) {

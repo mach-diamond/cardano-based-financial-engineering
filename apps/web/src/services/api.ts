@@ -833,6 +833,8 @@ export async function updateContractDatum(processId: string, datum: Record<strin
 export async function updateContractState(processId: string, updates: {
     contractData?: Record<string, any>
     contractDatum?: Record<string, any>
+    testRunId?: number
+    statusCode?: number
 }): Promise<ProcessSmartContract | null> {
     const res = await fetch(`${API_BASE}/api/test/contracts/${encodeURIComponent(processId)}`, {
         method: 'PATCH',

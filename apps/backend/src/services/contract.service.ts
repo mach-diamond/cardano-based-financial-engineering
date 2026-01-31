@@ -531,6 +531,7 @@ export async function updateContractState(
     contractData?: ContractData
     contractDatum?: LoanContractDatum | CLOContractDatum | Record<string, unknown>
     statusCode?: StatusCode
+    testRunId?: number
     action?: string // 'accept', 'pay', 'collect', 'complete', 'cancel', 'default'
   },
   tx?: string
@@ -613,6 +614,12 @@ export async function updateContractState(
   if (updates.statusCode) {
     setClauses.push(`status_code = $${paramIndex}`)
     values.push(updates.statusCode)
+    paramIndex++
+  }
+
+  if (updates.testRunId !== undefined) {
+    setClauses.push(`test_run_id = $${paramIndex}`)
+    values.push(updates.testRunId)
     paramIndex++
   }
 
