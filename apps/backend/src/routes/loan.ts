@@ -12,6 +12,9 @@ import {
   acceptLoan,
   makePayment,
   collectPayment,
+  completeLoan,
+  cancelLoan,
+  claimDefault,
   clearContractStore,
   getAllContracts,
   getContractState,
@@ -20,6 +23,9 @@ import {
   type AcceptLoanParams,
   type MakePaymentParams,
   type CollectPaymentParams,
+  type CompleteLoanParams,
+  type CancelLoanParams,
+  type ClaimDefaultParams,
 } from '../services/loan.service'
 
 const loan = new Hono()
@@ -166,6 +172,78 @@ loan.post('/collect', async (c) => {
     })
   } catch (err) {
     console.error('Collect error:', err)
+    return c.json({ error: String(err) }, 500)
+  }
+})
+
+/**
+ * POST /complete - Complete loan transfer (buyer receives base asset)
+ */
+loan.post('/complete', async (c) => {
+  try {
+    const body = (await c.req.json()) as CompleteLoanParams
+
+    if (!body.buyerWalletName || !body.contractAddress) {
+      return c.json({ error: 'Missing required fields' }, 400)
+    }
+
+    const result = await completeLoan(body)
+
+    return c.json({
+      success: true,
+      txHash: result.txHash,
+      contractAddress: result.contractAddress,
+    })
+  } catch (err) {
+    console.error('Complete error:', err)
+    return c.json({ error: String(err) }, 500)
+  }
+})
+
+/**
+ * POST /cancel - Cancel loan (seller retrieves base asset)
+ */
+loan.post('/cancel', async (c) => {
+  try {
+    const body = (await c.req.json()) as CancelLoanParams
+
+    if (!body.sellerWalletName || !body.contractAddress) {
+      return c.json({ error: 'Missing required fields' }, 400)
+    }
+
+    const result = await cancelLoan(body)
+
+    return c.json({
+      success: true,
+      txHash: result.txHash,
+      contractAddress: result.contractAddress,
+    })
+  } catch (err) {
+    console.error('Cancel error:', err)
+    return c.json({ error: String(err) }, 500)
+  }
+})
+
+/**
+ * POST /default - Claim default (seller retrieves base asset after default)
+ */
+loan.post('/default', async (c) => {
+  try {
+    const body = (await c.req.json()) as ClaimDefaultParams
+
+    if (!body.sellerWalletName || !body.contractAddress) {
+      return c.json({ error: 'Missing required fields' }, 400)
+    }
+
+    const result = await claimDefault(body)
+
+    return c.json({
+      success: true,
+      txHash: result.txHash,
+      contractAddress: result.contractAddress,
+    })
+  } catch (err) {
+    console.error('Default error:', err)
     return c.json({ error: String(err) }, 500)
   }
 })

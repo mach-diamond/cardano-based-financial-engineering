@@ -18,6 +18,9 @@ import {
   accept,
   pay,
   collect,
+  complete_transfer,
+  cancel,
+  claim_default,
 } from '../../../../packages/loan-contract/src/actions/index'
 import type {
   ContractStateInput,
@@ -83,6 +86,21 @@ export interface CollectPaymentParams {
   sellerWalletName: string
   contractAddress: string
   amount: number // in lovelace
+}
+
+export interface CompleteLoanParams {
+  buyerWalletName: string
+  contractAddress: string
+}
+
+export interface CancelLoanParams {
+  sellerWalletName: string
+  contractAddress: string
+}
+
+export interface ClaimDefaultParams {
+  sellerWalletName: string
+  contractAddress: string
 }
 
 export interface LoanContractResult {
@@ -668,6 +686,153 @@ export async function collectPayment(
   // We don't update the DB here because the datum isn't modified by collect.
 
   console.log(`[LoanService] Payment collected: ${result.tx_id}`)
+
+  return { txHash: result.tx_id, contractAddress: params.contractAddress }
+}
+
+/**
+ * Complete loan transfer (buyer receives base asset, burns liability token)
+ * Called when loan is fully paid off.
+ */
+export async function completeLoan(
+  params: CompleteLoanParams
+): Promise<LoanContractResult> {
+  const emulatorState = getEmulatorState()
+  if (!emulatorState) throw new Error('Emulator not initialized')
+
+  await selectWallet(params.buyerWalletName)
+  const lucid = getLucid()
+  if (!lucid) throw new Error('Lucid not available')
+
+  const dbContract = await contractDb.getContractByAddress(params.contractAddress)
+
+  if (!dbContract) {
+    throw new Error(`Contract not found: ${params.contractAddress}`)
+  }
+
+  console.log(`[LoanService] Completing loan transfer:`)
+  console.log(`  Buyer: ${params.buyerWalletName}`)
+  console.log(`  Contract: ${params.contractAddress}`)
+
+  // Build LoadedContract for SDK
+  const loadedContract = buildLoadedContract(dbContract)
+
+  // Call SDK action - buyer burns liability token, receives base asset
+  const result = await complete_transfer(lucid, loadedContract, true, {
+    isEmulator: true,
+  })
+
+  // Advance emulator
+  awaitBlockAndTrack(1)
+
+  // Update database - mark contract as completed
+  await contractDb.updateContractState(dbContract.processId, {
+    contractDatum: {
+      isActive: false,
+      isPaidOff: true,
+    },
+    statusCode: 4, // Completed
+  })
+
+  console.log(`[LoanService] Loan completed: ${result.tx_id}`)
+
+  return { txHash: result.tx_id, contractAddress: params.contractAddress }
+}
+
+/**
+ * Cancel loan (seller retrieves base asset, burns collateral token)
+ * Only callable by seller before loan is accepted.
+ */
+export async function cancelLoan(
+  params: CancelLoanParams
+): Promise<LoanContractResult> {
+  const emulatorState = getEmulatorState()
+  if (!emulatorState) throw new Error('Emulator not initialized')
+
+  await selectWallet(params.sellerWalletName)
+  const lucid = getLucid()
+  if (!lucid) throw new Error('Lucid not available')
+
+  const dbContract = await contractDb.getContractByAddress(params.contractAddress)
+
+  if (!dbContract) {
+    throw new Error(`Contract not found: ${params.contractAddress}`)
+  }
+
+  console.log(`[LoanService] Canceling loan:`)
+  console.log(`  Seller: ${params.sellerWalletName}`)
+  console.log(`  Contract: ${params.contractAddress}`)
+
+  // Build LoadedContract for SDK
+  const loadedContract = buildLoadedContract(dbContract)
+
+  // Call SDK action - seller burns collateral token, receives base asset
+  const result = await cancel(lucid, loadedContract, {
+    verbose: true,
+    isEmulator: true,
+  })
+
+  // Advance emulator
+  awaitBlockAndTrack(1)
+
+  // Update database - mark contract as canceled
+  await contractDb.updateContractState(dbContract.processId, {
+    contractDatum: {
+      isActive: false,
+    },
+    statusCode: 5, // Canceled
+  })
+
+  console.log(`[LoanService] Loan canceled: ${result.tx_id}`)
+
+  return { txHash: result.tx_id, contractAddress: params.contractAddress }
+}
+
+/**
+ * Claim default (seller retrieves base asset after buyer defaults)
+ * Only callable by seller after loan is in default.
+ */
+export async function claimDefault(
+  params: ClaimDefaultParams
+): Promise<LoanContractResult> {
+  const emulatorState = getEmulatorState()
+  if (!emulatorState) throw new Error('Emulator not initialized')
+
+  await selectWallet(params.sellerWalletName)
+  const lucid = getLucid()
+  if (!lucid) throw new Error('Lucid not available')
+
+  const dbContract = await contractDb.getContractByAddress(params.contractAddress)
+
+  if (!dbContract) {
+    throw new Error(`Contract not found: ${params.contractAddress}`)
+  }
+
+  console.log(`[LoanService] Claiming default:`)
+  console.log(`  Seller: ${params.sellerWalletName}`)
+  console.log(`  Contract: ${params.contractAddress}`)
+
+  // Build LoadedContract for SDK
+  const loadedContract = buildLoadedContract(dbContract)
+
+  // Call SDK action - seller burns collateral token, receives base asset
+  const result = await claim_default(lucid, loadedContract, true, {
+    isEmulator: true,
+  })
+
+  // Advance emulator
+  awaitBlockAndTrack(1)
+
+  // Update database - mark contract as defaulted
+  await contractDb.updateContractState(dbContract.processId, {
+    contractDatum: {
+      isActive: false,
+      isDefaulted: true,
+    },
+    statusCode: 6, // Defaulted
+  })
+
+  console.log(`[LoanService] Default claimed: ${result.tx_id}`)
 
   return { txHash: result.tx_id, contractAddress: params.contractAddress }
 }

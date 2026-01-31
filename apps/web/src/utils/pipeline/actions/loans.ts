@@ -16,6 +16,9 @@ import {
   acceptLoan as apiAcceptLoan,
   makeLoanPayment as apiMakeLoanPayment,
   collectLoanPayment as apiCollectPayment,
+  completeLoanTransfer as apiCompleteLoan,
+  cancelLoanContract as apiCancelLoan,
+  claimLoanDefault as apiClaimDefault,
 } from '@/services/api'
 
 export interface LoanDefinition {
@@ -776,9 +779,8 @@ export async function executeRunContractsPhase(
       }
 
       case 'complete': {
-        // Complete transfers the collateral asset to the buyer.
+        // Complete transfers the base asset to the buyer (burns liability token)
         // This should only happen AFTER all payments are made (balance = 0).
-        // Note: isPaidOff is set in the pay action when balance reaches 0, not here.
         log(`  ${step.name}: Completing loan - transferring asset to buyer...`, 'info')
 
         // Verify the loan is actually paid off before completing
@@ -786,29 +788,206 @@ export async function executeRunContractsPhase(
           log(`  ⚠ Warning: Completing loan with remaining balance: ${(loan.state.balance / 1_000_000).toFixed(2)} ADA`, 'warning')
         }
 
-        // Complete transfers the asset - loan state remains as-is (already isPaidOff from final payment)
-        // The status is 'passed' because the complete action succeeded
-        loan.status = 'passed'
-        result = { success: true, message: 'Asset transferred to buyer' }
+        // Get borrower (who holds the liability token and will receive the base asset)
+        const borrower = identities.value.find(i => i.name === loan.borrower)
+        if (!borrower) {
+          result = { success: false, message: `Borrower ${loan.borrower} not found` }
+          break
+        }
+
+        // Need contract address for backend call
+        const completeContractAddress = loan.contractAddress || loan.id
+        if (!completeContractAddress || completeContractAddress.startsWith('LOAN-')) {
+          log(`  ✗ No contract address found for loan ${loan.id}`, 'error')
+          result = { success: false, message: 'Contract address not available' }
+          break
+        }
+
+        try {
+          const completeResult = await apiCompleteLoan(borrower.name, completeContractAddress)
+          if (!completeResult.success) {
+            log(`  ✗ Failed to complete: ${completeResult.error || 'Unknown error'}`, 'error')
+            result = { success: false, message: completeResult.error || 'Failed to complete' }
+            break
+          }
+
+          // Token swap: buyer loses liability token, gains base asset
+          if (borrower.wallets?.[0]) {
+            const policyId = loan.collateral?.policyId || ''
+            // Remove liability token
+            const liabilityIdx = borrower.wallets[0].assets?.findIndex(
+              a => a.policyId === policyId && a.assetName === 'LiabilityToken'
+            ) ?? -1
+            if (liabilityIdx >= 0) {
+              borrower.wallets[0].assets!.splice(liabilityIdx, 1)
+              log(`  ✓ Liability token burned from ${borrower.name}`, 'success')
+            }
+            // Add base asset
+            const baseAssetName = loan.collateral?.assetName || ''
+            if (baseAssetName) {
+              const existingBase = borrower.wallets[0].assets?.find(
+                a => a.policyId === policyId && a.assetName === baseAssetName
+              )
+              if (existingBase) {
+                existingBase.quantity += BigInt(loan.collateral?.quantity || 1)
+              } else {
+                if (!borrower.wallets[0].assets) borrower.wallets[0].assets = []
+                borrower.wallets[0].assets.push({
+                  policyId,
+                  assetName: baseAssetName,
+                  quantity: BigInt(loan.collateral?.quantity || 1),
+                })
+              }
+              log(`  ✓ Base asset transferred to ${borrower.name}`, 'success')
+            }
+          }
+
+          loan.status = 'passed'
+          if (loan.state) loan.state.isActive = false
+          result = { success: true, message: 'Asset transferred to buyer', data: { txHash: completeResult.txHash } }
+        } catch (err) {
+          log(`  ✗ Failed to complete: ${(err as Error).message}`, 'error')
+          result = { success: false, message: (err as Error).message }
+        }
         break
       }
 
       case 'default': {
-        // Claim default - mark loan as defaulted
+        // Claim default - seller burns collateral token, gets base asset back
         log(`  ${step.name}: Claiming default...`, 'info')
-        if (loan.state) {
-          loan.state.isDefaulted = true
-          loan.state.isActive = false
+
+        // Get seller (who holds the collateral token and will receive the base asset)
+        const defaultSeller = identities.value.find(i => i.name === loan.originator)
+        if (!defaultSeller) {
+          result = { success: false, message: `Seller ${loan.originator} not found` }
+          break
         }
-        loan.status = 'failed'
-        result = { success: true, message: 'Default claimed' }
+
+        const defaultContractAddress = loan.contractAddress || loan.id
+        if (!defaultContractAddress || defaultContractAddress.startsWith('LOAN-')) {
+          log(`  ✗ No contract address found for loan ${loan.id}`, 'error')
+          result = { success: false, message: 'Contract address not available' }
+          break
+        }
+
+        try {
+          const defaultResult = await apiClaimDefault(defaultSeller.name, defaultContractAddress)
+          if (!defaultResult.success) {
+            log(`  ✗ Failed to claim default: ${defaultResult.error || 'Unknown error'}`, 'error')
+            result = { success: false, message: defaultResult.error || 'Failed to claim default' }
+            break
+          }
+
+          // Token swap: seller loses collateral token, gains base asset
+          if (defaultSeller.wallets?.[0]) {
+            const policyId = loan.collateral?.policyId || ''
+            const collateralTokenName = `${loan.collateral?.assetName || ''}Collateral`
+            // Remove collateral token
+            const collateralIdx = defaultSeller.wallets[0].assets?.findIndex(
+              a => a.policyId === policyId && a.assetName === collateralTokenName
+            ) ?? -1
+            if (collateralIdx >= 0) {
+              defaultSeller.wallets[0].assets!.splice(collateralIdx, 1)
+              log(`  ✓ Collateral token burned from ${defaultSeller.name}`, 'success')
+            }
+            // Add base asset back
+            const baseAssetName = loan.collateral?.assetName || ''
+            if (baseAssetName) {
+              const existingBase = defaultSeller.wallets[0].assets?.find(
+                a => a.policyId === policyId && a.assetName === baseAssetName
+              )
+              if (existingBase) {
+                existingBase.quantity += BigInt(loan.collateral?.quantity || 1)
+              } else {
+                if (!defaultSeller.wallets[0].assets) defaultSeller.wallets[0].assets = []
+                defaultSeller.wallets[0].assets.push({
+                  policyId,
+                  assetName: baseAssetName,
+                  quantity: BigInt(loan.collateral?.quantity || 1),
+                })
+              }
+              log(`  ✓ Base asset returned to ${defaultSeller.name}`, 'success')
+            }
+          }
+
+          if (loan.state) {
+            loan.state.isDefaulted = true
+            loan.state.isActive = false
+          }
+          loan.status = 'failed'
+          result = { success: true, message: 'Default claimed', data: { txHash: defaultResult.txHash } }
+        } catch (err) {
+          log(`  ✗ Failed to claim default: ${(err as Error).message}`, 'error')
+          result = { success: false, message: (err as Error).message }
+        }
         break
       }
 
       case 'cancel': {
+        // Cancel loan - seller burns collateral token, gets base asset back
         log(`  ${step.name}: Canceling loan...`, 'info')
-        loan.status = 'failed'
-        result = { success: true, message: 'Loan canceled' }
+
+        // Get seller (who holds the collateral token and will receive the base asset)
+        const cancelSeller = identities.value.find(i => i.name === loan.originator)
+        if (!cancelSeller) {
+          result = { success: false, message: `Seller ${loan.originator} not found` }
+          break
+        }
+
+        const cancelContractAddress = loan.contractAddress || loan.id
+        if (!cancelContractAddress || cancelContractAddress.startsWith('LOAN-')) {
+          log(`  ✗ No contract address found for loan ${loan.id}`, 'error')
+          result = { success: false, message: 'Contract address not available' }
+          break
+        }
+
+        try {
+          const cancelResult = await apiCancelLoan(cancelSeller.name, cancelContractAddress)
+          if (!cancelResult.success) {
+            log(`  ✗ Failed to cancel: ${cancelResult.error || 'Unknown error'}`, 'error')
+            result = { success: false, message: cancelResult.error || 'Failed to cancel' }
+            break
+          }
+
+          // Token swap: seller loses collateral token, gains base asset
+          if (cancelSeller.wallets?.[0]) {
+            const policyId = loan.collateral?.policyId || ''
+            const collateralTokenName = `${loan.collateral?.assetName || ''}Collateral`
+            // Remove collateral token
+            const collateralIdx = cancelSeller.wallets[0].assets?.findIndex(
+              a => a.policyId === policyId && a.assetName === collateralTokenName
+            ) ?? -1
+            if (collateralIdx >= 0) {
+              cancelSeller.wallets[0].assets!.splice(collateralIdx, 1)
+              log(`  ✓ Collateral token burned from ${cancelSeller.name}`, 'success')
+            }
+            // Add base asset back
+            const baseAssetName = loan.collateral?.assetName || ''
+            if (baseAssetName) {
+              const existingBase = cancelSeller.wallets[0].assets?.find(
+                a => a.policyId === policyId && a.assetName === baseAssetName
+              )
+              if (existingBase) {
+                existingBase.quantity += BigInt(loan.collateral?.quantity || 1)
+              } else {
+                if (!cancelSeller.wallets[0].assets) cancelSeller.wallets[0].assets = []
+                cancelSeller.wallets[0].assets.push({
+                  policyId,
+                  assetName: baseAssetName,
+                  quantity: BigInt(loan.collateral?.quantity || 1),
+                })
+              }
+              log(`  ✓ Base asset returned to ${cancelSeller.name}`, 'success')
+            }
+          }
+
+          if (loan.state) loan.state.isActive = false
+          loan.status = 'failed'
+          result = { success: true, message: 'Loan canceled', data: { txHash: cancelResult.txHash } }
+        } catch (err) {
+          log(`  ✗ Failed to cancel: ${(err as Error).message}`, 'error')
+          result = { success: false, message: (err as Error).message }
+        }
         break
       }
 

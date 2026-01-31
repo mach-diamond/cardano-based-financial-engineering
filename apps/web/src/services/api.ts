@@ -442,6 +442,51 @@ export async function collectLoanPayment(
 }
 
 /**
+ * Complete loan transfer - buyer receives base asset, burns liability token
+ */
+export async function completeLoanTransfer(
+    buyerWalletName: string,
+    contractAddress: string
+): Promise<LoanContractResult> {
+    const res = await fetch(`${API_BASE}/api/loan/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ buyerWalletName, contractAddress })
+    })
+    return res.json()
+}
+
+/**
+ * Cancel loan - seller retrieves base asset, burns collateral token
+ */
+export async function cancelLoanContract(
+    sellerWalletName: string,
+    contractAddress: string
+): Promise<LoanContractResult> {
+    const res = await fetch(`${API_BASE}/api/loan/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sellerWalletName, contractAddress })
+    })
+    return res.json()
+}
+
+/**
+ * Claim default - seller retrieves base asset after buyer defaults
+ */
+export async function claimLoanDefault(
+    sellerWalletName: string,
+    contractAddress: string
+): Promise<LoanContractResult> {
+    const res = await fetch(`${API_BASE}/api/loan/default`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sellerWalletName, contractAddress })
+    })
+    return res.json()
+}
+
+/**
  * Get all stored contracts
  */
 export async function getAllContracts(): Promise<any[]> {
