@@ -400,7 +400,8 @@ function calculateTermPayment(loan: { principal: number; apr: number; termMonths
 }
 
 function hasValidBuyer(loan: any): boolean {
-  return !!loan.borrowerId
+  // Check lifecycleBuyerId first (set in Lifecycle tab), then fall back to borrowerId (reserved buyer)
+  return !!(loan.lifecycleBuyerId || loan.borrowerId)
 }
 
 // Get custom timing for an action, or return the default
@@ -439,7 +440,8 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
   const termPayment = calculateTermPayment(loan)
   const totalPayments = loan.termMonths
   const freqLabel = getFrequencyLabel(loan.frequency)
-  const buyerId = loan.borrowerId || null
+  // Use lifecycleBuyerId (set in Lifecycle tab) for Accept action, fall back to borrowerId (reserved buyer)
+  const buyerId = loan.lifecycleBuyerId || loan.borrowerId || null
   const buyerName = getBuyerName(buyerId)
   const principal = loan.principal
   const apr = loan.apr / 100
@@ -757,7 +759,8 @@ const sortedPostInitActions = computed((): SortedAction[] => {
       let executorRole = ''
 
       if (['accept', 'pay', 'complete'].includes(action.actionType)) {
-        executorWallet = action.buyerName || getBuyerName(schedule.loan.borrowerId) || 'Open Market'
+        // Use lifecycleBuyerId (from Lifecycle tab) first, fall back to borrowerId (reserved)
+        executorWallet = action.buyerName || getBuyerName(schedule.loan.lifecycleBuyerId || schedule.loan.borrowerId) || 'Open Market'
         executorRole = 'Borrower'
       } else if (['collect', 'default', 'update', 'cancel'].includes(action.actionType)) {
         const originator = props.wallets.find(w =>

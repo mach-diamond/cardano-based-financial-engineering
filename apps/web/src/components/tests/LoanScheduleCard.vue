@@ -94,10 +94,10 @@
             <!-- Buyer display/selection for Accept action -->
             <span v-if="action.actionType === 'accept'" class="action-buyer">
               <i class="fas fa-user mr-1"></i>
-              <!-- Show dropdown if no buyer assigned (open market) -->
+              <!-- Show dropdown if no lifecycle buyer selected yet -->
               <select
-                v-if="!loan.borrowerId"
-                :value="loan.borrowerId || ''"
+                v-if="!loan.lifecycleBuyerId"
+                :value="loan.lifecycleBuyerId || ''"
                 @change="onBuyerChange"
                 class="buyer-select"
               >
@@ -106,7 +106,7 @@
                   {{ b.name }}
                 </option>
               </select>
-              <!-- Show buyer name if assigned -->
+              <!-- Show buyer name if lifecycle buyer assigned -->
               <span v-else class="buyer-name">{{ action.buyerName }}</span>
             </span>
             <span v-if="action.isLate" class="action-late-badge">
@@ -207,7 +207,8 @@ const lifecycleCases = [
   { id: 'T7', short: 'Reserved + Fees', description: 'Buyer Reservation with Fees - Reserved buyer with transfer fees' },
 ]
 
-const hasValidBuyer = computed(() => !!props.loan.borrowerId)
+// Check if a buyer is selected for lifecycle (Accept action)
+const hasValidBuyer = computed(() => !!(props.loan.lifecycleBuyerId || props.loan.borrowerId))
 
 const hasBalanceData = computed(() => {
   return props.actions.some(a => a.loanBalance !== undefined || a.contractBalance !== undefined || a.interestPaid !== undefined)
@@ -594,6 +595,8 @@ function displayValueToPeriod(displayValue: number): number {
   padding-left: 0.5rem;
   border-left: 1px solid rgba(255, 255, 255, 0.1);
   flex-shrink: 0;
+  width: 180px; /* Fixed width to ensure alignment: 3 cols × 55px + padding */
+  min-width: 180px;
 }
 
 .balance-col {

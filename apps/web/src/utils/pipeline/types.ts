@@ -137,7 +137,7 @@ export interface ActionTimingOverride {
 
 export interface LoanConfig {
   _uid?: string // Unique ID for stable v-for keys (runtime only)
-  borrowerId: string
+  borrowerId: string // Reserved buyer ID (set in Loans tab) - empty for open market
   originatorId: string
   agentId?: string | null // Agent wallet (optional)
   asset: string
@@ -148,6 +148,7 @@ export interface LoanConfig {
   termMonths: number // Number of payment installments
   reservedBuyer?: boolean // true = reserved for specific borrower, false = open market
   lifecycleCase?: LifecycleCaseId // Test scenario: T1=Cancel, T2=Default, T3=Nominal(0%), T4=Nominal, T5=LateFee, T6=RejectGuard, T7=Reserved+Fees
+  lifecycleBuyerId?: string | null // Buyer for Accept action in Lifecycle tab - doesn't affect initial contract
   agentFee?: number // Agent referral fee in ADA
   transferFeeBuyerPercent?: number // Transfer fee split - buyer percentage (0-100)
   deferFee?: boolean // Defer seller fee until end of loan

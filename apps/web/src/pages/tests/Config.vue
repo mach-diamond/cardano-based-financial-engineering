@@ -356,8 +356,9 @@ function updateLoanLifecycleCase(loanIndex: number, newCase: string) {
 
 function updateLoanBuyer(loanIndex: number, newBuyerId: string | null) {
   if (loanIndex >= 0 && loanIndex < localConfig.value.loans.length) {
-    localConfig.value.loans[loanIndex].borrowerId = newBuyerId as any
-    localConfig.value.loans[loanIndex].reservedBuyer = !!newBuyerId
+    // Set lifecycleBuyerId for Accept action - this does NOT change borrowerId/reservedBuyer
+    // The initial contract will still be created with the original borrowerId (null for open market)
+    localConfig.value.loans[loanIndex].lifecycleBuyerId = newBuyerId
   }
 }
 
