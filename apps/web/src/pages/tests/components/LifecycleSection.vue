@@ -85,7 +85,7 @@
             <template v-if="phase.id === 4">
               <div v-for="group in getTimeGroups(phase.steps)" :key="group.timingPeriod" class="time-group">
                 <!-- Time Group Header (collapsible) -->
-                <div class="time-group-header" @click="toggleTimeGroup(group.timingPeriod)" :class="{ 'time-group-collapsed': !expandedTimeGroups.has(group.timingPeriod) }">
+                <div class="time-group-header" @click="toggleTimeGroup(group.timingPeriod)" :class="{ 'time-group-collapsed': !expandedTimeGroups.has(group.timingPeriod) }" style="cursor: pointer;">
                   <div class="time-group-info">
                     <div class="time-group-relative">{{ group.relativeTime }}</div>
                     <div class="time-group-datetime">{{ group.formattedDateTime }}</div>
@@ -221,7 +221,7 @@ function toggleBreakpoint(phaseId: number) {
 }
 
 const expanded = ref(false)
-const expandedTimeGroups = reactive(new Set<number>())
+const expandedTimeGroups = ref(new Set<number>())
 
 // Emulator zero time (Lucid default: 2022-01-01 00:00:00 UTC)
 const EMULATOR_ZERO_TIME = new Date('2022-01-01T00:00:00Z').getTime()
@@ -248,10 +248,10 @@ function togglePhase(phase: Phase) {
 }
 
 function toggleTimeGroup(timingPeriod: number) {
-  if (expandedTimeGroups.has(timingPeriod)) {
-    expandedTimeGroups.delete(timingPeriod)
+  if (expandedTimeGroups.value.has(timingPeriod)) {
+    expandedTimeGroups.value.delete(timingPeriod)
   } else {
-    expandedTimeGroups.add(timingPeriod)
+    expandedTimeGroups.value.add(timingPeriod)
   }
 }
 
@@ -297,17 +297,21 @@ function getTimeGroups(steps: any[]): TimeGroup[] {
     // Calculate slot from timingPeriod
     // Period 0 = T+0 (start time)
     // Period N = N periods after start
+    // Negative periods = Pre-acceptance actions (at slot 0)
     const slotsPerPeriod = Math.floor(SECONDS_PER_YEAR / frequency)
-    const slot = Math.floor(period * slotsPerPeriod)
+
+    // For negative periods (pre-acceptance), use slot 0
+    const slot = period < 0 ? 0 : Math.floor(period * slotsPerPeriod)
 
     // Calculate timestamp from slot
     const timestamp = EMULATOR_ZERO_TIME + (slot * SLOT_LENGTH_MS)
     const date = new Date(timestamp)
 
-    // Format relative time (T+X)
+    // Format relative time
     let relativeTime = 'T+0'
     if (period < 0) {
-      relativeTime = `T${period}`
+      // Pre-acceptance actions (Update Terms, Cancel, etc.)
+      relativeTime = 'Pre-Acceptance'
     } else if (period > 0) {
       // Get the frequency label from the first step's timing
       const freqMatch = firstTiming.match(/T\+\d+(.+)/)
@@ -345,7 +349,7 @@ function getTimeGroups(steps: any[]): TimeGroup[] {
 
     // Auto-expand the first group or any group with running/pending steps
     if (groups.length === 1 || hasRunning || (!allPassed && !hasFailed)) {
-      expandedTimeGroups.add(period)
+      expandedTimeGroups.value.add(period)
     }
   }
 
