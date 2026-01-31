@@ -91,12 +91,10 @@
                 :title="action.description || ''"
               /> ADA
             </span>
-            <!-- Buyer display/selection for Accept action -->
+            <!-- Buyer selection for Accept action - always show dropdown to allow changing -->
             <span v-if="action.actionType === 'accept'" class="action-buyer">
               <i class="fas fa-user mr-1"></i>
-              <!-- Show dropdown if no lifecycle buyer selected yet -->
               <select
-                v-if="!loan.lifecycleBuyerId"
                 :value="loan.lifecycleBuyerId || ''"
                 @change="onBuyerChange"
                 class="buyer-select"
@@ -106,8 +104,6 @@
                   {{ b.name }}
                 </option>
               </select>
-              <!-- Show buyer name if lifecycle buyer assigned -->
-              <span v-else class="buyer-name">{{ action.buyerName }}</span>
             </span>
             <span v-if="action.isLate" class="action-late-badge">
               <i class="fas fa-clock"></i> Late
@@ -497,6 +493,8 @@ function displayValueToPeriod(displayValue: number): number {
   align-items: center;
   gap: 0.5rem;
   flex: 1;
+  min-width: 0; /* Allow flexbox to shrink below content size */
+  overflow: hidden; /* Prevent content from pushing balance columns */
 }
 
 .action-type-badge {
@@ -526,7 +524,8 @@ function displayValueToPeriod(displayValue: number): number {
 }
 
 .action-amount-input {
-  width: 60px;
+  width: 80px; /* Fixed width for consistent alignment */
+  max-width: 80px;
   padding: 0.15rem 0.3rem;
   font-size: 0.75rem;
   background: rgba(0, 0, 0, 0.3);
@@ -534,6 +533,7 @@ function displayValueToPeriod(displayValue: number): number {
   border-radius: 3px;
   color: #e2e8f0;
   text-align: right;
+  flex-shrink: 0;
 }
 
 .action-amount-input:focus {
@@ -548,7 +548,7 @@ function displayValueToPeriod(displayValue: number): number {
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  margin-left: auto;
+  flex-shrink: 0; /* Don't shrink buyer selector */
 }
 
 .buyer-select {
@@ -559,7 +559,8 @@ function displayValueToPeriod(displayValue: number): number {
   border-radius: 3px;
   color: #fcd34d;
   cursor: pointer;
-  min-width: 100px;
+  width: 110px; /* Fixed width for consistent alignment */
+  max-width: 110px;
 }
 
 .buyer-select:focus {
