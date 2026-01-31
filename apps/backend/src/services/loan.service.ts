@@ -289,11 +289,11 @@ function buildLoadedContract(contract: any): LoadedContract {
             terms.fees?.referralFeeAddr || terms.fees?.referral_fee_addr || null,
         },
       },
-      balance: BigInt(datum.balance),
+      balance: BigInt(Math.trunc(Number(datum.balance))),
       last_payment: lastPayment
         ? {
-            amount: BigInt(lastPayment.amount),
-            time: BigInt(lastPayment.time),
+            amount: BigInt(Math.trunc(Number(lastPayment.amount))),
+            time: BigInt(Math.trunc(Number(lastPayment.time))),
           }
         : null,
     },
