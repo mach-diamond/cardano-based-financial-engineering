@@ -121,6 +121,7 @@
           @update:loan-lifecycle="updateLoanLifecycleCase"
           @update:loan-buyer="updateLoanBuyer"
           @update:action-amount="updateActionAmount"
+          @update:action-timing="updateActionTiming"
         />
 
         <!-- Settings Tab -->
@@ -363,6 +364,54 @@ function updateLoanBuyer(loanIndex: number, newBuyerId: string | null) {
 function updateActionAmount(_loanIndex: number, _actionId: string, _newAmount: number) {
   // Action amounts are display-only calculated values
   // This handler is available for future customization
+}
+
+function updateActionTiming(loanIndex: number, actionId: string, timingPeriod: number) {
+  if (loanIndex >= 0 && loanIndex < localConfig.value.loans.length) {
+    const loan = localConfig.value.loans[loanIndex]
+
+    // Initialize actionTimings array if it doesn't exist
+    if (!loan.actionTimings) {
+      loan.actionTimings = []
+    }
+
+    // Find existing override or create new one
+    const existingIndex = loan.actionTimings.findIndex(t => t.actionId === actionId)
+    if (existingIndex >= 0) {
+      loan.actionTimings[existingIndex].timingPeriod = timingPeriod
+    } else {
+      loan.actionTimings.push({
+        actionId,
+        timingPeriod,
+        isLate: false
+      })
+    }
+
+    // Detect if this creates a late payment scenario
+    detectLatePayments(loan, actionId, timingPeriod)
+  }
+}
+
+// Detect if timing changes cause late payments or default
+function detectLatePayments(loan: any, actionId: string, newPeriod: number) {
+  // For payment actions, check if the new timing is after the expected due date
+  if (actionId.includes('pay-')) {
+    const paymentNum = parseInt(actionId.split('-').pop() || '0')
+    const expectedPeriod = paymentNum - 1 // Pay #2 is due at T+1, Pay #3 at T+2, etc.
+
+    if (newPeriod > expectedPeriod) {
+      // Mark as late
+      const override = loan.actionTimings?.find((t: any) => t.actionId === actionId)
+      if (override) {
+        override.isLate = true
+      }
+
+      // Check for potential default (typically 2+ periods late)
+      if (newPeriod > expectedPeriod + 1) {
+        console.warn(`Loan ${loan.asset}: Payment #${paymentNum} at T+${newPeriod} may trigger default (expected T+${expectedPeriod})`)
+      }
+    }
+  }
 }
 
 // Config management

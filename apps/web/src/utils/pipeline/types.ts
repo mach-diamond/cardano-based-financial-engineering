@@ -128,6 +128,13 @@ export interface WalletConfig {
 
 export type LifecycleCaseId = 'T1' | 'T2' | 'T3' | 'T4' | 'T5' | 'T6' | 'T7'
 
+// Action timing override for custom scheduling
+export interface ActionTimingOverride {
+  actionId: string       // e.g., 'init', 'update', 'cancel', 'accept', 'pay-2', etc.
+  timingPeriod: number   // Custom timing period (can be decimal for late payments)
+  isLate?: boolean       // Mark if this is intentionally late
+}
+
 export interface LoanConfig {
   _uid?: string // Unique ID for stable v-for keys (runtime only)
   borrowerId: string
@@ -145,6 +152,7 @@ export interface LoanConfig {
   transferFeeBuyerPercent?: number // Transfer fee split - buyer percentage (0-100)
   deferFee?: boolean // Defer seller fee until end of loan
   lateFee?: number // Late payment fee in ADA
+  actionTimings?: ActionTimingOverride[] // Custom timing overrides for actions
 }
 
 export interface CLOConfig {

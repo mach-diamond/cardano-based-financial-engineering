@@ -176,7 +176,8 @@
           @toggle-collapse="toggleLoanSchedule(schedule.loan._uid || `loan-${schedule.loanIndex}`)"
           @update:lifecycle="updateLoanLifecycleCase(schedule.loanIndex, $event)"
           @update:buyer="updateLoanBuyer(schedule.loanIndex, $event)"
-          @update:amount="updateActionAmount(schedule.loanIndex, $event)"
+          @update:amount="(actionId, value) => updateActionAmount(schedule.loanIndex, actionId, value)"
+          @update:timing="(actionId, period) => updateActionTiming(schedule.loanIndex, actionId, period)"
         />
       </div>
     </div>
@@ -289,6 +290,7 @@ const emit = defineEmits<{
   'update:loan-lifecycle': [loanIndex: number, value: string]
   'update:loan-buyer': [loanIndex: number, value: string | null]
   'update:action-amount': [loanIndex: number, actionId: string, value: number]
+  'update:action-timing': [loanIndex: number, actionId: string, timingPeriod: number]
 }>()
 
 // Local state synced with props
@@ -405,6 +407,36 @@ function hasValidBuyer(loan: any): boolean {
   return !!loan.borrowerId
 }
 
+// Get custom timing for an action, or return the default
+function getCustomTiming(loan: any, actionId: string, defaultPeriod: number): { period: number; isLate: boolean } {
+  const override = loan.actionTimings?.find((t: any) => t.actionId === actionId)
+  if (override) {
+    return { period: override.timingPeriod, isLate: override.isLate || false }
+  }
+  return { period: defaultPeriod, isLate: false }
+}
+
+// Format timing label from period
+function formatTimingLabel(period: number, freqLabel: string): string {
+  if (period < 0) return 'T-0'
+  if (period === 0) return 'T+0'
+  // Handle decimal periods (e.g., 1.5 for late payments)
+  if (Number.isInteger(period)) {
+    return `T+${period}${freqLabel}`
+  }
+  return `T+${period.toFixed(1)}${freqLabel}`
+}
+
+// Detect if a payment timing would cause it to be late or trigger default
+function detectLateOrDefault(actionType: string, period: number, expectedPeriod: number, gracePeriods: number = 1): { isLate: boolean; willDefault: boolean } {
+  if (actionType !== 'pay') return { isLate: false, willDefault: false }
+  // A payment is late if it's after its due date
+  const isLate = period > expectedPeriod
+  // A payment triggers default if it's beyond the grace period (usually 2 periods late)
+  const willDefault = period > expectedPeriod + gracePeriods
+  return { isLate, willDefault }
+}
+
 function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
   const actions: LoanAction[] = []
   const lifecycleCase = loan.lifecycleCase || 'T4'
@@ -437,14 +469,16 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
   })
 
   switch (lifecycleCase) {
-    case 'T1':
+    case 'T1': {
+      const updateTiming = getCustomTiming(loan, 'update', -1)
+      const cancelTiming = getCustomTiming(loan, 'cancel', -1)
       actions.push({
         id: `${loanIndex}-update`,
         loanIndex,
         actionType: 'update',
         label: 'Update Terms',
-        timing: 'T-0',
-        timingPeriod: -1,
+        timing: formatTimingLabel(updateTiming.period, freqLabel),
+        timingPeriod: updateTiming.period,
         expectedResult: 'success',
         description: 'Seller updates contract terms'
       })
@@ -453,12 +487,13 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         loanIndex,
         actionType: 'cancel',
         label: 'Cancel',
-        timing: 'T-0',
-        timingPeriod: -1,
+        timing: formatTimingLabel(cancelTiming.period, freqLabel),
+        timingPeriod: cancelTiming.period,
         expectedResult: 'success',
         description: 'Seller cancels contract, reclaims collateral'
       })
       break
+    }
 
     case 'T2': {
       const interest1 = loanBalance * periodRate
@@ -817,6 +852,10 @@ function updateLoanBuyer(loanIndex: number, value: string | null) {
 
 function updateActionAmount(loanIndex: number, actionId: string, value: number) {
   emit('update:action-amount', loanIndex, actionId, value)
+}
+
+function updateActionTiming(loanIndex: number, actionId: string, timingPeriod: number) {
+  emit('update:action-timing', loanIndex, actionId, timingPeriod)
 }
 </script>
 

@@ -33,12 +33,19 @@ CREATE TABLE IF NOT EXISTS wallet_assets (
 -- Test runs: tracks test execution history
 CREATE TABLE IF NOT EXISTS test_runs (
     id SERIAL PRIMARY KEY,
-    mode VARCHAR(20) NOT NULL CHECK (mode IN ('demo', 'emulator', 'preview', 'preprod')),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    network_mode VARCHAR(20) NOT NULL DEFAULT 'emulator' CHECK (network_mode IN ('demo', 'emulator', 'preview', 'preprod')),
     status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'passed', 'failed')),
-    started_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    config_hash VARCHAR(64),
+    state JSONB NOT NULL DEFAULT '{}',
+    contract_ids INTEGER[] DEFAULT '{}',
+    started_at TIMESTAMP WITH TIME ZONE,
     completed_at TIMESTAMP WITH TIME ZONE,
-    error_message TEXT,
-    metadata JSONB DEFAULT '{}'
+    paused_at TIMESTAMP WITH TIME ZONE,
+    error TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Contracts table: stores deployed contract instances

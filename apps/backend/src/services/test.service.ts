@@ -401,8 +401,23 @@ export async function deleteAllTestRuns(): Promise<void> {
 
 /**
  * Initialize test_runs table if not exists
+ * Also handles migration from old schema (mode -> network_mode)
  */
 export async function initTestRunsTable(): Promise<void> {
+  // Check if table exists with old schema (has 'mode' column instead of 'network_mode')
+  const [oldSchemaCheck] = await sql<{ exists: boolean }[]>`
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name = 'test_runs' AND column_name = 'mode'
+    ) as exists
+  `
+
+  if (oldSchemaCheck?.exists) {
+    console.log('Migrating test_runs table from old schema (mode -> network_mode)...')
+    // Drop the old table and recreate with correct schema
+    await sql`DROP TABLE IF EXISTS test_runs CASCADE`
+  }
+
   await sql`
     CREATE TABLE IF NOT EXISTS test_runs (
       id SERIAL PRIMARY KEY,
@@ -411,7 +426,7 @@ export async function initTestRunsTable(): Promise<void> {
       network_mode VARCHAR(20) NOT NULL DEFAULT 'emulator',
       status VARCHAR(20) NOT NULL DEFAULT 'pending',
       config_hash VARCHAR(64),
-      state JSONB NOT NULL,
+      state JSONB NOT NULL DEFAULT '{}',
       contract_ids INTEGER[] DEFAULT '{}',
       started_at TIMESTAMP WITH TIME ZONE,
       completed_at TIMESTAMP WITH TIME ZONE,
@@ -432,4 +447,6 @@ export async function initTestRunsTable(): Promise<void> {
   await sql`
     CREATE INDEX IF NOT EXISTS idx_test_runs_config_hash ON test_runs(config_hash)
   `
+
+  console.log('test_runs table initialized')
 }

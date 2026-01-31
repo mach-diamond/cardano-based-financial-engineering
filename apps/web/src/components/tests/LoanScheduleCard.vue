@@ -61,7 +61,22 @@
                'action-rejection': action.expectedResult === 'rejection',
                'action-disabled': action.actionType !== 'init' && action.actionType !== 'accept' && !hasValidBuyer && !['T1'].includes(loan.lifecycleCase || 'T4')
              }">
-          <div class="action-timing">{{ action.timing }}</div>
+          <div class="action-timing" :class="{ 'timing-editable': isTimingEditable(action) }">
+            <template v-if="isTimingEditable(action)">
+              <input
+                type="number"
+                :value="action.timingPeriod"
+                @change="onTimingChange(action.id, $event)"
+                class="timing-input"
+                step="0.5"
+                min="-10"
+                max="100"
+                :title="'Edit timing (period number)'"
+              />
+              <span class="timing-suffix">{{ getFreqLabel() }}</span>
+            </template>
+            <template v-else>{{ action.timing }}</template>
+          </div>
           <div class="action-content">
             <span class="action-type-badge" :class="'action-' + action.actionType">
               {{ action.label }}
@@ -178,6 +193,7 @@ const emit = defineEmits<{
   'update:lifecycle': [value: string]
   'update:buyer': [value: string | null]
   'update:amount': [actionId: string, value: number]
+  'update:timing': [actionId: string, timingPeriod: number]
 }>()
 
 const lifecycleCases = [
@@ -229,6 +245,43 @@ function onBuyerChange(event: Event) {
 function onAmountChange(actionId: string, event: Event) {
   const target = event.target as HTMLInputElement
   emit('update:amount', actionId, parseFloat(target.value))
+}
+
+function onTimingChange(actionId: string, event: Event) {
+  const target = event.target as HTMLInputElement
+  emit('update:timing', actionId, parseFloat(target.value))
+}
+
+// Determine if an action's timing is editable
+// Pre-acceptance actions (init, update, cancel) and payment actions can have timing adjusted
+function isTimingEditable(action: LoanAction): boolean {
+  // Allow timing editing for:
+  // - update and cancel actions (pre-acceptance)
+  // - payment actions (to test late payments)
+  // - default action (to test different default timing)
+  const editableTypes = ['update', 'cancel', 'pay', 'default']
+  return editableTypes.includes(action.actionType)
+}
+
+// Get frequency label for timing display
+function getFreqLabel(): string {
+  const frequency = props.loan.frequency || 12
+  switch (frequency) {
+    case 52: return 'wk'
+    case 26: return '2wk'
+    case 12: return 'mo'
+    case 4: return 'qtr'
+    case 2: return 'semi'
+    case 1: return 'yr'
+    // High frequency for testing
+    case 365: return 'd'
+    case 8760: return 'hr'
+    case 17531: return '30m'
+    case 35063: return '15m'
+    case 52594: return '10m'
+    case 105189: return '5m'
+    default: return 'p'
+  }
 }
 </script>
 
@@ -369,6 +422,41 @@ function onAmountChange(actionId: string, event: Event) {
   color: #64748b;
   min-width: 50px;
   text-align: right;
+}
+
+.action-timing.timing-editable {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  justify-content: flex-end;
+}
+
+.timing-input {
+  width: 38px;
+  padding: 0.1rem 0.2rem;
+  font-family: 'SF Mono', monospace;
+  font-size: 0.7rem;
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  border-radius: 3px;
+  color: #93c5fd;
+  text-align: right;
+}
+
+.timing-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.timing-input::-webkit-inner-spin-button,
+.timing-input::-webkit-outer-spin-button {
+  opacity: 0.5;
+}
+
+.timing-suffix {
+  color: #64748b;
+  font-size: 0.65rem;
 }
 
 .action-content {
