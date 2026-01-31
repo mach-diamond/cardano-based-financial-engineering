@@ -698,6 +698,108 @@
     font-size: 0.65rem;
 }
 
+/* Time Group Styles (for Phase 4 - Run Contracts) */
+.time-group {
+    margin-bottom: 0.5rem;
+}
+
+.time-group:last-child {
+    margin-bottom: 0;
+}
+
+.time-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 0.75rem;
+    background: rgba(14, 165, 233, 0.08);
+    border: 1px solid rgba(14, 165, 233, 0.2);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.time-group-header:hover {
+    background: rgba(14, 165, 233, 0.12);
+    border-color: rgba(14, 165, 233, 0.3);
+}
+
+.time-group-collapsed {
+    border-radius: 8px;
+}
+
+.time-group-header:not(.time-group-collapsed) {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    border-bottom-color: transparent;
+}
+
+.time-group-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.time-group-relative {
+    font-family: 'SF Mono', monospace;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #22d3ee;
+}
+
+.time-group-datetime {
+    font-size: 0.75rem;
+    color: #fbbf24;
+    font-weight: 500;
+}
+
+.time-group-slot {
+    font-family: 'SF Mono', monospace;
+    font-size: 0.65rem;
+    color: #64748b;
+}
+
+.time-group-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.time-group-count {
+    font-size: 0.7rem;
+    color: #94a3b8;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+}
+
+.time-group-status {
+    font-size: 0.9rem;
+}
+
+.time-group-chevron {
+    font-size: 0.7rem;
+    color: #64748b;
+    margin-left: 0.25rem;
+}
+
+.time-group-steps {
+    background: rgba(0, 0, 0, 0.15);
+    border: 1px solid rgba(14, 165, 233, 0.2);
+    border-top: none;
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+    padding: 0.5rem;
+}
+
+.time-group-steps .phase-step-item {
+    margin-bottom: 0.35rem;
+}
+
+.time-group-steps .phase-step-item:last-child {
+    margin-bottom: 0;
+}
+
 /* Loan Grid */
 .loan-grid {
     display: grid;
