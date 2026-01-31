@@ -964,6 +964,59 @@ export async function getWalletTokens(
 }
 
 /**
+ * Get complete wallet state (ADA balance + all tokens)
+ */
+export interface WalletState {
+  walletName: string
+  address: string
+  lovelace: bigint
+  ada: number
+  assets: Array<{ policyId: string; assetName: string; quantity: bigint }>
+}
+
+export async function getWalletState(walletName: string): Promise<WalletState> {
+  const emulatorState = getEmulatorState()
+  if (!emulatorState) throw new Error('Emulator not initialized')
+
+  await selectWallet(walletName)
+  const lucid = getLucid()
+  if (!lucid) throw new Error('Lucid not available')
+
+  const address = await lucid.wallet().address()
+  const utxos = await lucid.utxosAt(address)
+
+  let lovelace = 0n
+  const assetMap = new Map<string, { policyId: string; assetName: string; quantity: bigint }>()
+
+  for (const utxo of utxos) {
+    for (const [assetId, quantity] of Object.entries(utxo.assets)) {
+      if (assetId === 'lovelace') {
+        lovelace += BigInt(quantity)
+      } else {
+        const policyId = assetId.slice(0, 56)
+        const assetNameHex = assetId.slice(56)
+        const assetName = assetNameHex ? toText(assetNameHex) : ''
+        const key = `${policyId}${assetName}`
+        const existing = assetMap.get(key)
+        if (existing) {
+          existing.quantity += BigInt(quantity)
+        } else {
+          assetMap.set(key, { policyId, assetName, quantity: BigInt(quantity) })
+        }
+      }
+    }
+  }
+
+  return {
+    walletName,
+    address,
+    lovelace,
+    ada: Number(lovelace) / 1_000_000,
+    assets: Array.from(assetMap.values()),
+  }
+}
+
+/**
  * Alias for createLoan (for API compatibility)
  */
 export const createLoanContract = createLoan

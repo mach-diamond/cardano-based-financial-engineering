@@ -487,6 +487,66 @@ export async function claimLoanDefault(
 }
 
 /**
+ * Get full wallet state from emulator (real ADA + tokens)
+ */
+export interface WalletStateResult {
+    success: boolean
+    error?: string
+    wallet?: {
+        name: string
+        address: string
+        lovelace: string
+        ada: number
+        assets: Array<{
+            policyId: string
+            assetName: string
+            quantity: string
+        }>
+    }
+}
+
+export async function getWalletState(walletName: string): Promise<WalletStateResult> {
+    const res = await fetch(`${API_BASE}/api/loan/wallet/${encodeURIComponent(walletName)}`)
+    return res.json()
+}
+
+/**
+ * Refresh wallet state from emulator and update identity
+ */
+export async function refreshWalletState(
+    identity: { name: string; wallets?: Array<{ address: string; assets?: Array<{ policyId: string; assetName: string; quantity: bigint }> }> },
+    log?: (msg: string, type?: string) => void
+): Promise<boolean> {
+    try {
+        const result = await getWalletState(identity.name)
+        if (!result.success || !result.wallet) {
+            if (log) log(`  ⚠ Could not refresh wallet for ${identity.name}: ${result.error}`, 'warning')
+            return false
+        }
+
+        // Update wallet state with real data
+        if (identity.wallets?.[0]) {
+            identity.wallets[0].address = result.wallet.address
+            identity.wallets[0].assets = result.wallet.assets.map(a => ({
+                policyId: a.policyId,
+                assetName: a.assetName,
+                quantity: BigInt(a.quantity),
+            }))
+            // Store ADA balance - both as lovelace BigInt and as various properties for compatibility
+            const lovelace = BigInt(result.wallet.lovelace)
+            ;(identity.wallets[0] as any).balance = lovelace
+            ;(identity.wallets[0] as any).lovelace = lovelace
+            ;(identity.wallets[0] as any).ada = result.wallet.ada
+        }
+
+        return true
+    } catch (err) {
+        if (log) log(`  ⚠ Error refreshing wallet: ${(err as Error).message}`, 'warning')
+        return false
+    }
+}
+
+/**
  * Get all stored contracts
  */
 export async function getAllContracts(): Promise<any[]> {

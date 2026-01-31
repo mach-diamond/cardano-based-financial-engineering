@@ -19,6 +19,7 @@ import {
   completeLoanTransfer as apiCompleteLoan,
   cancelLoanContract as apiCancelLoan,
   claimLoanDefault as apiClaimDefault,
+  refreshWalletState,
 } from '@/services/api'
 
 export interface LoanDefinition {
@@ -180,28 +181,12 @@ export async function createLoan(
       return { success: false, message: result.error || 'Failed to create loan' }
     }
 
-    // Transfer asset from originator's local state (it's now in the contract)
-    origAsset.quantity -= BigInt(loan.qty)
-    if (origAsset.quantity <= 0n) {
-      originator.wallets[0].assets = originator.wallets[0].assets.filter(a => a.assetName !== loan.asset)
-    }
-
-    // Add collateral token to originator's wallet (minted during contract creation)
-    const collateralTokenName = `${loan.asset}Collateral`
-    const existingCollateral = originator.wallets[0].assets.find(
-      a => a.policyId === result.policyId && a.assetName === collateralTokenName
-    )
-    if (existingCollateral) {
-      existingCollateral.quantity += 1n
-    } else {
-      originator.wallets[0].assets.push({
-        policyId: result.policyId || '',
-        assetName: collateralTokenName,
-        quantity: 1n,
-      })
-    }
-
-    log(`  ✓ Collateral token minted to ${originator.name}`, 'success')
+    // Refresh originator wallet from emulator to get real ADA + token balances
+    // The on-chain TX already:
+    // 1. Transferred the base asset to the contract
+    // 2. Minted the collateral token to the originator
+    await refreshWalletState(originator, log)
+    log(`  ✓ Originator wallet refreshed - base asset locked, collateral token received`, 'success')
 
     // Create loan contract record for UI
     // Use processId from backend - the backend already created the DB record with full datum
@@ -358,13 +343,7 @@ export async function acceptLoan(
       return { success: false, message: result.error || 'Failed to accept loan' }
     }
 
-    // Deduct from buyer's wallet in local state
-    if (buyer.wallets[0]) {
-      const paymentLovelace = BigInt(firstPaymentLovelace)
-      buyer.wallets[0].balance -= paymentLovelace
-    }
-
-    // Update loan state
+    // Update loan state (these are contract state values, not wallet values)
     loan.borrower = buyer.name
     loan.status = 'running'
     loan.txHash = result.txHash
@@ -375,26 +354,16 @@ export async function acceptLoan(
       loan.state.paymentCount = 1 // First payment made on accept
     }
 
-    // Add liability token to buyer's wallet (minted during accept)
-    const liabilityTokenName = 'LiabilityToken'
-    const policyId = loan.collateral?.policyId || ''
-    if (policyId && buyer.wallets?.[0]) {
-      const existingLiability = buyer.wallets[0].assets?.find(
-        a => a.policyId === policyId && a.assetName === liabilityTokenName
-      )
-      if (existingLiability) {
-        existingLiability.quantity += 1n
-      } else {
-        if (!buyer.wallets[0].assets) {
-          buyer.wallets[0].assets = []
-        }
-        buyer.wallets[0].assets.push({
-          policyId,
-          assetName: liabilityTokenName,
-          quantity: 1n,
-        })
-      }
-      log(`  ✓ Liability token minted to ${buyer.name}`, 'success')
+    // Refresh wallet states from emulator to get real ADA + token balances
+    // The on-chain TX already:
+    // 1. Deducted the payment from buyer's ADA
+    // 2. Minted the liability token to the buyer
+    await refreshWalletState(buyer, log)
+    log(`  ✓ Buyer wallet refreshed - payment deducted, liability token received`, 'success')
+    const seller = identities.value.find(i => i.name === loan.originator)
+    if (seller) {
+      await refreshWalletState(seller, log)
+      log(`  ✓ Seller wallet refreshed`, 'success')
     }
 
     log(`  ✓ Loan accepted by ${buyer.name}`, 'success')
@@ -507,10 +476,8 @@ export async function makePayment(
       return { success: false, message: result.error || 'Failed to make payment' }
     }
 
-    // Deduct from borrower's wallet in local state
-    if (borrower.wallets[0]) {
-      borrower.wallets[0].balance -= paymentLovelace
-    }
+    // Refresh borrower wallet from emulator to get real ADA balance
+    await refreshWalletState(borrower, log)
 
     // Update loan state
     if (loan.state) {
@@ -811,35 +778,16 @@ export async function executeRunContractsPhase(
             break
           }
 
-          // Token swap: buyer loses liability token, gains base asset
-          if (borrower.wallets?.[0]) {
-            const policyId = loan.collateral?.policyId || ''
-            // Remove liability token
-            const liabilityIdx = borrower.wallets[0].assets?.findIndex(
-              a => a.policyId === policyId && a.assetName === 'LiabilityToken'
-            ) ?? -1
-            if (liabilityIdx >= 0) {
-              borrower.wallets[0].assets!.splice(liabilityIdx, 1)
-              log(`  ✓ Liability token burned from ${borrower.name}`, 'success')
-            }
-            // Add base asset
-            const baseAssetName = loan.collateral?.assetName || ''
-            if (baseAssetName) {
-              const existingBase = borrower.wallets[0].assets?.find(
-                a => a.policyId === policyId && a.assetName === baseAssetName
-              )
-              if (existingBase) {
-                existingBase.quantity += BigInt(loan.collateral?.quantity || 1)
-              } else {
-                if (!borrower.wallets[0].assets) borrower.wallets[0].assets = []
-                borrower.wallets[0].assets.push({
-                  policyId,
-                  assetName: baseAssetName,
-                  quantity: BigInt(loan.collateral?.quantity || 1),
-                })
-              }
-              log(`  ✓ Base asset transferred to ${borrower.name}`, 'success')
-            }
+          // Refresh wallet states from emulator to get real ADA + token balances
+          // The on-chain TX already burned the liability token and transferred the base asset
+          await refreshWalletState(borrower, log)
+          log(`  ✓ Borrower wallet refreshed - liability token burned, base asset received`, 'success')
+
+          // Also refresh seller wallet
+          const completeSeller = identities.value.find(i => i.name === loan.originator)
+          if (completeSeller) {
+            await refreshWalletState(completeSeller, log)
+            log(`  ✓ Seller wallet refreshed`, 'success')
           }
 
           loan.status = 'passed'
@@ -878,36 +826,16 @@ export async function executeRunContractsPhase(
             break
           }
 
-          // Token swap: seller loses collateral token, gains base asset
-          if (defaultSeller.wallets?.[0]) {
-            const policyId = loan.collateral?.policyId || ''
-            const collateralTokenName = `${loan.collateral?.assetName || ''}Collateral`
-            // Remove collateral token
-            const collateralIdx = defaultSeller.wallets[0].assets?.findIndex(
-              a => a.policyId === policyId && a.assetName === collateralTokenName
-            ) ?? -1
-            if (collateralIdx >= 0) {
-              defaultSeller.wallets[0].assets!.splice(collateralIdx, 1)
-              log(`  ✓ Collateral token burned from ${defaultSeller.name}`, 'success')
-            }
-            // Add base asset back
-            const baseAssetName = loan.collateral?.assetName || ''
-            if (baseAssetName) {
-              const existingBase = defaultSeller.wallets[0].assets?.find(
-                a => a.policyId === policyId && a.assetName === baseAssetName
-              )
-              if (existingBase) {
-                existingBase.quantity += BigInt(loan.collateral?.quantity || 1)
-              } else {
-                if (!defaultSeller.wallets[0].assets) defaultSeller.wallets[0].assets = []
-                defaultSeller.wallets[0].assets.push({
-                  policyId,
-                  assetName: baseAssetName,
-                  quantity: BigInt(loan.collateral?.quantity || 1),
-                })
-              }
-              log(`  ✓ Base asset returned to ${defaultSeller.name}`, 'success')
-            }
+          // Refresh wallet states from emulator to get real ADA + token balances
+          // The on-chain TX already burned the collateral token and returned the base asset
+          await refreshWalletState(defaultSeller, log)
+          log(`  ✓ Seller wallet refreshed - collateral token burned, base asset returned`, 'success')
+
+          // Also refresh borrower wallet if applicable
+          const defaultBorrower = identities.value.find(i => i.name === loan.borrower)
+          if (defaultBorrower) {
+            await refreshWalletState(defaultBorrower, log)
+            log(`  ✓ Borrower wallet refreshed`, 'success')
           }
 
           if (loan.state) {
@@ -949,36 +877,16 @@ export async function executeRunContractsPhase(
             break
           }
 
-          // Token swap: seller loses collateral token, gains base asset
-          if (cancelSeller.wallets?.[0]) {
-            const policyId = loan.collateral?.policyId || ''
-            const collateralTokenName = `${loan.collateral?.assetName || ''}Collateral`
-            // Remove collateral token
-            const collateralIdx = cancelSeller.wallets[0].assets?.findIndex(
-              a => a.policyId === policyId && a.assetName === collateralTokenName
-            ) ?? -1
-            if (collateralIdx >= 0) {
-              cancelSeller.wallets[0].assets!.splice(collateralIdx, 1)
-              log(`  ✓ Collateral token burned from ${cancelSeller.name}`, 'success')
-            }
-            // Add base asset back
-            const baseAssetName = loan.collateral?.assetName || ''
-            if (baseAssetName) {
-              const existingBase = cancelSeller.wallets[0].assets?.find(
-                a => a.policyId === policyId && a.assetName === baseAssetName
-              )
-              if (existingBase) {
-                existingBase.quantity += BigInt(loan.collateral?.quantity || 1)
-              } else {
-                if (!cancelSeller.wallets[0].assets) cancelSeller.wallets[0].assets = []
-                cancelSeller.wallets[0].assets.push({
-                  policyId,
-                  assetName: baseAssetName,
-                  quantity: BigInt(loan.collateral?.quantity || 1),
-                })
-              }
-              log(`  ✓ Base asset returned to ${cancelSeller.name}`, 'success')
-            }
+          // Refresh wallet states from emulator to get real ADA + token balances
+          // The on-chain TX already burned the collateral token and returned the base asset
+          await refreshWalletState(cancelSeller, log)
+          log(`  ✓ Seller wallet refreshed - collateral token burned, base asset returned`, 'success')
+
+          // Also refresh borrower wallet if applicable
+          const cancelBorrower = identities.value.find(i => i.name === loan.borrower)
+          if (cancelBorrower) {
+            await refreshWalletState(cancelBorrower, log)
+            log(`  ✓ Borrower wallet refreshed`, 'success')
           }
 
           if (loan.state) loan.state.isActive = false
@@ -1071,10 +979,12 @@ export async function collectPayment(
       return { success: false, message: result.error || 'Failed to collect payment' }
     }
 
-    // Add to seller's wallet in local state
-    if (seller.wallets[0]) {
-      seller.wallets[0].balance += BigInt(amount)
-    }
+    // Refresh seller wallet from emulator to get real ADA balance
+    await refreshWalletState(seller, log)
+
+    // Also refresh borrower wallet if applicable
+    const borrower = identities.value.find(i => i.name === loan.borrower)
+    if (borrower) await refreshWalletState(borrower, log)
 
     log(`  ✓ Collected ${amountAda.toFixed(2)} ADA`, 'success')
     log(`    TX: ${result.txHash}`, 'info')

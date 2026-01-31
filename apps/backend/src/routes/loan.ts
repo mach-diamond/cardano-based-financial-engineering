@@ -8,6 +8,7 @@ import { Hono } from 'hono'
 import {
   mintTestToken,
   getWalletTokens,
+  getWalletState,
   createLoanContract,
   acceptLoan,
   makePayment,
@@ -74,6 +75,34 @@ loan.get('/tokens/:walletName', async (c) => {
     })
   } catch (err) {
     console.error('Get tokens error:', err)
+    return c.json({ error: String(err) }, 500)
+  }
+})
+
+/**
+ * GET /wallet/:walletName - Get full wallet state (ADA + all tokens)
+ */
+loan.get('/wallet/:walletName', async (c) => {
+  try {
+    const walletName = c.req.param('walletName')
+    const state = await getWalletState(walletName)
+
+    return c.json({
+      success: true,
+      wallet: {
+        name: state.walletName,
+        address: state.address,
+        lovelace: state.lovelace.toString(),
+        ada: state.ada,
+        assets: state.assets.map((a) => ({
+          policyId: a.policyId,
+          assetName: a.assetName,
+          quantity: a.quantity.toString(),
+        })),
+      },
+    })
+  } catch (err) {
+    console.error('Get wallet state error:', err)
     return c.json({ error: String(err) }, 500)
   }
 })
