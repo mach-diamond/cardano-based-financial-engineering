@@ -41,15 +41,16 @@
 
       <!-- Action Timeline -->
       <div class="loan-action-timeline">
-        <!-- Balance Column Headers -->
-        <div v-if="hasBalanceData" class="action-item balance-header-row">
+        <!-- Column Headers -->
+        <div class="action-item balance-header-row">
           <div class="action-timing"></div>
           <div class="action-content"></div>
-          <div class="action-balances">
+          <div v-if="hasBalanceData" class="action-balances">
             <div class="balance-col"><span class="balance-header">Loan</span></div>
             <div class="balance-col"><span class="balance-header">Contract</span></div>
             <div class="balance-col"><span class="balance-header">Interest</span></div>
           </div>
+          <div class="action-executor"><span class="balance-header">Executor</span></div>
         </div>
         <div v-for="action in actions" :key="action.id"
              class="action-item"
@@ -91,20 +92,6 @@
                 :title="action.description || ''"
               /> ADA
             </span>
-            <!-- Buyer selection for Accept action - always show dropdown to allow changing -->
-            <span v-if="action.actionType === 'accept'" class="action-buyer">
-              <i class="fas fa-user mr-1"></i>
-              <select
-                :value="loan.lifecycleBuyerId || ''"
-                @change="onBuyerChange"
-                class="buyer-select"
-              >
-                <option value="">Select Buyer...</option>
-                <option v-for="b in borrowerOptions" :key="b.id" :value="b.id">
-                  {{ b.name }}
-                </option>
-              </select>
-            </span>
             <span v-if="action.isLate" class="action-late-badge">
               <i class="fas fa-clock"></i> Late
             </span>
@@ -129,6 +116,29 @@
               </span>
             </div>
           </div>
+          <!-- Executor Column -->
+          <div class="action-executor">
+            <!-- Originator actions: init, update, cancel, collect, default -->
+            <template v-if="['init', 'update', 'cancel', 'collect', 'default'].includes(action.actionType)">
+              <span class="executor-name executor-originator">{{ getOriginatorName() }}</span>
+            </template>
+            <!-- Buyer actions: accept (with dropdown for open market), pay, complete -->
+            <template v-else-if="action.actionType === 'accept'">
+              <select
+                :value="loan.lifecycleBuyerId || ''"
+                @change="onBuyerChange"
+                class="executor-select"
+              >
+                <option value="">Select...</option>
+                <option v-for="b in borrowerOptions" :key="b.id" :value="b.id">
+                  {{ b.name }}
+                </option>
+              </select>
+            </template>
+            <template v-else>
+              <span class="executor-name executor-buyer">{{ getBuyerDisplayName() }}</span>
+            </template>
+          </div>
         </div>
       </div>
 
@@ -150,6 +160,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { LoanConfig } from '@/utils/pipeline/types'
+import { NAME_TO_ID_MAP } from '@/utils/pipeline/types'
 
 interface LoanAction {
   id: string
@@ -263,6 +274,22 @@ function isTimingEditable(action: LoanAction): boolean {
   // - complete and collect actions (post-payment lifecycle)
   const editableTypes = ['update', 'cancel', 'pay', 'default', 'complete', 'collect']
   return editableTypes.includes(action.actionType)
+}
+
+// Get originator name for executor column
+function getOriginatorName(): string {
+  const originatorId = props.loan.originatorId
+  if (!originatorId) return 'Unknown'
+  const entry = Object.entries(NAME_TO_ID_MAP).find(([_, id]) => id === originatorId)
+  return entry ? entry[0] : originatorId.replace('orig-', '').replace(/-/g, ' ')
+}
+
+// Get buyer display name for executor column
+function getBuyerDisplayName(): string {
+  const buyerId = props.loan.lifecycleBuyerId || props.loan.borrowerId
+  if (!buyerId) return 'Open Market'
+  const entry = Object.entries(NAME_TO_ID_MAP).find(([_, id]) => id === buyerId)
+  return entry ? entry[0] : buyerId
 }
 
 // Get frequency info: multiplier (for display) and unit (suffix)
@@ -542,37 +569,6 @@ function displayValueToPeriod(displayValue: number): number {
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 
-.action-buyer {
-  font-size: 0.75rem;
-  color: #94a3b8;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  flex-shrink: 0; /* Don't shrink buyer selector */
-}
-
-.buyer-select {
-  padding: 0.15rem 0.3rem;
-  font-size: 0.7rem;
-  background: rgba(251, 191, 36, 0.15);
-  border: 1px solid rgba(251, 191, 36, 0.4);
-  border-radius: 3px;
-  color: #fcd34d;
-  cursor: pointer;
-  width: 110px; /* Fixed width for consistent alignment */
-  max-width: 110px;
-}
-
-.buyer-select:focus {
-  outline: none;
-  border-color: #fbbf24;
-}
-
-.buyer-name {
-  font-weight: 500;
-  color: #86efac;
-}
-
 .action-late-badge,
 .action-rejection-badge {
   font-size: 0.65rem;
@@ -626,6 +622,50 @@ function displayValueToPeriod(displayValue: number): number {
 
 .balance-header-row:hover {
   background: rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Executor Column */
+.action-executor {
+  width: 130px;
+  min-width: 130px;
+  flex-shrink: 0;
+  padding-left: 0.5rem;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+}
+
+.executor-name {
+  font-size: 0.7rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.executor-originator {
+  color: #c4b5fd; /* Purple for originator */
+}
+
+.executor-buyer {
+  color: #86efac; /* Green for buyer */
+}
+
+.executor-select {
+  padding: 0.15rem 0.3rem;
+  font-size: 0.65rem;
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.4);
+  border-radius: 3px;
+  color: #86efac;
+  cursor: pointer;
+  width: 100%;
+  max-width: 120px;
+}
+
+.executor-select:focus {
+  outline: none;
+  border-color: #22c55e;
 }
 
 .balance-col .balance-value {
