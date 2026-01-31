@@ -131,61 +131,75 @@
                 </button>
               </h6>
 
-              <!-- Datum Card Carousel -->
+              <!-- Datum Card Carousel (left-to-right: oldest first) -->
               <div class="datum-carousel" v-if="datumHistory.get(contract.id)?.length">
                 <div
-                  v-for="(datum, idx) in datumHistory.get(contract.id)"
+                  v-for="(datum, idx) in getReversedHistory(contract.id)"
                   :key="idx"
                   class="datum-card"
-                  :class="{ active: idx === 0 }"
+                  :class="{ active: idx === getReversedHistory(contract.id).length - 1 }"
                 >
+                  <!-- Header: Version, Action with Party, Timestamp -->
                   <div class="datum-card-header">
-                    <span class="badge" :class="idx === 0 ? 'badge-success' : 'badge-secondary'">
-                      {{ idx === 0 ? 'Current' : `v${datumHistory.get(contract.id)!.length - idx}` }}
-                    </span>
-                    <span v-if="datum._action" class="badge badge-outline-info ml-2">
-                      {{ datum._action }}
-                    </span>
-                    <small v-if="datum._timestamp" class="text-muted ml-2">
-                      {{ formatTimestamp(datum._timestamp) }}
-                    </small>
+                    <div class="header-top">
+                      <span class="badge" :class="idx === getReversedHistory(contract.id).length - 1 ? 'badge-success' : 'badge-secondary'">
+                        {{ idx === getReversedHistory(contract.id).length - 1 ? 'Current' : `v${idx + 1}` }}
+                      </span>
+                    </div>
+                    <div class="header-action" v-if="datum._action">
+                      <span class="action-text">{{ formatActionWithParty(datum._action, contract) }}</span>
+                    </div>
+                    <div class="header-time" v-if="datum._timestamp">
+                      {{ formatTimestampFull(datum._timestamp) }}
+                    </div>
                   </div>
+
+                  <!-- Body: Datum fields OR Raw JSON -->
                   <div class="datum-card-body">
-                    <div class="datum-field">
-                      <label>Status:</label>
-                      <span :class="datum.buyer ? 'text-success' : (datum.isActive ? 'text-success' : 'text-warning')">
-                        {{ datum.buyer || datum.isActive ? 'Active' : 'Pending' }}
-                      </span>
-                    </div>
-                    <div class="datum-field" v-if="datum.buyer">
-                      <label>Buyer:</label>
-                      <span>{{ datum.buyer?.slice(0, 16) }}...</span>
-                    </div>
-                    <div class="datum-field" v-if="datum.base_asset || datum.baseAsset">
-                      <label>Asset:</label>
-                      <span>{{ formatAssetName((datum.base_asset || datum.baseAsset)?.asset_name || (datum.base_asset || datum.baseAsset)?.assetName) }}</span>
-                    </div>
-                    <div class="datum-field" v-if="datum.balance !== undefined">
-                      <label>Balance:</label>
-                      <span>{{ formatLovelace(datum.balance) }} ₳</span>
-                    </div>
-                    <div class="datum-field" v-if="datum.terms">
-                      <label>Principal:</label>
-                      <span>{{ formatLovelace(datum.terms.principal) }} ₳</span>
-                    </div>
-                    <div class="datum-field" v-if="datum.terms">
-                      <label>Installments:</label>
-                      <span>{{ datum.terms.installments || '?' }}</span>
-                    </div>
-                    <div class="datum-field" v-if="datum.last_payment || datum.lastPayment">
-                      <label>Last Payment:</label>
-                      <span>{{ formatLovelace((datum.last_payment || datum.lastPayment)?.amount) }} ₳</span>
-                    </div>
-                    <div class="datum-field" v-if="datum.isPaidOff !== undefined">
-                      <label>Paid Off:</label>
-                      <span :class="datum.isPaidOff ? 'text-success' : 'text-muted'">
-                        {{ datum.isPaidOff ? 'Yes' : 'No' }}
-                      </span>
+                    <template v-if="!showRawJson.has(contract.id)">
+                      <div class="datum-field" v-if="datum.buyer">
+                        <label>Buyer:</label>
+                        <span class="mono">{{ formatAddress(datum.buyer) }}</span>
+                      </div>
+                      <div class="datum-field" v-if="datum.base_asset || datum.baseAsset">
+                        <label>Asset:</label>
+                        <span>{{ formatAssetName((datum.base_asset || datum.baseAsset)?.asset_name || (datum.base_asset || datum.baseAsset)?.assetName) }}</span>
+                      </div>
+                      <div class="datum-field" v-if="datum.balance !== undefined">
+                        <label>Balance:</label>
+                        <span class="text-info">{{ formatLovelace(datum.balance) }} ₳</span>
+                      </div>
+                      <div class="datum-field" v-if="datum.terms">
+                        <label>Principal:</label>
+                        <span>{{ formatLovelace(datum.terms.principal) }} ₳</span>
+                      </div>
+                      <div class="datum-field" v-if="datum.terms?.installments">
+                        <label>Installments:</label>
+                        <span>{{ datum.terms.installments }}</span>
+                      </div>
+                      <div class="datum-field" v-if="datum.terms?.apr">
+                        <label>APR:</label>
+                        <span>{{ (Number(datum.terms.apr) / 100).toFixed(2) }}%</span>
+                      </div>
+                      <div class="datum-field" v-if="datum.last_payment || datum.lastPayment">
+                        <label>Last Payment:</label>
+                        <span>{{ formatLovelace((datum.last_payment || datum.lastPayment)?.amount) }} ₳</span>
+                      </div>
+                    </template>
+                    <template v-else>
+                      <pre class="datum-raw-inline">{{ JSON.stringify(datum, null, 2) }}</pre>
+                    </template>
+                  </div>
+
+                  <!-- Footer: Raw JSON toggle + TX Hash -->
+                  <div class="datum-card-footer">
+                    <label class="raw-json-switch">
+                      <input type="checkbox" :checked="showRawJson.has(contract.id)" @change="toggleRawJson(contract.id)">
+                      <span class="switch-label">Raw JSON</span>
+                    </label>
+                    <div v-if="datum._txHash" class="tx-hash" :title="datum._txHash">
+                      <i class="fas fa-link"></i>
+                      <span class="mono">{{ datum._txHash.slice(0, 8) }}...{{ datum._txHash.slice(-6) }}</span>
                     </div>
                   </div>
                 </div>
@@ -194,17 +208,8 @@
               <!-- Loading or Empty State -->
               <div v-else class="datum-empty">
                 <i class="fas fa-info-circle text-muted"></i>
-                <span>Click refresh to load datum from database</span>
+                <span>Click refresh to load datum history from database</span>
               </div>
-
-              <!-- Raw JSON Toggle -->
-              <div class="datum-raw-toggle mt-2">
-                <button @click="toggleRawJson(contract.id)" class="btn btn-xs btn-outline-secondary">
-                  <i class="fas fa-code mr-1"></i>
-                  {{ showRawJson.has(contract.id) ? 'Hide' : 'Show' }} Raw JSON
-                </button>
-              </div>
-              <pre v-if="showRawJson.has(contract.id) && datumHistory.get(contract.id)?.[0]" class="datum-raw-json">{{ JSON.stringify(datumHistory.get(contract.id)?.[0], null, 2) }}</pre>
             </div>
           </div>
         </div>
@@ -452,6 +457,71 @@ function formatTimestamp(isoString?: string): string {
     })
   } catch {
     return isoString
+  }
+}
+
+function formatTimestampFull(isoString?: string): string {
+  if (!isoString) return ''
+  try {
+    const date = new Date(isoString)
+    const month = date.toLocaleString('en-US', { month: 'short' })
+    const day = date.getDate()
+    const year = date.getFullYear()
+    const time = date.toLocaleString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    })
+    return `${month} ${day}, ${year} || ${time}`
+  } catch {
+    return isoString
+  }
+}
+
+function formatAddress(addr?: string): string {
+  if (!addr) return ''
+  if (addr.length <= 20) return addr
+  return `${addr.slice(0, 12)}...${addr.slice(-8)}`
+}
+
+function getReversedHistory(contractId: string) {
+  const history = datumHistory.get(contractId)
+  if (!history) return []
+  // History comes newest-first, reverse for left-to-right (oldest first)
+  return [...history].reverse()
+}
+
+function formatActionWithParty(action: string, contract: LoanContract): string {
+  const originator = contract.originator || 'Originator'
+  const borrower = contract.borrower || 'Borrower'
+
+  // Extract just the wallet name if it's a full name like "Alice (alice)"
+  const formatName = (name: string) => {
+    const match = name.match(/^([^(]+)/)
+    return match ? match[1].trim() : name
+  }
+
+  const orig = formatName(originator)
+  const borr = formatName(borrower)
+
+  switch (action.toLowerCase()) {
+    case 'create':
+      return `${orig} INITIALIZE Contract`
+    case 'accept':
+      return `${borr} ACCEPT Contract`
+    case 'pay':
+      return `${borr} PAY Contract`
+    case 'collect':
+      return `${orig} COLLECT from Contract`
+    case 'complete':
+      return `${borr} COMPLETE Contract`
+    case 'cancel':
+      return `${orig} CANCEL Contract`
+    case 'default':
+      return `${orig} CLAIM DEFAULT`
+    default:
+      return action.toUpperCase()
   }
 }
 
@@ -780,10 +850,41 @@ function getInstallments(contract: LoanContract): number {
   padding: 0.5rem 0.75rem;
   background: rgba(0, 0, 0, 0.2);
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.datum-card-header .header-top {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.datum-card-header .header-action {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #fbbf24;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.datum-card-header .action-text {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.datum-card-header .header-time {
+  font-size: 0.65rem;
+  color: #64748b;
+  font-family: monospace;
 }
 
 .datum-card-body {
   padding: 0.75rem;
+  min-height: 120px;
 }
 
 .datum-field {
@@ -806,8 +907,71 @@ function getInstallments(contract: LoanContract): number {
 
 .datum-field span {
   color: #e2e8f0;
-  font-family: monospace;
   font-size: 0.75rem;
+}
+
+.datum-field span.mono {
+  font-family: monospace;
+}
+
+/* Datum card footer */
+.datum-card-footer {
+  padding: 0.5rem 0.75rem;
+  background: rgba(0, 0, 0, 0.15);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.raw-json-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  font-size: 0.65rem;
+  color: #64748b;
+  margin: 0;
+}
+
+.raw-json-switch input {
+  width: 12px;
+  height: 12px;
+  cursor: pointer;
+}
+
+.raw-json-switch:hover {
+  color: #94a3b8;
+}
+
+.tx-hash {
+  font-size: 0.6rem;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.tx-hash i {
+  font-size: 0.55rem;
+}
+
+.tx-hash .mono {
+  font-family: monospace;
+}
+
+/* Raw JSON inline display */
+.datum-raw-inline {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  font-size: 0.6rem;
+  color: #a5d6ff;
+  max-height: 150px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 /* Empty and loading states */
@@ -818,26 +982,6 @@ function getInstallments(contract: LoanContract): number {
   padding: 1rem;
   color: rgba(255, 255, 255, 0.4);
   font-size: 0.85rem;
-}
-
-/* Raw JSON display */
-.datum-raw-toggle .btn-xs {
-  padding: 0.2rem 0.5rem;
-  font-size: 0.7rem;
-}
-
-.datum-raw-json {
-  margin-top: 0.75rem;
-  padding: 0.75rem;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 0.375rem;
-  font-size: 0.7rem;
-  color: #a5d6ff;
-  max-height: 300px;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-all;
 }
 
 /* Responsive */

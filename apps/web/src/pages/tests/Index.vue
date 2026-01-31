@@ -22,6 +22,9 @@
       @reset-time="handleResetTime"
     />
 
+    <!-- Stats Cards -->
+    <StatsCards :stats="statsWithTotal" />
+
     <!-- Config Viewer (with built-in config selector) -->
     <ConfigViewer
       :config="testConfig"
@@ -33,9 +36,6 @@
       @import-config="handleImportConfig"
       @config-change="handleConfigChange"
     />
-
-    <!-- Stats Cards -->
-    <StatsCards :stats="statsWithTotal" />
 
     <!-- Full Lifecycle Test (Main Feature) -->
     <LifecycleSection

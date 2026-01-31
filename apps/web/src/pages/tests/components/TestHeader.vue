@@ -42,7 +42,10 @@
             <i class="fas fa-clock mr-2"></i>
             <span>Slot {{ currentSlot.toLocaleString() }}</span>
             <span class="time-separator">|</span>
-            <span class="elapsed-time">{{ formatElapsed(elapsedTime) }}</span>
+            <span class="slot-time">{{ formatSlotTime(currentSlot) }}</span>
+          </div>
+          <div class="elapsed-label">
+            <small class="text-muted">Elapsed: {{ formatElapsed(elapsedTime) }}</small>
           </div>
         </div>
         <div v-if="networkMode === 'emulator'" class="time-controls">
@@ -221,6 +224,28 @@ function formatElapsed(ms: number): string {
   }
   return `${minutes}:${String(seconds % 60).padStart(2, '0')}`
 }
+
+// Emulator zero time (Lucid default: 2022-01-01 00:00:00 UTC)
+const EMULATOR_ZERO_TIME = new Date('2022-01-01T00:00:00Z').getTime()
+const SLOT_LENGTH_MS = 1000 // 1 slot = 1 second
+
+function formatSlotTime(slot: number): string {
+  // Convert slot to timestamp
+  const timestamp = EMULATOR_ZERO_TIME + (slot * SLOT_LENGTH_MS)
+  const date = new Date(timestamp)
+
+  const month = date.toLocaleString('en-US', { month: 'short' })
+  const day = date.getDate()
+  const year = date.getFullYear()
+  const time = date.toLocaleString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  })
+
+  return `${month} ${day}, ${year} || ${time}`
+}
 </script>
 
 <style scoped>
@@ -270,8 +295,14 @@ function formatElapsed(ms: number): string {
   color: rgba(255, 255, 255, 0.3);
 }
 
-.elapsed-time {
-  color: #a5b4fc;
+.slot-time {
+  color: #fbbf24;
+  font-weight: 500;
+}
+
+.elapsed-label {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
 }
 
 .time-controls {
