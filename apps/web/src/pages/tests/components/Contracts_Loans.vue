@@ -147,17 +147,17 @@
                   <div class="datum-card-body">
                     <div class="datum-field">
                       <label>Status:</label>
-                      <span :class="datum.buyer ? 'text-success' : 'text-warning'">
-                        {{ datum.buyer ? 'Active' : 'Pending' }}
+                      <span :class="datum.buyer ? 'text-success' : (datum.isActive ? 'text-success' : 'text-warning')">
+                        {{ datum.buyer || datum.isActive ? 'Active' : 'Pending' }}
                       </span>
                     </div>
                     <div class="datum-field" v-if="datum.buyer">
                       <label>Buyer:</label>
                       <span>{{ datum.buyer?.slice(0, 16) }}...</span>
                     </div>
-                    <div class="datum-field" v-if="datum.base_asset">
+                    <div class="datum-field" v-if="datum.base_asset || datum.baseAsset">
                       <label>Asset:</label>
-                      <span>{{ formatAssetName(datum.base_asset?.asset_name) }}</span>
+                      <span>{{ formatAssetName((datum.base_asset || datum.baseAsset)?.asset_name || (datum.base_asset || datum.baseAsset)?.assetName) }}</span>
                     </div>
                     <div class="datum-field" v-if="datum.balance !== undefined">
                       <label>Balance:</label>
@@ -171,9 +171,15 @@
                       <label>Installments:</label>
                       <span>{{ datum.terms.installments || '?' }}</span>
                     </div>
-                    <div class="datum-field" v-if="datum.last_payment">
+                    <div class="datum-field" v-if="datum.last_payment || datum.lastPayment">
                       <label>Last Payment:</label>
-                      <span>{{ formatLovelace(datum.last_payment.amount) }} ₳</span>
+                      <span>{{ formatLovelace((datum.last_payment || datum.lastPayment)?.amount) }} ₳</span>
+                    </div>
+                    <div class="datum-field" v-if="datum.isPaidOff !== undefined">
+                      <label>Paid Off:</label>
+                      <span :class="datum.isPaidOff ? 'text-success' : 'text-muted'">
+                        {{ datum.isPaidOff ? 'Yes' : 'No' }}
+                      </span>
                     </div>
                   </div>
                 </div>

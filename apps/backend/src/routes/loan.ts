@@ -237,17 +237,27 @@ loan.get('/debug/datum/:address', async (c) => {
       return c.json({ error: 'Contract not found in DB' }, 404)
     }
 
+    // Parse datum if it's stored as a string
+    let contractDatum = contract.dbRecord?.contractDatum
+    if (typeof contractDatum === 'string') {
+      try {
+        contractDatum = JSON.parse(contractDatum)
+      } catch {
+        console.warn('Could not parse contractDatum as JSON:', contractDatum)
+      }
+    }
+
     // Also get the true on-chain state
     const onChainState = await getOnChainContractState(address)
 
     return c.json({
       success: true,
       address,
-      // DB cached state
+      // DB cached state (with parsed datum)
       dbRecord: contract.dbRecord,
-      contractDatum: contract.dbRecord?.contractDatum,
-      contractDatumType: typeof contract.dbRecord?.contractDatum,
-      contractDatumKeys: contract.dbRecord?.contractDatum ? Object.keys(contract.dbRecord.contractDatum) : [],
+      contractDatum: contractDatum,
+      contractDatumType: typeof contractDatum,
+      contractDatumKeys: contractDatum ? Object.keys(contractDatum) : [],
       // True on-chain state
       onChain: onChainState,
     })

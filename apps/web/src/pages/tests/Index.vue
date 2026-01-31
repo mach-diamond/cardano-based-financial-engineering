@@ -112,6 +112,8 @@ import {
   getTestnetBalance,
   getTestnetStatus,
   syncWalletBalances,
+  advanceEmulatorTime,
+  getEmulatorSlot,
   type WalletFromDB,
   type TestSetupConfig,
   type TestRunState,
@@ -174,17 +176,23 @@ const elapsedTime = ref(0)
 const startTime = ref<number | null>(null)
 let timeInterval: number | null = null
 
-function startTimeTracking() {
+async function startTimeTracking() {
   startTime.value = Date.now()
-  currentSlot.value = 0
   elapsedTime.value = 0
 
+  // Get the current slot from the backend emulator
+  try {
+    const slotInfo = await getEmulatorSlot()
+    currentSlot.value = slotInfo.slot
+  } catch {
+    currentSlot.value = 0
+  }
+
   if (timeInterval) clearInterval(timeInterval)
+  // Only update elapsed time, not slot (slot is managed by backend)
   timeInterval = window.setInterval(() => {
     if (startTime.value) {
       elapsedTime.value = Date.now() - startTime.value
-      // Approximate slot calculation (1 slot ~= 1 second in Cardano)
-      currentSlot.value = Math.floor(elapsedTime.value / 1000)
     }
   }, 100)
 }
@@ -197,26 +205,40 @@ function stopTimeTracking() {
 }
 
 // Manual time control for emulator mode
-function handleStepTime(slots: number) {
+async function handleStepTime(slots: number) {
   // Only allow manual time stepping when not running
   if (isRunning.value) return
 
-  currentSlot.value += slots
-  // Update elapsed time to match (1 slot ≈ 1 second)
-  elapsedTime.value += slots * 1000
+  try {
+    // Call backend to advance emulator time and get the real slot
+    const result = await advanceEmulatorTime(slots)
+    currentSlot.value = result.slot
+    // Calculate elapsed time from the timestamp difference
+    elapsedTime.value += slots * 1000
 
-  log(`Advanced time by ${slots.toLocaleString()} slots (now at slot ${currentSlot.value.toLocaleString()})`, 'info')
+    log(`Advanced time by ${slots.toLocaleString()} slots (now at slot ${currentSlot.value.toLocaleString()})`, 'info')
+  } catch (err) {
+    log(`Failed to advance time: ${err}`, 'error')
+  }
 }
 
-function handleResetTime() {
+async function handleResetTime() {
   // Only allow reset when not running
   if (isRunning.value) return
 
-  currentSlot.value = 0
-  elapsedTime.value = 0
-  startTime.value = null
-
-  log('Reset simulated time to slot 0', 'info')
+  // Sync with actual backend slot (can't truly reset emulator time)
+  try {
+    const slotInfo = await getEmulatorSlot()
+    currentSlot.value = slotInfo.slot
+    elapsedTime.value = 0
+    startTime.value = null
+    log(`Synced with emulator - current slot: ${currentSlot.value.toLocaleString()}`, 'info')
+  } catch {
+    currentSlot.value = 0
+    elapsedTime.value = 0
+    startTime.value = null
+    log('Reset display time (emulator not running)', 'info')
+  }
 }
 
 // Console output

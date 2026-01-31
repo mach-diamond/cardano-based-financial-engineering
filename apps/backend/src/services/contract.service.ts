@@ -517,7 +517,17 @@ export async function updateContractState(
   // MERGE contractDatum with existing (critical fix!)
   // This preserves baseAsset, terms, etc. when only updating balance/state
   if (updates.contractDatum) {
-    const existingDatum = existing.contractDatum || {}
+    // Handle case where existing datum is stored as a string (double-stringified)
+    let existingDatum = existing.contractDatum || {}
+    if (typeof existingDatum === 'string') {
+      try {
+        existingDatum = JSON.parse(existingDatum)
+      } catch {
+        console.warn(`[updateContractState] Could not parse existing datum as JSON, starting fresh`)
+        existingDatum = {}
+      }
+    }
+
     const mergedDatum = {
       ...existingDatum,
       ...updates.contractDatum

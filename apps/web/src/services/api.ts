@@ -297,12 +297,22 @@ export async function getEmulatorBalance(address: string): Promise<bigint> {
 /**
  * Advance emulator time
  */
-export async function advanceEmulatorTime(slots: number): Promise<void> {
-    await fetch(`${API_BASE}/api/emulator/advance-time`, {
+export async function advanceEmulatorTime(slots: number): Promise<{ slot: number; timestamp: number }> {
+    const res = await fetch(`${API_BASE}/api/emulator/advance-time`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ slots })
     })
+    const data = await res.json()
+    return { slot: data.slot, timestamp: data.timestamp }
+}
+
+/**
+ * Get current emulator slot
+ */
+export async function getEmulatorSlot(): Promise<{ slot: number; timestamp: number }> {
+    const res = await fetch(`${API_BASE}/api/emulator/current-slot`)
+    return res.json()
 }
 
 // =============================================================================

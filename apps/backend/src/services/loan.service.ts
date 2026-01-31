@@ -219,11 +219,21 @@ function buildLoadedContract(contract: any): LoadedContract {
     scriptCbor = validator.compiledCode
   }
 
-  const datum = contract.contractDatum
+  let datum = contract.contractDatum
 
   // Validate datum exists and has required fields
   if (!datum) {
     throw new Error(`Contract ${contract.contractAddress} has no contractDatum in database`)
+  }
+
+  // Handle case where datum is stored as a string (double-stringified JSON)
+  if (typeof datum === 'string') {
+    try {
+      datum = JSON.parse(datum)
+      console.log(`[buildLoadedContract] Parsed datum from string for contract: ${contract.contractAddress}`)
+    } catch {
+      throw new Error(`Contract ${contract.contractAddress} has invalid contractDatum (could not parse JSON string)`)
+    }
   }
 
   // Support both camelCase (DB format) and snake_case (SDK format)
