@@ -520,8 +520,8 @@ function displayValueToPeriod(displayValue: number): number {
   align-items: center;
   gap: 0.5rem;
   flex: 1;
-  min-width: 120px; /* Ensure minimum width for action content */
-  max-width: 250px; /* Prevent action content from expanding too much */
+  min-width: 180px; /* Ensure minimum width for action content */
+  max-width: 320px; /* Prevent action content from expanding too much */
 }
 
 .action-type-badge {

@@ -386,6 +386,28 @@ function getFrequencyLabel(frequency?: number): string {
   return 'p'
 }
 
+// Get frequency info: multiplier (for display) and unit (suffix)
+// This must match the logic in LoanScheduleCard.vue
+function getFrequencyInfo(frequency?: number): { multiplier: number; unit: string } {
+  const freq = frequency || 12
+  switch (freq) {
+    case 52: return { multiplier: 1, unit: 'wk' }
+    case 26: return { multiplier: 2, unit: 'wk' }
+    case 12: return { multiplier: 1, unit: 'mo' }
+    case 4: return { multiplier: 1, unit: 'qtr' }
+    case 2: return { multiplier: 1, unit: 'semi' }
+    case 1: return { multiplier: 1, unit: 'yr' }
+    // High frequency for testing (minutes)
+    case 365: return { multiplier: 1, unit: 'd' }
+    case 8760: return { multiplier: 1, unit: 'hr' }
+    case 17531: return { multiplier: 30, unit: 'm' }
+    case 35063: return { multiplier: 15, unit: 'm' }
+    case 52594: return { multiplier: 10, unit: 'm' }
+    case 105189: return { multiplier: 5, unit: 'm' }
+    default: return { multiplier: 1, unit: 'p' }
+  }
+}
+
 function calculateTermPayment(loan: { principal: number; apr: number; termMonths: number; frequency?: number }): number {
   const principal = loan.principal
   const apr = loan.apr / 100
@@ -413,15 +435,19 @@ function getCustomTiming(loan: any, actionId: string, defaultPeriod: number): { 
   return { period: defaultPeriod, isLate: false }
 }
 
-// Format timing label from period
-function formatTimingLabel(period: number, freqLabel: string): string {
+// Format timing label from period - converts period to actual time display value
+function formatTimingLabel(period: number, frequency?: number): string {
   if (period < 0) return 'T-0'
   if (period === 0) return 'T+0'
-  // Handle decimal periods (e.g., 1.5 for late payments)
-  if (Number.isInteger(period)) {
-    return `T+${period}${freqLabel}`
+
+  const { multiplier, unit } = getFrequencyInfo(frequency)
+  const displayValue = period * multiplier
+
+  // Handle decimal display values (e.g., 1.5 × 10 = 15m)
+  if (Number.isInteger(displayValue)) {
+    return `T+${displayValue}${unit}`
   }
-  return `T+${period.toFixed(1)}${freqLabel}`
+  return `T+${displayValue.toFixed(1)}${unit}`
 }
 
 // Detect if a payment timing would cause it to be late or trigger default
@@ -439,7 +465,6 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
   const lifecycleCase = loan.lifecycleCase || 'T4'
   const termPayment = calculateTermPayment(loan)
   const totalPayments = loan.termMonths
-  const freqLabel = getFrequencyLabel(loan.frequency)
   // Use lifecycleBuyerId (set in Lifecycle tab) for Accept action, fall back to borrowerId (reserved buyer)
   const buyerId = loan.lifecycleBuyerId || loan.borrowerId || null
   const buyerName = getBuyerName(buyerId)
@@ -476,7 +501,7 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         loanIndex,
         actionType: 'update',
         label: 'Update Terms',
-        timing: formatTimingLabel(updateTiming.period, freqLabel),
+        timing: formatTimingLabel(updateTiming.period, loan.frequency),
         timingPeriod: updateTiming.period,
         expectedResult: 'success',
         description: 'Seller updates contract terms'
@@ -486,7 +511,7 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         loanIndex,
         actionType: 'cancel',
         label: 'Cancel',
-        timing: formatTimingLabel(cancelTiming.period, freqLabel),
+        timing: formatTimingLabel(cancelTiming.period, loan.frequency),
         timingPeriod: cancelTiming.period,
         expectedResult: 'success',
         description: 'Seller cancels contract, reclaims collateral'
@@ -521,7 +546,7 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         loanIndex,
         actionType: 'default',
         label: 'Claim Default',
-        timing: `T+2${freqLabel}`,
+        timing: formatTimingLabel(2, loan.frequency),
         timingPeriod: 2,
         loanBalance,
         contractBalance,
@@ -569,7 +594,7 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
           loanIndex,
           actionType: 'pay',
           label: `Pay #${i}`,
-          timing: `T+${i-1}${freqLabel}`,
+          timing: formatTimingLabel(i - 1, loan.frequency),
           timingPeriod: i - 1,
           amount: termPayment,
           loanBalance,
@@ -587,7 +612,7 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         loanIndex,
         actionType: 'complete',
         label: 'Complete',
-        timing: formatTimingLabel(completeTiming.period, freqLabel),
+        timing: formatTimingLabel(completeTiming.period, loan.frequency),
         timingPeriod: completeTiming.period,
         loanBalance: 0,
         contractBalance,
@@ -600,7 +625,7 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         loanIndex,
         actionType: 'collect',
         label: 'Collect',
-        timing: formatTimingLabel(collectTiming.period, freqLabel),
+        timing: formatTimingLabel(collectTiming.period, loan.frequency),
         timingPeriod: collectTiming.period,
         loanBalance: 0,
         contractBalance: 0,
@@ -646,7 +671,7 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         loanIndex,
         actionType: 'pay',
         label: 'Pay #2 (Late)',
-        timing: `T+1${freqLabel}+`,
+        timing: formatTimingLabel(1.5, loan.frequency) + '+',
         timingPeriod: 1.5,
         amount: termPayment + lateFee,
         loanBalance,
@@ -668,7 +693,7 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
           loanIndex,
           actionType: 'pay',
           label: `Pay #${i}`,
-          timing: `T+${i-1}${freqLabel}`,
+          timing: formatTimingLabel(i - 1, loan.frequency),
           timingPeriod: i - 1,
           amount: termPayment,
           loanBalance,
@@ -685,7 +710,7 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         loanIndex,
         actionType: 'complete',
         label: 'Complete',
-        timing: formatTimingLabel(completeTiming5.period, freqLabel),
+        timing: formatTimingLabel(completeTiming5.period, loan.frequency),
         timingPeriod: completeTiming5.period,
         loanBalance: 0,
         contractBalance,
@@ -698,7 +723,7 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         loanIndex,
         actionType: 'collect',
         label: 'Collect',
-        timing: formatTimingLabel(collectTiming5.period, freqLabel),
+        timing: formatTimingLabel(collectTiming5.period, loan.frequency),
         timingPeriod: collectTiming5.period,
         loanBalance: 0,
         contractBalance: 0,
