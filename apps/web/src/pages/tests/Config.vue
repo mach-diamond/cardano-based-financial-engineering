@@ -122,6 +122,7 @@
           @update:loan-buyer="updateLoanBuyer"
           @update:action-amount="updateActionAmount"
           @update:action-timing="updateActionTiming"
+          @update:action-terms="updateActionTerms"
         />
 
         <!-- Settings Tab -->
@@ -390,6 +391,46 @@ function updateActionTiming(loanIndex: number, actionId: string, timingPeriod: n
 
     // Detect if this creates a late payment scenario
     detectLatePayments(loan, actionId, timingPeriod)
+  }
+}
+
+interface ActionTermsUpdate {
+  principal?: number
+  apr?: number
+  frequency?: number
+  installments?: number
+  buyerReservation?: string | null
+  feeSplitSeller?: number
+  feeSplitBuyer?: number
+  feeDeferment?: boolean
+  lateFee?: number
+  loanBalance?: number
+}
+
+function updateActionTerms(loanIndex: number, actionId: string, terms: ActionTermsUpdate) {
+  if (loanIndex >= 0 && loanIndex < localConfig.value.loans.length) {
+    const loan = localConfig.value.loans[loanIndex]
+
+    // Initialize actionTerms array if it doesn't exist
+    if (!loan.actionTerms) {
+      loan.actionTerms = []
+    }
+
+    // Find existing override or create new one
+    const existingIndex = loan.actionTerms.findIndex(t => t.actionId === actionId)
+    if (existingIndex >= 0) {
+      // Update existing terms
+      loan.actionTerms[existingIndex] = {
+        actionId,
+        ...terms
+      }
+    } else {
+      // Create new terms override
+      loan.actionTerms.push({
+        actionId,
+        ...terms
+      })
+    }
   }
 }
 

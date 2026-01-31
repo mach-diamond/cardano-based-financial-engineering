@@ -135,6 +135,21 @@ export interface ActionTimingOverride {
   isLate?: boolean       // Mark if this is intentionally late
 }
 
+// Update Terms override for Update actions
+export interface ActionTermsOverride {
+  actionId: string        // e.g., '0-update' for first loan's update action
+  principal?: number      // Updated principal in ADA
+  apr?: number            // Updated APR %
+  frequency?: number      // Updated payment frequency
+  installments?: number   // Updated number of installments
+  buyerReservation?: string | null  // Reserved buyer ID or null for open market
+  feeSplitSeller?: number // Seller fee percentage (0-100)
+  feeSplitBuyer?: number  // Buyer fee percentage (0-100)
+  feeDeferment?: boolean  // Whether to defer fees
+  lateFee?: number        // Late fee in ADA
+  loanBalance?: number    // Updated loan balance in ADA
+}
+
 export interface LoanConfig {
   _uid?: string // Unique ID for stable v-for keys (runtime only)
   borrowerId: string // Reserved buyer ID (set in Loans tab) - empty for open market
@@ -154,6 +169,7 @@ export interface LoanConfig {
   deferFee?: boolean // Defer seller fee until end of loan
   lateFee?: number // Late payment fee in ADA
   actionTimings?: ActionTimingOverride[] // Custom timing overrides for actions
+  actionTerms?: ActionTermsOverride[] // Custom terms for Update actions
 }
 
 export interface CLOConfig {

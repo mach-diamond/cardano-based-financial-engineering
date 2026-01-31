@@ -178,6 +178,7 @@
           @update:buyer="updateLoanBuyer(schedule.loanIndex, $event)"
           @update:amount="(actionId, value) => updateActionAmount(schedule.loanIndex, actionId, value)"
           @update:timing="(actionId, period) => updateActionTiming(schedule.loanIndex, actionId, period)"
+          @update:terms="(actionId, terms) => updateActionTerms(schedule.loanIndex, actionId, terms)"
         />
       </div>
     </div>
@@ -214,6 +215,19 @@ import LoanScheduleCard from './LoanScheduleCard.vue'
 import CLOScheduleCard from './CLOScheduleCard.vue'
 import ContractReference from './ContractReference.vue'
 
+interface UpdateTermsData {
+  principal?: number
+  apr?: number
+  frequency?: number
+  installments?: number
+  buyerReservation?: string | null
+  feeSplitSeller?: number
+  feeSplitBuyer?: number
+  feeDeferment?: boolean
+  lateFee?: number
+  loanBalance?: number
+}
+
 interface LoanAction {
   id: string
   loanIndex: number
@@ -230,6 +244,7 @@ interface LoanAction {
   description?: string
   buyerId?: string | null
   buyerName?: string
+  updateTerms?: UpdateTermsData  // For update actions
 }
 
 interface SortedAction {
@@ -276,6 +291,7 @@ const emit = defineEmits<{
   'update:loan-buyer': [loanIndex: number, value: string | null]
   'update:action-amount': [loanIndex: number, actionId: string, value: number]
   'update:action-timing': [loanIndex: number, actionId: string, timingPeriod: number]
+  'update:action-terms': [loanIndex: number, actionId: string, terms: UpdateTermsData]
 }>()
 
 // Local state synced with props - use simple refs without deep two-way sync to avoid recursion
@@ -427,6 +443,26 @@ function getCustomTiming(loan: any, actionId: string, defaultPeriod: number): { 
   return { period: defaultPeriod, isLate: false }
 }
 
+// Get custom terms for an Update action
+function getActionTerms(loan: any, actionId: string): UpdateTermsData | undefined {
+  const override = loan.actionTerms?.find((t: any) => t.actionId === actionId)
+  if (override) {
+    return {
+      principal: override.principal,
+      apr: override.apr,
+      frequency: override.frequency,
+      installments: override.installments,
+      buyerReservation: override.buyerReservation,
+      feeSplitSeller: override.feeSplitSeller,
+      feeSplitBuyer: override.feeSplitBuyer,
+      feeDeferment: override.feeDeferment,
+      lateFee: override.lateFee,
+      loanBalance: override.loanBalance,
+    }
+  }
+  return undefined
+}
+
 // Format timing label from period - converts period to actual time display value
 function formatTimingLabel(period: number, frequency?: number): string {
   if (period < 0) return 'T-0'
@@ -488,6 +524,10 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
       // Use full action ID format (loanIndex-actionType) to match what's stored in actionTimings
       const updateTiming = getCustomTiming(loan, `${loanIndex}-update`, 0)
       const cancelTiming = getCustomTiming(loan, `${loanIndex}-cancel`, 0)
+      const updateTerms = getActionTerms(loan, `${loanIndex}-update`)
+      // Update action shows the (potentially updated) principal as loan balance
+      // Contract balance and interest are 0 since no payments have been made
+      const updateLoanBalance = updateTerms?.loanBalance ?? updateTerms?.principal ?? principal
       actions.push({
         id: `${loanIndex}-update`,
         loanIndex,
@@ -495,8 +535,12 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         label: 'Update Terms',
         timing: formatTimingLabel(updateTiming.period, loan.frequency),
         timingPeriod: updateTiming.period,
+        loanBalance: updateLoanBalance,
+        contractBalance: 0,
+        interestPaid: 0,
         expectedResult: 'success',
-        description: 'Seller updates contract terms'
+        description: 'Seller updates contract terms',
+        updateTerms
       })
       actions.push({
         id: `${loanIndex}-cancel`,
@@ -505,6 +549,9 @@ function generateLoanActions(loan: any, loanIndex: number): LoanAction[] {
         label: 'Cancel',
         timing: formatTimingLabel(cancelTiming.period, loan.frequency),
         timingPeriod: cancelTiming.period,
+        loanBalance: updateLoanBalance, // Same as after update
+        contractBalance: 0,
+        interestPaid: 0,
         expectedResult: 'success',
         description: 'Seller cancels contract, reclaims collateral'
       })
@@ -886,6 +933,10 @@ function updateActionAmount(loanIndex: number, actionId: string, value: number) 
 
 function updateActionTiming(loanIndex: number, actionId: string, timingPeriod: number) {
   emit('update:action-timing', loanIndex, actionId, timingPeriod)
+}
+
+function updateActionTerms(loanIndex: number, actionId: string, terms: UpdateTermsData) {
+  emit('update:action-terms', loanIndex, actionId, terms)
 }
 </script>
 
