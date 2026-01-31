@@ -624,6 +624,22 @@ function displayValueToPeriod(displayValue: number): number {
   background: rgba(0, 0, 0, 0.15) !important;
 }
 
+/* Ensure headers are visible in timing and content columns */
+.balance-header-row .action-timing,
+.balance-header-row .action-content {
+  overflow: visible;
+}
+
+.balance-header-row .action-timing .balance-header {
+  text-align: right;
+  display: block;
+}
+
+.balance-header-row .action-content .balance-header {
+  text-align: left;
+  display: block;
+}
+
 /* Executor Column */
 .action-executor {
   width: 130px;
