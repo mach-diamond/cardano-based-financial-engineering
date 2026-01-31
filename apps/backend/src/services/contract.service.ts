@@ -480,7 +480,9 @@ export async function updateContractDatum(
 }
 
 /**
- * Update contract data and datum together (for full state updates)
+ * Update contract data and datum together (MERGES with existing data)
+ * NOTE: This function MERGES updates with existing data, not replaces!
+ * To fully replace, use updateContractDatum instead.
  */
 export async function updateContractState(
   processId: string,
@@ -491,19 +493,37 @@ export async function updateContractState(
   },
   tx?: string
 ): Promise<ProcessSmartContract | null> {
+  // First, fetch the existing contract to merge data
+  const existing = await getContractByProcessId(processId)
+  if (!existing) {
+    return null
+  }
+
   const setClauses: string[] = ['modified = NOW()']
   const values: unknown[] = []
   let paramIndex = 1
 
+  // Merge contractData with existing
   if (updates.contractData) {
+    const mergedData = {
+      ...(existing.contractData || {}),
+      ...updates.contractData
+    }
     setClauses.push(`contract_data = $${paramIndex}::json`)
-    values.push(JSON.stringify(updates.contractData))
+    values.push(JSON.stringify(mergedData))
     paramIndex++
   }
 
+  // MERGE contractDatum with existing (critical fix!)
+  // This preserves baseAsset, terms, etc. when only updating balance/state
   if (updates.contractDatum) {
+    const existingDatum = existing.contractDatum || {}
+    const mergedDatum = {
+      ...existingDatum,
+      ...updates.contractDatum
+    }
     setClauses.push(`contract_datum = $${paramIndex}::json`)
-    values.push(JSON.stringify(updates.contractDatum))
+    values.push(JSON.stringify(mergedDatum))
     paramIndex++
   }
 
