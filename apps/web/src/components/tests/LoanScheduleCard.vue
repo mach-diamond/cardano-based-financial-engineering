@@ -133,18 +133,25 @@
             <template v-if="['init', 'update', 'cancel', 'collect', 'default'].includes(action.actionType)">
               <span class="executor-name executor-originator">{{ getOriginatorName() }}</span>
             </template>
-            <!-- Buyer actions: accept (with dropdown for open market), pay, complete -->
+            <!-- Buyer actions: accept (with dropdown for open market or T6), pay, complete -->
             <template v-else-if="action.actionType === 'accept'">
-              <select
-                :value="loan.lifecycleBuyerId || ''"
-                @change="onBuyerChange"
-                class="executor-select"
-              >
-                <option value="">Select...</option>
-                <option v-for="b in borrowerOptions" :key="b.id" :value="b.id">
-                  {{ b.name }}
-                </option>
-              </select>
+              <!-- Show dropdown only for Open Market contracts or T6 (testing wrong buyer rejection) -->
+              <template v-if="!loan.borrowerId || loan.lifecycleCase === 'T6'">
+                <select
+                  :value="loan.lifecycleBuyerId || ''"
+                  @change="onBuyerChange"
+                  class="executor-select"
+                >
+                  <option value="">Select...</option>
+                  <option v-for="b in borrowerOptions" :key="b.id" :value="b.id">
+                    {{ b.name }}
+                  </option>
+                </select>
+              </template>
+              <!-- Reserved buyer - show static name -->
+              <template v-else>
+                <span class="executor-name executor-buyer">{{ getReservedBuyerName() }}</span>
+              </template>
             </template>
             <template v-else>
               <span class="executor-name executor-buyer">{{ getBuyerDisplayName() }}</span>
@@ -550,6 +557,14 @@ function getOriginatorName(): string {
 // Get buyer display name for executor column
 function getBuyerDisplayName(): string {
   const buyerId = props.loan.lifecycleBuyerId || props.loan.borrowerId
+  if (!buyerId) return 'Open Market'
+  const entry = Object.entries(NAME_TO_ID_MAP).find(([_, id]) => id === buyerId)
+  return entry ? entry[0] : buyerId
+}
+
+// Get reserved buyer name for Accept action (when buyer is pre-defined in Loan config)
+function getReservedBuyerName(): string {
+  const buyerId = props.loan.borrowerId
   if (!buyerId) return 'Open Market'
   const entry = Object.entries(NAME_TO_ID_MAP).find(([_, id]) => id === buyerId)
   return entry ? entry[0] : buyerId

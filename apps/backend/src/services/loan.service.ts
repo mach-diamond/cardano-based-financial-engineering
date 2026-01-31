@@ -847,6 +847,14 @@ export async function updateLoanTerms(
   // Convert lovelace to ADA values where needed
   const ADA = 1_000_000
 
+  // Helper to safely convert BigInt to Number (handles string serialization from DB)
+  const toNumber = (val: bigint | number | string | undefined | null): number => {
+    if (val === undefined || val === null) return 0
+    if (typeof val === 'bigint') return Number(val)
+    if (typeof val === 'string') return Number(val) || 0
+    return val
+  }
+
   const newState: ContractStateInput = {
     buyer: newTerms.buyerAddress !== undefined
       ? (newTerms.buyerAddress ? paymentCredentialOf(newTerms.buyerAddress).hash : null)
@@ -854,36 +862,36 @@ export async function updateLoanTerms(
     base_asset: {
       policy: currentState.base_asset.policy,
       asset_name: currentState.base_asset.asset_name,
-      quantity: Number(currentState.base_asset.quantity),
+      quantity: toNumber(currentState.base_asset.quantity),
     },
     terms: {
       principal: newTerms.principal !== undefined
         ? newTerms.principal * ADA
-        : Number(currentState.terms.principal),
+        : toNumber(currentState.terms.principal),
       apr: newTerms.apr !== undefined
         ? newTerms.apr * 100 // Convert percent to basis points
-        : Number(currentState.terms.apr),
+        : toNumber(currentState.terms.apr),
       frequency: newTerms.frequency !== undefined
         ? newTerms.frequency
-        : Number(currentState.terms.frequency),
+        : toNumber(currentState.terms.frequency),
       installments: newTerms.installments !== undefined
         ? newTerms.installments
-        : Number(currentState.terms.installments),
+        : toNumber(currentState.terms.installments),
       time: null,
       fees: {
         late_fee: newTerms.lateFee !== undefined
           ? newTerms.lateFee * ADA
-          : Number(currentState.terms.fees.late_fee),
-        transfer_fee_seller: Number(currentState.terms.fees.transfer_fee_seller),
-        transfer_fee_buyer: Number(currentState.terms.fees.transfer_fee_buyer),
-        referral_fee: Number(currentState.terms.fees.referral_fee),
-        referral_fee_addr: currentState.terms.fees.referral_fee_addr,
+          : toNumber(currentState.terms.fees.late_fee),
+        transfer_fee_seller: toNumber(currentState.terms.fees.transfer_fee_seller),
+        transfer_fee_buyer: toNumber(currentState.terms.fees.transfer_fee_buyer),
+        referral_fee: toNumber(currentState.terms.fees.referral_fee),
+        referral_fee_addr: currentState.terms.fees.referral_fee_addr ?? null,
       },
     },
     // Update balance to match new principal if principal changed
     balance: newTerms.principal !== undefined
       ? newTerms.principal * ADA
-      : Number(currentState.balance),
+      : toNumber(currentState.balance),
     last_payment: null,
   }
 
