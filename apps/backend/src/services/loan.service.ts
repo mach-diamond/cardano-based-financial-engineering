@@ -226,15 +226,20 @@ function buildLoadedContract(contract: any): LoadedContract {
     throw new Error(`Contract ${contract.contractAddress} has no contractDatum in database`)
   }
 
-  // Handle case where datum is stored as a string (double-stringified JSON)
-  if (typeof datum === 'string') {
+  // Handle case where datum is stored as a string (possibly multiple levels of stringification)
+  let parseAttempts = 0
+  while (typeof datum === 'string' && parseAttempts < 3) {
     try {
       datum = JSON.parse(datum)
-      console.log(`[buildLoadedContract] Parsed datum from string for contract: ${contract.contractAddress}`)
+      parseAttempts++
+      console.log(`[buildLoadedContract] Parsed datum level ${parseAttempts} for contract: ${contract.contractAddress}`)
     } catch {
-      throw new Error(`Contract ${contract.contractAddress} has invalid contractDatum (could not parse JSON string)`)
+      throw new Error(`Contract ${contract.contractAddress} has invalid contractDatum (could not parse JSON string at level ${parseAttempts + 1})`)
     }
   }
+
+  // Log the datum keys for debugging
+  console.log(`[buildLoadedContract] Datum keys: ${Object.keys(datum || {}).join(', ')}`)
 
   // Support both camelCase (DB format) and snake_case (SDK format)
   const baseAsset = datum.baseAsset || datum.base_asset

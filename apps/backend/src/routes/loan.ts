@@ -226,6 +226,37 @@ loan.post('/clear', async (c) => {
   }
 })
 
+// Helper to serialize objects with BigInt values
+function serializeWithBigInt(obj: unknown): unknown {
+  if (obj === null || obj === undefined) return obj
+  if (typeof obj === 'bigint') return obj.toString()
+  if (Array.isArray(obj)) return obj.map(serializeWithBigInt)
+  if (typeof obj === 'object') {
+    const result: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = serializeWithBigInt(value)
+    }
+    return result
+  }
+  return obj
+}
+
+// Helper to deeply parse stringified JSON
+function deepParseJson(value: unknown): unknown {
+  if (typeof value !== 'string') return value
+  let parsed = value
+  let attempts = 0
+  while (typeof parsed === 'string' && attempts < 3) {
+    try {
+      parsed = JSON.parse(parsed)
+      attempts++
+    } catch {
+      break
+    }
+  }
+  return parsed
+}
+
 /**
  * GET /debug/datum/:address - Debug: show raw datum from database AND on-chain
  */
@@ -237,29 +268,23 @@ loan.get('/debug/datum/:address', async (c) => {
       return c.json({ error: 'Contract not found in DB' }, 404)
     }
 
-    // Parse datum if it's stored as a string
-    let contractDatum = contract.dbRecord?.contractDatum
-    if (typeof contractDatum === 'string') {
-      try {
-        contractDatum = JSON.parse(contractDatum)
-      } catch {
-        console.warn('Could not parse contractDatum as JSON:', contractDatum)
-      }
-    }
+    // Parse datum if it's stored as a string (handles multiple levels of stringification)
+    const contractDatum = deepParseJson(contract.dbRecord?.contractDatum)
 
-    // Also get the true on-chain state
+    // Also get the true on-chain state (with BigInt serialization)
     const onChainState = await getOnChainContractState(address)
+    const serializedOnChain = serializeWithBigInt(onChainState)
 
     return c.json({
       success: true,
       address,
       // DB cached state (with parsed datum)
-      dbRecord: contract.dbRecord,
+      dbRecord: serializeWithBigInt(contract.dbRecord),
       contractDatum: contractDatum,
       contractDatumType: typeof contractDatum,
-      contractDatumKeys: contractDatum ? Object.keys(contractDatum) : [],
+      contractDatumKeys: contractDatum && typeof contractDatum === 'object' ? Object.keys(contractDatum) : [],
       // True on-chain state
-      onChain: onChainState,
+      onChain: serializedOnChain,
     })
   } catch (err) {
     console.error('Debug datum error:', err)

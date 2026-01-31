@@ -517,21 +517,41 @@ export async function updateContractState(
   // MERGE contractDatum with existing (critical fix!)
   // This preserves baseAsset, terms, etc. when only updating balance/state
   if (updates.contractDatum) {
-    // Handle case where existing datum is stored as a string (double-stringified)
-    let existingDatum = existing.contractDatum || {}
-    if (typeof existingDatum === 'string') {
+    // Handle case where existing datum is stored as a string (possibly multiple times stringified)
+    let existingDatum: Record<string, unknown> = {}
+    let rawDatum = existing.contractDatum
+
+    // Keep parsing while we have a string (handles double/triple stringification)
+    let parseAttempts = 0
+    while (typeof rawDatum === 'string' && parseAttempts < 3) {
       try {
-        existingDatum = JSON.parse(existingDatum)
+        rawDatum = JSON.parse(rawDatum)
+        parseAttempts++
       } catch {
-        console.warn(`[updateContractState] Could not parse existing datum as JSON, starting fresh`)
-        existingDatum = {}
+        console.warn(`[updateContractState] Could not parse datum at level ${parseAttempts + 1}`)
+        break
       }
     }
+
+    if (rawDatum && typeof rawDatum === 'object' && !Array.isArray(rawDatum)) {
+      existingDatum = rawDatum as Record<string, unknown>
+    }
+
+    // Log what we're merging for debugging
+    const existingKeys = Object.keys(existingDatum)
+    const updateKeys = Object.keys(updates.contractDatum)
+    console.log(`[updateContractState] Merging datum for ${processId}:`)
+    console.log(`  Existing keys: ${existingKeys.join(', ') || '(none)'}`)
+    console.log(`  Update keys: ${updateKeys.join(', ')}`)
+    console.log(`  Has baseAsset: ${!!existingDatum.baseAsset}, has terms: ${!!existingDatum.terms}`)
 
     const mergedDatum = {
       ...existingDatum,
       ...updates.contractDatum
     }
+
+    console.log(`  Merged keys: ${Object.keys(mergedDatum).join(', ')}`)
+
     setClauses.push(`contract_datum = $${paramIndex}::json`)
     values.push(JSON.stringify(mergedDatum))
     paramIndex++
