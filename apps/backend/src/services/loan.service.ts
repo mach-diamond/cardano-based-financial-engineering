@@ -21,6 +21,7 @@ import {
   complete_transfer,
   cancel,
   claim_default,
+  update_terms,
 } from '../../../../packages/loan-contract/src/actions/index'
 import type {
   ContractStateInput,
@@ -29,6 +30,7 @@ import type {
   AcceptUIData,
   PayUIData,
   CollectUIData,
+  UpdateUIData,
 } from '../../../../packages/loan-contract/src/types/index'
 import {
   calculateNominalTermPayment,
@@ -101,6 +103,20 @@ export interface CancelLoanParams {
 export interface ClaimDefaultParams {
   sellerWalletName: string
   contractAddress: string
+}
+
+export interface UpdateTermsParams {
+  sellerWalletName: string
+  contractAddress: string
+  newTerms: {
+    principal?: number // in ADA
+    apr?: number // basis points
+    frequency?: number // payments per year
+    installments?: number // total payments
+    lateFee?: number // in ADA
+    buyerAddress?: string | null // null = open market
+    deferFee?: boolean // defer seller fee
+  }
 }
 
 export interface LoanContractResult {
@@ -787,6 +803,120 @@ export async function cancelLoan(
   }, result.tx_id)
 
   console.log(`[LoanService] Loan canceled: ${result.tx_id}`)
+
+  return { txHash: result.tx_id, contractAddress: params.contractAddress }
+}
+
+/**
+ * Update loan terms (seller updates contract before buyer acceptance)
+ * Only callable by seller when contract has not yet been accepted.
+ */
+export async function updateLoanTerms(
+  params: UpdateTermsParams
+): Promise<LoanContractResult> {
+  const emulatorState = getEmulatorState()
+  if (!emulatorState) throw new Error('Emulator not initialized')
+
+  await selectWallet(params.sellerWalletName)
+  const lucid = getLucid()
+  if (!lucid) throw new Error('Lucid not available')
+
+  const dbContract = await contractDb.getContractByAddress(params.contractAddress)
+
+  if (!dbContract) {
+    throw new Error(`Contract not found: ${params.contractAddress}`)
+  }
+
+  console.log(`[LoanService] Updating loan terms:`)
+  console.log(`  Seller: ${params.sellerWalletName}`)
+  console.log(`  Contract: ${params.contractAddress}`)
+  console.log(`  New Terms:`, params.newTerms)
+
+  // Build LoadedContract for SDK
+  const loadedContract = buildLoadedContract(dbContract)
+
+  // Verify contract hasn't been accepted yet (time should be null)
+  if (loadedContract.state.terms.time !== null) {
+    throw new Error('Cannot update terms: contract has already been accepted')
+  }
+
+  // Build new state with updated terms
+  const currentState = loadedContract.state
+  const newTerms = params.newTerms
+
+  // Convert lovelace to ADA values where needed
+  const ADA = 1_000_000
+
+  const newState: ContractStateInput = {
+    buyer: newTerms.buyerAddress !== undefined
+      ? (newTerms.buyerAddress ? paymentCredentialOf(newTerms.buyerAddress).hash : null)
+      : currentState.buyer,
+    base_asset: {
+      policy: currentState.base_asset.policy,
+      asset_name: currentState.base_asset.asset_name,
+      quantity: Number(currentState.base_asset.quantity),
+    },
+    terms: {
+      principal: newTerms.principal !== undefined
+        ? newTerms.principal * ADA
+        : Number(currentState.terms.principal),
+      apr: newTerms.apr !== undefined
+        ? newTerms.apr * 100 // Convert percent to basis points
+        : Number(currentState.terms.apr),
+      frequency: newTerms.frequency !== undefined
+        ? newTerms.frequency
+        : Number(currentState.terms.frequency),
+      installments: newTerms.installments !== undefined
+        ? newTerms.installments
+        : Number(currentState.terms.installments),
+      time: null,
+      fees: {
+        late_fee: newTerms.lateFee !== undefined
+          ? newTerms.lateFee * ADA
+          : Number(currentState.terms.fees.late_fee),
+        transfer_fee_seller: Number(currentState.terms.fees.transfer_fee_seller),
+        transfer_fee_buyer: Number(currentState.terms.fees.transfer_fee_buyer),
+        referral_fee: Number(currentState.terms.fees.referral_fee),
+        referral_fee_addr: currentState.terms.fees.referral_fee_addr,
+      },
+    },
+    // Update balance to match new principal if principal changed
+    balance: newTerms.principal !== undefined
+      ? newTerms.principal * ADA
+      : Number(currentState.balance),
+    last_payment: null,
+  }
+
+  const uiData: UpdateUIData = {
+    state: newState,
+    deferFee: newTerms.deferFee ?? false,
+  }
+
+  // Call SDK action - update terms
+  const result = await update_terms(lucid, loadedContract, uiData, true)
+
+  // Advance emulator
+  awaitBlockAndTrack(1)
+
+  // Update database with new terms
+  await contractDb.updateContractState(dbContract.processId, {
+    contractDatum: {
+      ...dbContract.contractDatum,
+      buyer: newState.buyer,
+      terms: {
+        principal: newState.terms.principal,
+        apr: newState.terms.apr,
+        frequency: newState.terms.frequency,
+        installments: newState.terms.installments,
+        time: null,
+        fees: newState.terms.fees,
+      },
+      balance: newState.balance,
+    },
+    action: 'update',
+  }, result.tx_id)
+
+  console.log(`[LoanService] Loan terms updated: ${result.tx_id}`)
 
   return { txHash: result.tx_id, contractAddress: params.contractAddress }
 }

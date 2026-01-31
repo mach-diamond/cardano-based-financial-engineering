@@ -16,6 +16,7 @@ import {
   completeLoan,
   cancelLoan,
   claimDefault,
+  updateLoanTerms,
   clearContractStore,
   getAllContracts,
   getContractState,
@@ -27,6 +28,7 @@ import {
   type CompleteLoanParams,
   type CancelLoanParams,
   type ClaimDefaultParams,
+  type UpdateTermsParams,
 } from '../services/loan.service'
 
 const loan = new Hono()
@@ -273,6 +275,30 @@ loan.post('/default', async (c) => {
     })
   } catch (err) {
     console.error('Default error:', err)
+    return c.json({ error: String(err) }, 500)
+  }
+})
+
+/**
+ * POST /update - Update loan terms (seller updates before buyer acceptance)
+ */
+loan.post('/update', async (c) => {
+  try {
+    const body = (await c.req.json()) as UpdateTermsParams
+
+    if (!body.sellerWalletName || !body.contractAddress) {
+      return c.json({ error: 'Missing required fields' }, 400)
+    }
+
+    const result = await updateLoanTerms(body)
+
+    return c.json({
+      success: true,
+      txHash: result.txHash,
+      contractAddress: result.contractAddress,
+    })
+  } catch (err) {
+    console.error('Update terms error:', err)
     return c.json({ error: String(err) }, 500)
   }
 })

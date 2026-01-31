@@ -19,6 +19,7 @@ import {
   completeLoanTransfer as apiCompleteLoan,
   cancelLoanContract as apiCancelLoan,
   claimLoanDefault as apiClaimDefault,
+  updateLoanTerms as apiUpdateTerms,
   refreshWalletState,
 } from '@/services/api'
 
@@ -905,8 +906,64 @@ export async function executeRunContractsPhase(
       }
 
       case 'update': {
-        log(`  ${step.name}: Updating terms (not implemented)`, 'warning')
-        result = { success: true, message: 'Terms updated (simulated)' }
+        // Update loan terms - seller updates contract before buyer acceptance
+        log(`  ${step.name}: Updating contract terms...`, 'info')
+
+        const updateSeller = identities.value.find(i => i.name === loan.originator)
+        if (!updateSeller) {
+          result = { success: false, message: `Seller ${loan.originator} not found` }
+          break
+        }
+
+        const updateContractAddress = loan.contractAddress || loan.id
+        if (!updateContractAddress || updateContractAddress.startsWith('LOAN-')) {
+          log(`  ✗ No contract address found for loan ${loan.id}`, 'error')
+          result = { success: false, message: 'Contract address not available' }
+          break
+        }
+
+        try {
+          // Get update terms from the step if available (from LoanScheduleCard expansion panel)
+          const updateTerms = step.updateTerms || {}
+
+          // Build new terms, using step values or keeping current values
+          const newTerms = {
+            principal: updateTerms.principal ?? loan.principal,
+            apr: updateTerms.apr ?? loan.apr,
+            frequency: updateTerms.frequency ?? loan.frequency,
+            installments: updateTerms.installments ?? loan.termLength,
+            lateFee: updateTerms.lateFee ?? loan.lateFee,
+            buyerAddress: updateTerms.buyerReservation ?? loan.reservedBuyerAddress,
+            deferFee: updateTerms.feeDeferment ?? loan.deferFee,
+          }
+
+          log(`    New terms: Principal=${newTerms.principal} ADA, APR=${newTerms.apr}%, Freq=${newTerms.frequency}, Term=${newTerms.installments}`, 'info')
+
+          const updateResult = await apiUpdateTerms(updateSeller.name, updateContractAddress, newTerms)
+          if (!updateResult.success) {
+            log(`  ✗ Failed to update terms: ${updateResult.error || 'Unknown error'}`, 'error')
+            result = { success: false, message: updateResult.error || 'Failed to update terms' }
+            break
+          }
+
+          // Refresh wallet state after update
+          await refreshWalletState(updateSeller, log)
+          log(`  ✓ Seller wallet refreshed`, 'success')
+
+          // Update local loan state with new terms
+          if (newTerms.principal !== undefined) loan.principal = newTerms.principal
+          if (newTerms.apr !== undefined) loan.apr = newTerms.apr
+          if (newTerms.frequency !== undefined) loan.frequency = newTerms.frequency
+          if (newTerms.installments !== undefined) loan.termLength = newTerms.installments
+
+          log(`  ✓ Contract terms updated`, 'success')
+          log(`    TX: ${updateResult.txHash}`, 'info')
+
+          result = { success: true, message: 'Terms updated', data: { txHash: updateResult.txHash } }
+        } catch (err) {
+          log(`  ✗ Failed to update terms: ${(err as Error).message}`, 'error')
+          result = { success: false, message: (err as Error).message }
+        }
         break
       }
 

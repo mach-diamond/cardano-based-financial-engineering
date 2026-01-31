@@ -356,6 +356,11 @@ function toggleContractDetails(contractId: string) {
     expandedContracts.delete(contractId)
   } else {
     expandedContracts.add(contractId)
+    // Auto-fetch datum history when expanding
+    const contract = props.contracts.find(c => c.id === contractId)
+    if (contract && !datumHistory.has(contractId)) {
+      fetchDatumHistory(contract)
+    }
   }
 }
 

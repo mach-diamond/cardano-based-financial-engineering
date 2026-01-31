@@ -496,6 +496,32 @@ export async function claimLoanDefault(
 }
 
 /**
+ * Update loan terms - seller updates contract terms before buyer acceptance
+ */
+export interface UpdateTermsParams {
+    principal?: number // in ADA
+    apr?: number // basis points
+    frequency?: number // payments per year
+    installments?: number // total payments
+    lateFee?: number // in ADA
+    buyerAddress?: string | null // null = open market
+    deferFee?: boolean // defer seller fee
+}
+
+export async function updateLoanTerms(
+    sellerWalletName: string,
+    contractAddress: string,
+    newTerms: UpdateTermsParams
+): Promise<LoanContractResult> {
+    const res = await fetch(`${API_BASE}/api/loan/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sellerWalletName, contractAddress, newTerms })
+    })
+    return res.json()
+}
+
+/**
  * Get full wallet state from emulator (real ADA + tokens)
  */
 export interface WalletStateResult {
