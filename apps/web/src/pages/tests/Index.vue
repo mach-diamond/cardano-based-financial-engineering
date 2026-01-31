@@ -363,7 +363,13 @@ function syncStepStatusFromState() {
 // Load available test runs for dropdown
 async function loadAvailableTestRuns() {
   try {
-    availableTestRuns.value = await getTestRuns(20)
+    const runs = await getTestRuns(20)
+    console.log('loadAvailableTestRuns: Loaded', runs.length, 'runs')
+    if (runs.length > 0) {
+      console.log('loadAvailableTestRuns: First run:', runs[0])
+      console.log('loadAvailableTestRuns: Network modes:', runs.map(r => r.networkMode))
+    }
+    availableTestRuns.value = runs
   } catch (err) {
     console.warn('Could not load test runs:', err)
   }

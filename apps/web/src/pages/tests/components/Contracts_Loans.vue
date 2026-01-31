@@ -129,6 +129,10 @@
                 <button @click="fetchDatumHistory(contract)" class="btn btn-xs btn-outline-info ml-2">
                   <i class="fas fa-sync-alt"></i>
                 </button>
+                <label class="raw-json-switch ml-auto">
+                  <input type="checkbox" :checked="showRawJson.has(contract.id)" @change="toggleRawJson(contract.id)">
+                  <span class="switch-label">Show as Raw JSON</span>
+                </label>
               </h6>
 
               <!-- Datum Card Carousel (left-to-right: oldest first, filtered for valid entries) -->
@@ -139,16 +143,12 @@
                   class="datum-card"
                   :class="{ active: idx === getValidHistory(contract.id).length - 1 }"
                 >
-                  <!-- Header: Version badge, Raw JSON toggle, Action flow, Timestamp -->
+                  <!-- Header: Version badge, Action flow, Timestamp -->
                   <div class="datum-card-header">
                     <div class="header-top">
                       <span class="badge" :class="idx === getValidHistory(contract.id).length - 1 ? 'badge-success' : 'badge-secondary'">
                         {{ idx === getValidHistory(contract.id).length - 1 ? 'Current' : `v${idx + 1}` }}
                       </span>
-                      <label class="raw-json-switch ml-auto">
-                        <input type="checkbox" :checked="showRawJson.has(contract.id)" @change="toggleRawJson(contract.id)">
-                        <span class="switch-label">Raw</span>
-                      </label>
                     </div>
                     <!-- Action flow: Party → ACTION → Contract -->
                     <div class="action-flow" v-if="datum._action">
@@ -188,9 +188,12 @@
                         <label>APR:</label>
                         <span>{{ (Number(datum.terms.apr) / 100).toFixed(2) }}%</span>
                       </div>
-                      <div class="datum-field" v-if="datum.last_payment || datum.lastPayment">
+                      <div class="datum-field datum-field-multiline" v-if="datum.last_payment || datum.lastPayment">
                         <label>Last Payment:</label>
-                        <span>{{ formatLastPayment(datum.last_payment || datum.lastPayment) }}</span>
+                        <div class="payment-display">
+                          <span class="payment-amount">{{ formatPaymentAmount(datum.last_payment || datum.lastPayment) }}</span>
+                          <span class="payment-time">{{ formatPaymentTime(datum.last_payment || datum.lastPayment) }}</span>
+                        </div>
                       </div>
                     </template>
                     <template v-else>
@@ -557,6 +560,32 @@ function formatLastPayment(payment: any): string {
   return time ? `${amount} ₳ @ ${time}` : `${amount} ₳`
 }
 
+function formatPaymentAmount(payment: any): string {
+  if (!payment) return '--'
+  return `${formatLovelace(payment.amount)} ₳`
+}
+
+function formatPaymentTime(payment: any): string {
+  if (!payment || !payment.time) return ''
+  try {
+    // If it's a POSIX timestamp in seconds, convert to ms
+    const ts = typeof payment.time === 'string' ? parseInt(payment.time) : payment.time
+    const ms = ts < 1e12 ? ts * 1000 : ts
+    const date = new Date(ms)
+    const month = date.toLocaleString('en-US', { month: 'short' })
+    const day = date.getDate()
+    const year = date.getFullYear()
+    const time = date.toLocaleString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    })
+    return `${month} ${day}, ${year} ${time}`
+  } catch {
+    return ''
+  }
+}
+
 function formatTimestampShort(timestamp: number | string): string {
   try {
     // If it's a POSIX timestamp in seconds, convert to ms
@@ -876,6 +905,14 @@ function getInstallments(contract: LoanContract): number {
   font-size: 0.7rem;
 }
 
+.datum-header .raw-json-switch {
+  font-size: 0.75rem;
+}
+
+.datum-header .raw-json-switch .switch-label {
+  margin-left: 0.35rem;
+}
+
 /* Datum carousel */
 .datum-carousel {
   display: flex;
@@ -1001,6 +1038,34 @@ function getInstallments(contract: LoanContract): number {
 
 .datum-field span.mono {
   font-family: monospace;
+}
+
+/* Multi-line datum field (for Last Payment) */
+.datum-field-multiline {
+  flex-direction: column;
+  align-items: flex-start !important;
+  gap: 0.25rem;
+}
+
+.datum-field-multiline label {
+  margin-bottom: 0.15rem;
+}
+
+.payment-display {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.payment-amount {
+  color: #22c55e !important;
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.payment-time {
+  color: #64748b;
+  font-size: 0.65rem;
 }
 
 /* Datum card footer */

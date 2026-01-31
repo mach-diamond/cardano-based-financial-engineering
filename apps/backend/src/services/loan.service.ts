@@ -405,6 +405,7 @@ export async function createLoan(
       scriptCbor: result.script?.script || '',
       scriptHash: result.policy_id,
     },
+    txHash: result.tx_id, // Pass TX hash for create history entry
   })
 
   console.log(`[LoanService] Loan created: ${result.tx_id}`)

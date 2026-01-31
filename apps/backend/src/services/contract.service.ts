@@ -147,6 +147,7 @@ export interface CreateContractInput {
   parameters?: Record<string, unknown>
   raId?: string
   testRunId?: number
+  txHash?: string // TX hash for the create transaction
 }
 
 /**
@@ -157,7 +158,8 @@ export async function createContract(input: CreateContractInput): Promise<Proces
   const initialHistory: DatumHistoryEntry[] = input.contractDatum ? [{
     datum: input.contractDatum,
     timestamp: new Date().toISOString(),
-    action: 'create'
+    action: 'create',
+    txHash: input.txHash // Include TX hash if provided
   }] : []
 
   const [contract] = await sql<ProcessSmartContract[]>`
