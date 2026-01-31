@@ -392,11 +392,13 @@ export async function createLoan(
   console.log(`[LoanService] Loan created: ${result.tx_id}`)
   console.log(`  Contract Address: ${result.address}`)
   console.log(`  Policy ID: ${result.policy_id}`)
+  console.log(`  Process ID: ${dbContract.processId}`)
 
   return {
     txHash: result.tx_id,
     contractAddress: result.address,
     policyId: result.policy_id,
+    processId: dbContract.processId,
   }
 }
 

@@ -90,6 +90,7 @@ loan.post('/create', async (c) => {
       txHash: result.txHash,
       contractAddress: result.contractAddress,
       policyId: result.policyId,
+      processId: result.processId,
     })
   } catch (err) {
     console.error('Create loan error:', err)

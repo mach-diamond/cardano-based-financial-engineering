@@ -379,6 +379,8 @@ export async function getContractByProcessId(processId: string): Promise<Process
  * Get contract by address
  */
 export async function getContractByAddress(address: string): Promise<ProcessSmartContract | null> {
+  // Order by modified DESC to get the most recently updated record
+  // This handles edge cases where duplicate records might exist
   const [contract] = await sql<ProcessSmartContract[]>`
     SELECT
       process_id as "processId",
@@ -403,6 +405,8 @@ export async function getContractByAddress(address: string): Promise<ProcessSmar
       test_run_id as "testRunId"
     FROM process_smart_contract
     WHERE contract_address = ${address}
+    ORDER BY modified DESC
+    LIMIT 1
   `
   return contract || null
 }

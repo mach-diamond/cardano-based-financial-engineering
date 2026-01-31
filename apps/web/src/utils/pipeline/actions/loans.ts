@@ -201,8 +201,9 @@ export async function createLoan(
     log(`  ✓ Collateral token minted to ${originator.name}`, 'success')
 
     // Create loan contract record for UI
+    // Use processId from backend - the backend already created the DB record with full datum
     const loanContract: LoanContract = {
-      id: result.contractAddress || `LOAN-${loan.asset}-${Date.now()}`,
+      id: result.processId || result.contractAddress || `LOAN-${loan.asset}-${Date.now()}`,
       alias: loan.reservedBuyer
         ? `${borrowerName} - ${loan.asset} Loan`
         : `Open Market - ${loan.asset} Loan`,
@@ -234,32 +235,21 @@ export async function createLoan(
     log(`    TX: ${result.txHash}`, 'info')
     log(`    Contract: ${result.contractAddress}`, 'info')
     log(`    Policy: ${result.policyId}`, 'info')
+    log(`    Process ID: ${result.processId}`, 'info')
 
-    // Save to test run database if applicable
-    if (testRunId.value) {
+    // Link to test run if applicable (backend already created the record with full datum)
+    if (testRunId.value && result.processId) {
       try {
-        const dbContract = await createContractRecord({
-          testRunId: testRunId.value,
-          contractType: 'Transfer',
-          contractSubtype: loanContract.subtype,
-          alias: loanContract.alias,
+        // Update the existing contract record with testRunId and additional data
+        await updateContractState(result.processId, {
           contractData: {
-            collateral: loanContract.collateral,
-            principal: loanContract.principal,
-            apr: loanContract.apr,
-            termLength: loanContract.termLength,
             borrower: loanContract.borrower,
             originator: loanContract.originator,
             reservedBuyer: loan.reservedBuyer,
-          },
-          contractDatum: loanContract.state,
-          contractAddress: result.contractAddress,
-          policyId: result.policyId,
-          networkId: mode === 'emulator' ? 0 : 1,
+          }
         })
-        loanContract.id = dbContract.processId
       } catch (err) {
-        log(`  Warning: Could not save to test DB: ${(err as Error).message}`, 'warning')
+        log(`  Warning: Could not update test DB: ${(err as Error).message}`, 'warning')
       }
     }
 
