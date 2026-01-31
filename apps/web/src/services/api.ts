@@ -4,6 +4,15 @@
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3005'
 
+/**
+ * BigInt-safe JSON stringify - converts BigInt values to strings
+ */
+function safeJsonStringify(obj: unknown): string {
+    return JSON.stringify(obj, (_key, value) =>
+        typeof value === 'bigint' ? value.toString() : value
+    )
+}
+
 export interface WalletFromDB {
     id: number
     name: string
@@ -678,7 +687,7 @@ export async function updateTestRunState(id: number, state: TestRunState): Promi
     const res = await fetch(`${API_BASE}/api/test/runs/${id}/state`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ state })
+        body: safeJsonStringify({ state })
     })
     if (!res.ok) return null
     const data = await res.json()

@@ -182,35 +182,19 @@
       </div>
     </div>
 
-    <!-- CLO Operations -->
-    <div class="collapsible-section mt-4" :class="{ 'collapsed': localCollapsed.cloOperations }">
-      <div class="collapsible-header" @click="localCollapsed.cloOperations = !localCollapsed.cloOperations">
-        <i class="fas" :class="localCollapsed.cloOperations ? 'fa-chevron-right' : 'fa-chevron-down'"></i>
-        <h5 class="mb-0"><i class="fas fa-layer-group mr-2"></i>CLO Operations</h5>
-        <span class="badge badge-secondary ml-auto">{{ cloConfig?.tranches.length || 0 }} tranches</span>
-      </div>
-      <div v-show="!localCollapsed.cloOperations" class="collapsible-content">
-        <div class="phase-block">
-          <div class="phase-steps">
-            <div class="phase-step-item">
-              <span class="action-type-badge action-clo">Init</span>
-              <span class="step-params">{{ cloConfig?.name }} ({{ cloConfig?.tranches.length }} Tranches)</span>
-            </div>
-            <div class="phase-step-item">
-              <span class="action-type-badge action-clo">Bundle</span>
-              <span class="step-params">Collateral Tokens from {{ eligibleLoansCount }} active loans</span>
-            </div>
-            <div class="phase-step-item">
-              <span class="action-type-badge action-clo">Mint</span>
-              <span class="step-params">Tranche Tokens (Senior, Mezzanine, Junior)</span>
-            </div>
-            <div class="phase-step-item">
-              <span class="action-type-badge action-clo">Distribute</span>
-              <span class="step-params">Waterfall payments to tranche holders</span>
-            </div>
-          </div>
-        </div>
-      </div>
+    <!-- CLO Action Schedule -->
+    <div class="clo-action-schedules mt-4">
+      <h5 class="schedules-header mb-3">
+        <i class="fas fa-layer-group mr-2"></i>CLO Action Schedule
+        <small class="text-muted ml-2">(Trades + Bond Lifecycle)</small>
+      </h5>
+      <CLOScheduleCard
+        :loans="loans"
+        :clo-config="cloConfig"
+        :analyst-id="analystId"
+        :is-collapsed="!!localCollapsed.cloOperations"
+        @toggle-collapse="localCollapsed.cloOperations = !localCollapsed.cloOperations"
+      />
     </div>
 
     <!-- Contract Reference -->
@@ -227,6 +211,7 @@ import { ref, computed, watch } from 'vue'
 import type { WalletConfig, LoanConfig, CLOConfig } from '@/utils/pipeline/types'
 import { NAME_TO_ID_MAP } from '@/utils/pipeline/types'
 import LoanScheduleCard from './LoanScheduleCard.vue'
+import CLOScheduleCard from './CLOScheduleCard.vue'
 import ContractReference from './ContractReference.vue'
 
 interface LoanAction {
@@ -366,6 +351,13 @@ const borrowerOptions = computed(() => {
       name: w.name,
       initialFunding: w.initialFunding || 0
     }))
+})
+
+// Get analyst ID for CLO operations (first Analyst wallet)
+const analystId = computed(() => {
+  const analyst = props.wallets.find(w => w.role === 'Analyst')
+  if (!analyst) return null
+  return NAME_TO_ID_MAP[analyst.name] || `ana-${analyst.name.toLowerCase().replace(/\s+/g, '-')}`
 })
 
 function getOriginatorName(originatorId: string | null): string {
@@ -1157,14 +1149,15 @@ function updateActionTiming(loanIndex: number, actionId: string, timingPeriod: n
   padding-left: 0.5rem;
 }
 
-.loan-action-schedules h5 {
+.loan-action-schedules h5,
+.clo-action-schedules h5 {
   color: #e2e8f0;
   font-weight: 600;
 }
 
 .loan-schedules-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 1rem;
 }
 
