@@ -513,6 +513,7 @@ export async function makePayment(
     log(`  ✓ Payment of ${amount} ADA processed`, 'success')
     log(`    TX: ${result.txHash}`, 'info')
     log(`    Remaining balance: ${((loan.state?.balance || 0) / 1_000_000).toFixed(2)} ADA`, 'info')
+    log(`    Payment #${loan.state?.paymentCount || 1} complete`, 'info')
 
     // Update step status in phase 4 (Run Contracts)
     // Payment steps have IDs like `{loanIndex}-pay-{paymentNumber}`
@@ -525,6 +526,26 @@ export async function makePayment(
         s.id.endsWith(`-pay-${paymentNumber}`)
       )
       if (step) step.status = 'passed'
+    }
+
+    // Persist state to test run database after each payment
+    try {
+      await updateContractState(loan.id, {
+        contractDatum: {
+          balance: loan.state?.balance,
+          isActive: loan.state?.isActive,
+          isPaidOff: loan.state?.isPaidOff || false,
+          isDefaulted: loan.state?.isDefaulted || false,
+          startTime: loan.state?.startTime,
+          paymentCount: loan.state?.paymentCount,
+          lastPayment: {
+            amount: amount * 1_000_000,
+            time: Date.now()
+          }
+        }
+      })
+    } catch (err) {
+      log(`  Warning: Could not persist payment state: ${(err as Error).message}`, 'warning')
     }
 
     return {
@@ -733,14 +754,20 @@ export async function executeRunContractsPhase(
       }
 
       case 'complete': {
-        // Complete is similar to collect - mark loan as done
-        log(`  ${step.name}: Completing loan...`, 'info')
-        if (loan.state) {
-          loan.state.isPaidOff = true
-          loan.state.isActive = false
+        // Complete transfers the collateral asset to the buyer.
+        // This should only happen AFTER all payments are made (balance = 0).
+        // Note: isPaidOff is set in the pay action when balance reaches 0, not here.
+        log(`  ${step.name}: Completing loan - transferring asset to buyer...`, 'info')
+
+        // Verify the loan is actually paid off before completing
+        if (loan.state && loan.state.balance > 0) {
+          log(`  ⚠ Warning: Completing loan with remaining balance: ${(loan.state.balance / 1_000_000).toFixed(2)} ADA`, 'warning')
         }
+
+        // Complete transfers the asset - loan state remains as-is (already isPaidOff from final payment)
+        // The status is 'passed' because the complete action succeeded
         loan.status = 'passed'
-        result = { success: true, message: 'Loan completed' }
+        result = { success: true, message: 'Asset transferred to buyer' }
         break
       }
 

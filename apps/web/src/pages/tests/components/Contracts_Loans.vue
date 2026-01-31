@@ -434,8 +434,8 @@ function getProgressPercent(contract: LoanContract): number {
 }
 
 function getCurrentInstallment(contract: LoanContract): number {
-  // Use explicit paymentCount if available
-  if (contract.state?.paymentCount !== undefined) {
+  // Use explicit paymentCount if available and non-zero
+  if (contract.state?.paymentCount !== undefined && contract.state.paymentCount > 0) {
     return contract.state.paymentCount
   }
 
@@ -444,11 +444,16 @@ function getCurrentInstallment(contract: LoanContract): number {
     return contract.state.lastPayment.installmentNumber
   }
 
-  // Estimate from balance reduction if active
-  if (contract.state?.isActive && contract.principal) {
-    const paid = contract.principal - (contract.state.balance || 0)
+  // If isPaidOff, assume all installments are complete
+  if (contract.state?.isPaidOff) {
+    return getInstallments(contract)
+  }
+
+  // Estimate from balance reduction if active or has any balance paid
+  if (contract.principal) {
+    const balance = contract.state?.balance ?? contract.principal
+    const paid = contract.principal - balance
     if (paid > 0) {
-      // Rough estimate: 1 payment has been made (accept payment)
       const installments = getInstallments(contract)
       const paymentAmount = contract.principal / installments
       return Math.max(1, Math.round(paid / paymentAmount))

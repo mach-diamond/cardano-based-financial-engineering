@@ -220,8 +220,24 @@ function buildLoadedContract(contract: any): LoadedContract {
   }
 
   const datum = contract.contractDatum
+
+  // Validate datum exists and has required fields
+  if (!datum) {
+    throw new Error(`Contract ${contract.contractAddress} has no contractDatum in database`)
+  }
+
+  // Support both camelCase (DB format) and snake_case (SDK format)
   const baseAsset = datum.baseAsset || datum.base_asset
+  if (!baseAsset) {
+    console.error(`[buildLoadedContract] Invalid datum structure:`, JSON.stringify(datum, null, 2))
+    throw new Error(`Contract ${contract.contractAddress} has no baseAsset in datum. Keys present: ${Object.keys(datum).join(', ')}`)
+  }
+
   const terms = datum.terms
+  if (!terms) {
+    throw new Error(`Contract ${contract.contractAddress} has no terms in datum`)
+  }
+
   const lastPayment = datum.lastPayment || datum.last_payment
 
   return {
@@ -590,6 +606,8 @@ export async function makePayment(
 
 /**
  * Collect payment from contract (seller withdraws)
+ * Note: Collect withdraws ADA from the contract but doesn't change the loan state.
+ * The on-chain datum remains unchanged - only the ADA balance moves.
  */
 export async function collectPayment(
   params: CollectPaymentParams
@@ -627,6 +645,10 @@ export async function collectPayment(
 
   // Advance emulator
   awaitBlockAndTrack(1)
+
+  // Note: Collect doesn't change the on-chain datum state - it only withdraws accumulated ADA.
+  // The contract state (balance, isPaidOff, etc.) remains unchanged on-chain.
+  // We don't update the DB here because the datum isn't modified by collect.
 
   console.log(`[LoanService] Payment collected: ${result.tx_id}`)
 
@@ -795,7 +817,7 @@ export async function getAllContracts(): Promise<
 }
 
 /**
- * Get a specific contract state
+ * Get a specific contract state (from DB cache)
  */
 export async function getContractState(
   address: string
@@ -813,6 +835,74 @@ export async function getContractState(
     script: { hash: contract.policyId },
     metadata: contract.contractData,
     dbRecord: contract,
+  }
+}
+
+/**
+ * Get the TRUE on-chain state by querying the UTXO at the contract address
+ * This reads from the emulator/blockchain, not the DB cache
+ */
+export async function getOnChainContractState(
+  address: string
+): Promise<{
+  exists: boolean
+  utxo?: {
+    txHash: string
+    outputIndex: number
+    assets: Record<string, bigint>
+    datum?: string
+  }
+  parsedDatum?: any
+  lovelaceBalance?: bigint
+  error?: string
+} | null> {
+  const lucid = getLucid()
+  if (!lucid) {
+    return { exists: false, error: 'Lucid not initialized' }
+  }
+
+  try {
+    // Query UTXOs at the contract address
+    const utxos = await lucid.utxosAt(address)
+
+    if (!utxos || utxos.length === 0) {
+      return { exists: false }
+    }
+
+    // Get the first UTXO (there should typically be one per contract)
+    const utxo = utxos[0]
+
+    let parsedDatum: any = null
+    if (utxo.datum) {
+      // Try to parse the inline datum
+      try {
+        // The datum is CBOR encoded, we can return it as-is for now
+        // Full parsing would require the SDK's datum decoder
+        parsedDatum = {
+          raw: utxo.datum,
+          // If we had access to the SDK's decode function, we could decode it here
+        }
+      } catch (e) {
+        console.warn('Could not parse datum:', e)
+      }
+    }
+
+    return {
+      exists: true,
+      utxo: {
+        txHash: utxo.txHash,
+        outputIndex: utxo.outputIndex,
+        assets: Object.fromEntries(
+          Object.entries(utxo.assets).map(([k, v]) => [k, BigInt(v)])
+        ),
+        datum: utxo.datum,
+      },
+      parsedDatum,
+      lovelaceBalance: utxo.assets.lovelace,
+    }
+  } catch (err) {
+    console.error('Error querying on-chain state:', err)
+    return { exists: false, error: String(err) }
   }
 }
 

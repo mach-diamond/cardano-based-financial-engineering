@@ -15,6 +15,7 @@ import {
   clearContractStore,
   getAllContracts,
   getContractState,
+  getOnChainContractState,
   type CreateLoanParams,
   type AcceptLoanParams,
   type MakePaymentParams,
@@ -226,25 +227,56 @@ loan.post('/clear', async (c) => {
 })
 
 /**
- * GET /debug/datum/:address - Debug: show raw datum from database
+ * GET /debug/datum/:address - Debug: show raw datum from database AND on-chain
  */
 loan.get('/debug/datum/:address', async (c) => {
   try {
     const address = c.req.param('address')
     const contract = await getContractState(address)
     if (!contract) {
-      return c.json({ error: 'Contract not found' }, 404)
+      return c.json({ error: 'Contract not found in DB' }, 404)
     }
+
+    // Also get the true on-chain state
+    const onChainState = await getOnChainContractState(address)
+
     return c.json({
       success: true,
       address,
+      // DB cached state
       dbRecord: contract.dbRecord,
       contractDatum: contract.dbRecord?.contractDatum,
       contractDatumType: typeof contract.dbRecord?.contractDatum,
       contractDatumKeys: contract.dbRecord?.contractDatum ? Object.keys(contract.dbRecord.contractDatum) : [],
+      // True on-chain state
+      onChain: onChainState,
     })
   } catch (err) {
     console.error('Debug datum error:', err)
+    return c.json({ error: String(err) }, 500)
+  }
+})
+
+/**
+ * GET /onchain/:address - Get the TRUE on-chain state (not DB cache)
+ * Returns the actual UTXO data from the emulator/blockchain
+ */
+loan.get('/onchain/:address', async (c) => {
+  try {
+    const address = c.req.param('address')
+    const onChainState = await getOnChainContractState(address)
+
+    if (!onChainState) {
+      return c.json({ error: 'Could not query on-chain state' }, 500)
+    }
+
+    return c.json({
+      success: true,
+      address,
+      ...onChainState,
+    })
+  } catch (err) {
+    console.error('On-chain state error:', err)
     return c.json({ error: String(err) }, 500)
   }
 })
